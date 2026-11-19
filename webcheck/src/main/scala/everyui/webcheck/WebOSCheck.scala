@@ -17,6 +17,7 @@ import scala.concurrent.duration.*
   *  - the page's faces load from its own files (file://);
   *  - Back at Home leaves the app by the runtime's `platformBack()`, once;
   *  - a `webOSRelaunch` reaches the app as a launch, with its parameters;
+  *  - what the TV shows (HDR10, Dolby Vision, Atmos: `Platform.decodes`) is asked of its configuration service, once;
   *  - another app is asked for (`getAppLoadStatus`) and launched (`launch`) through the runtime's PalmServiceBridge,
   *    and through webOSTV.js's `webOS.service.request` where the app has it, one not installed read so;
   *  - the Magic Remote's pointer focuses what it comes onto while it shows (`cursorStateChange`), and not while hidden;
@@ -277,9 +278,13 @@ object WebOSCheck extends RapidApp {
         _ <- event("webOSRelaunch", """{ other: "netflix", target: "https://www.netflix.com/watch/80100172" }""")
         bridged <- heard("tv: launched netflix true")
         bridgeCalls <- value("return window.everyuiLuna")
+        // (what the TV shows, asked of its configuration service as the app starts: Platform.decodes' HDR)
+        configs = bridgeCalls.asVector.map(_.asString).filter(_.startsWith("luna://com.webos.service.config/"))
+        _ = check("what the TV shows is asked once, of its configuration service (getConfigs)",
+          configs.size == 1 && configs.head.startsWith("luna://com.webos.service.config/getConfigs {\"configNames\":"))
         _ = check("another app is asked for and launched through PalmServiceBridge",
           bridged && count(installed("netflix", true)) == 1 &&
-            bridgeCalls.asVector.map(_.asString) == asked("netflix") :+
+            bridgeCalls.asVector.map(_.asString).filterNot(configs.contains) == asked("netflix") :+
             "luna://com.webos.applicationManager/launch {\"id\":\"netflix\",\"params\":" +
               "{\"contentTarget\":\"https://www.netflix.com/watch/80100172\"}}")
         _ <- browser.eval("everyuiService(); window.everyuiLuna = []; return 0")

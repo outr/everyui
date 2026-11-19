@@ -6,8 +6,15 @@ package everyui.component
   * "mp4" (for "m4v") or as given, "" for any; `profile` lower case with nothing but letters and digits ("main10" for
   * "Main 10", "high" for "High", "2" for VP9's "Profile 2"), "" for any; `level` as a number ("5.1" for "5.1", "51",
   * and an HEVC "153", which is the level times 30, as ffprobe and Plex give it), 0 for any; and `bitDepth` 8, 10 or 12,
-  * as given or as the profile says (Main 10, High 10, VP9's 2 and 3), 0 for any. */
-case class MediaFormat(codec: String, container: String, profile: String, level: Double, bitDepth: Int) {
+  * as given or as the profile says (Main 10, High 10, VP9's 2 and 3), 0 for any.
+  *
+  * `codec` may also be a codec string as RFC 6381 writes it (`hvc1.2.4.L153.B0`, `avc1.640028`, `mp4a.40.2`, `ec-3`,
+  * `dvh1.08.06`: [[CodecString]]), read into the same fields, a profile, level or bit depth given beside it winning;
+  * the string is kept as `tag` for a browser to be asked after exactly. `hdr` is the HDR it carries: "hdr10" (PQ),
+  * "hdr10plus", "hlg" or "dolbyvision", from the string or from a name asked alone (`decodes("hdr10")`, "hlg",
+  * "dolbyvision", "dovi"), whose codec is then "" (any); "" for none said. */
+case class MediaFormat(codec: String, container: String, profile: String, level: Double, bitDepth: Int,
+                       hdr: String = "", tag: String = "") {
   /** A picture's codec, rather than a sound's. */
   def video: Boolean = MediaFormat.videoCodecs.contains(codec)
   /** Ten bits or more. */
@@ -25,15 +32,32 @@ object MediaFormat {
   val videoCodecs: Set[String] = Set("hevc", "h264", "vp9", "vp8", "av1", "mpeg2video", "mpeg1video", "mpeg4",
     "vc1", "msmpeg4")
 
+  /** The HDR names asked alone, by what they are called. */
+  val hdrNames: Map[String, String] = Map("hdr10" -> "hdr10", "hdr" -> "hdr10", "pq" -> "hdr10", "smpte2084" -> "hdr10",
+    "hdr10+" -> "hdr10plus", "hdr10plus" -> "hdr10plus", "hlg" -> "hlg", "arib-std-b67" -> "hlg",
+    "dolbyvision" -> "dolbyvision", "dolby vision" -> "dolbyvision", "dovi" -> "dolbyvision", "dv" -> "dolbyvision")
+
   def of(codec: String, container: String, profile: String, level: String, bitDepth: Int): MediaFormat = {
-    val c = codecName(codec)
-    val p = compact(profile).replace("profile", "")
-    val depth =
-      if (bitDepth > 0) bitDepth
-      else if (p.endsWith("10") || ((c == "vp9" || c == "av1") && (p == "2" || p == "3"))) 10
-      else 0
-    MediaFormat(c, containerName(container), p, levelOf(c, level), depth)
+    val named = codec.trim.toLowerCase
+    CodecString.read(codec) match {
+      case Some(read) =>
+        val p = compact(profile).replace("profile", "")
+        val stated = levelOf(read.codec, level)
+        val depth = if (bitDepth > 0) bitDepth else if (p.nonEmpty) depthOf(read.codec, p) else read.bitDepth
+        read.copy(container = containerName(container), profile = if (p.nonEmpty) p else read.profile,
+          level = if (stated > 0.0) stated else read.level, bitDepth = depth)
+      case None if hdrNames.contains(named) =>
+        MediaFormat("", containerName(container), "", 0.0, bitDepth, hdrNames(named), "")
+      case None =>
+        val c = codecName(codec)
+        val p = compact(profile).replace("profile", "")
+        MediaFormat(c, containerName(container), p, levelOf(c, level), if (bitDepth > 0) bitDepth else depthOf(c, p))
+    }
   }
+
+  // ten bits where the profile says it: Main 10, High 10, VP9's and AV1's 2 and 3
+  private def depthOf(codec: String, p: String): Int =
+    if (p.endsWith("10") || ((codec == "vp9" || codec == "av1") && (p == "2" || p == "3"))) 10 else 0
 
   def codecName(codec: String): String = {
     val c = codec.trim.toLowerCase
@@ -41,6 +65,10 @@ object MediaFormat {
     else if (c == "avc" || c == "avc1" || c == "mpeg4 avc" || c == "x264") "h264"
     else if (c == "vp09") "vp9"
     else if (c == "av01") "av1"
+    else if (c == "ac-3" || c == "a52") "ac3"
+    else if (c == "ec-3" || c == "e-ac-3" || c == "e-ac3") "eac3"
+    else if (c == "dca") "dts"
+    else if (c == "mlp") "truehd"
     else c
   }
 

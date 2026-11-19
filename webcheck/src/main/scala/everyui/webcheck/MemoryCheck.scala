@@ -22,6 +22,9 @@ import java.nio.file.{Files, Path, Paths}
   * written each second, and a screen reader on it could say it again each time, where its time belongs in its
   * description, which is words in place.
   *
+  * Each case taken apart must hold no player (`everyuiMemory.media()`: the page's elements with a source, hls.js's
+  * players, `MediaSupport.held`): one that does fails the check, whatever its numbers.
+  *
   * The table is written to `out`, and each measure held to the baseline's with a tenth's margin (`margin`, and a heap's
   * noise, `slack`): one over fails the check. With `--update` the table becomes the baseline instead.
   *
@@ -50,6 +53,9 @@ object MemoryCheck extends RapidApp {
   def slack(steps: Map[String, Int])(name: String, column: String): Double =
     if (column.endsWith("bytes")) 65536.0 / steps.getOrElse(name, 1) else 0.01
 
+  // the cases that left a player held once taken apart (everyuiMemory.media): each fails the check
+  private var holding = List.empty[String]
+
   override def run(args: List[String]): Task[Unit] = {
     val page = Paths.get(args.headOption.getOrElse(sys.error("usage: MemoryCheck <page dir> <baseline.md> <out.md> " +
       "[--update] [--only=<case>]"))).toAbsolutePath.resolve("index.html").toUri.toString
@@ -70,7 +76,7 @@ object MemoryCheck extends RapidApp {
           done.flatMap(rows => measure(browser, page, name, unit, step).map(rows :+ _))
         }
       } yield report(MemoryTable(columns, rows), cases.map(c => c._1 -> c._3).toMap, baseline, out, update)
-    }).map(within => if (!within) sys.exit(1)) // once the browser is closed
+    }).map(within => if (!within || holding.nonEmpty) sys.exit(1)) // once the browser is closed
   }
 
   // the table written, and held to the baseline: whether it is within its budgets
@@ -119,8 +125,16 @@ object MemoryCheck extends RapidApp {
       second <- read(browser)
       ticking <- ticked(browser)
       _ <- browser.eval("everyuiMemory.dispose(); return 0")
+      media <- browser.eval("return everyuiMemory.media()")
       after <- read(browser)
     } yield {
+      // a player held after the case was taken apart: a decoder a TV would not get back
+      val players = media("result")("value").asVector.map(_.asInt)
+      if (players.exists(_ != 0)) {
+        holding :+= name
+        println("[memory] HELD " + name + ": after it was taken apart, " + players(0) + " elements with a source, " +
+          players(1) + " hls.js players, MediaSupport.held " + players(2))
+      }
       val per = second.indices.map(i => (second(i) - first(i)) / step).toVector
       val row = MemoryRow(name, unit, per :+ (after(4) - before(4)) / (2 * step) :+
         ticking._1 / (ticks * 2 * step) :+ ticking._2 / (ticks * 2 * step))

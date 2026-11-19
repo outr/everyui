@@ -872,8 +872,8 @@ class RenderNode(val el: html.Element) {
   def setMediaSource(url: String): Unit = if (media.nonEmpty) webMedia.source(url)
   /** Where the next source starts, in seconds. */
   def setMediaStart(seconds: Double): Unit = if (media.nonEmpty) webMedia.start = seconds
-  // a page could add a <track> for each; not yet
-  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = ()
+  /** Subtitle files beside the source, each a `<track>` of WebVTT (SubRip made so) on the element (WebTracks). */
+  def setMediaSidecars(sidecars: List[everyui.component.MediaSidecar]): Unit = if (media.nonEmpty) webMedia.sidecars(sidecars)
   def setMediaPlaying(playing: Boolean): Unit = if (media.nonEmpty) webMedia.play(playing)
   def setMediaLoop(loop: Boolean): Unit = media.foreach(_.loop = loop)
   def setMediaMuted(muted: Boolean): Unit = media.foreach(_.muted = muted)
@@ -996,11 +996,13 @@ class RenderNode(val el: html.Element) {
   def setMediaDirect(direct: Boolean): Unit = ()
   // an effect (AudioPlayer.effect) plays here as any sound does, mixed with the rest
   def setMediaEffect(effect: Boolean): Unit = ()
-  def getMediaPosition(): Double = media.map(_.currentTime.asInstanceOf[Double]).getOrElse(0.0)
+  // where it was asked to start until the player has played on from there (ResumeSeek), so a checkpoint taken as it
+  // opens saves that rather than 0
+  def getMediaPosition(): Double = if (media.nonEmpty) webMedia.position else 0.0
   // a browser answers NaN until the metadata is in, and Infinity for a live stream: neither is a length
   def getMediaDuration(): Double =
     media.map(_.duration.asInstanceOf[Double]).filter(d => !d.isNaN && !d.isInfinite && d > 0.0).getOrElse(0.0)
-  def seekMedia(seconds: Double): Unit = media.foreach(_.currentTime = seconds)
+  def seekMedia(seconds: Double): Unit = if (media.nonEmpty) webMedia.seek(seconds)
   def onMediaEvent(f: String => Unit): Unit = if (media.nonEmpty) {
     el.addEventListener("playing", (_: dom.Event) => f("ready"))
     el.addEventListener("ended", (_: dom.Event) => webMedia.ended(f))

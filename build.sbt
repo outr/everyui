@@ -554,6 +554,10 @@ lazy val desktop = (project in file("desktop"))
     Test / unmanagedSources ++= Seq("WebOSFacts.scala", "WebOSApps.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala",
       "KeyCodes.scala", "TvEngine.scala")
       .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
+    // and the player's: the MIME types codecs are asked as (CodecMime), what a TV says it shows (WebOSDisplay), an HLS
+    // playlist's renditions (HlsRenditions), SubRip as WebVTT (SubRipVtt) and a resume's seeks (ResumeSeek)
+    Test / unmanagedSources ++= Seq("CodecMime.scala", "WebOSDisplay.scala", "HlsRendition.scala", "HlsRenditions.scala",
+      "SubRipVtt.scala", "ResumeSeek.scala").map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // and how Android starts another app for a link (IntentPlan), plain Scala as well
     Test / unmanagedSources += (file("android") / "src" / "main" / "scala" / "everyui" / "render" / "IntentPlan.scala").getAbsoluteFile,
     // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here

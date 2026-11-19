@@ -3,7 +3,7 @@ package everyui.memory
 import everyui.Color
 import everyui.chart.{BarChart, DonutChart, Heatmap, LineChart, Meter, Series, StatTile}
 import everyui.chat.{ActivityStatus, ChatEntry, ChatTime, Participant, Transcript}
-import everyui.component.{Button, Component, Container, ImageView, ScrollContainer, TextView}
+import everyui.component.{Button, Component, Container, ImageView, ScrollContainer, TextView, VideoView}
 import everyui.kit.TabGroups
 import everyui.layout.VerticalLayout
 import everyui.list.VirtualList
@@ -23,6 +23,7 @@ object MemoryCases {
     MemoryCase("ImageView", "view", 100, () => stacked(_ => ImageView(Platform.resolvePath("images/everyui-mark.png"),
       32.0))),
     MemoryCase("ScrollContainer", "scroll", 50, () => stacked(i => scroll(i))),
+    MemoryCase("VideoView, playing a clip", "video", 4, () => stacked(_ => video())),
     MemoryCase("ScrollContainer of cards", "card", 100, () => cards()),
     MemoryCase("VirtualList of 1,000 rows", "list", 4, () => stacked(_ => list())),
     MemoryCase("DataTable of 100 rows", "table", 4, () => stacked(_ => table())),
@@ -99,6 +100,20 @@ object MemoryCases {
         true
       }
     }
+  }
+
+  /** The clip a VideoView case plays (`MemoryPage` makes one of its own on the web), "" for none. */
+  var clip: String = ""
+
+  // a video at a card's size, muted and looping its clip
+  private def video(): VideoView = {
+    val v = new VideoView
+    v.size.width @= 160.0
+    v.size.height @= 90.0
+    v.muted @= true
+    v.loop @= true
+    if (clip.nonEmpty) v.source @= clip
+    v
   }
 
   private def words(s: String): TextView = {

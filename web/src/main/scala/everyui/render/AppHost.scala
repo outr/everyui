@@ -53,6 +53,10 @@ trait AppHost {
   /** Whether the app `id` is installed, None where the host cannot say (the default). */
   def appInstalled(id: String, done: Option[Boolean] => Unit): Unit = done(None)
 
+  /** What the device says it shows or plays beyond its engine's answers (`Platform.decodes`): "hdr10", "hlg",
+    * "dolbyvision", "atmos", "uhd". None where it does not say, the default. */
+  def display(feature: String): Option[Boolean] = None
+
   /** Whether a video plays an HLS stream with the system's own player rather than hls.js, where both could. */
   def nativeHls: Boolean
 }

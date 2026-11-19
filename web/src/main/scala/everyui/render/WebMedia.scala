@@ -1,6 +1,6 @@
 package everyui.render
 
-import everyui.component.{MediaDiagnostics, MediaRetry, MediaTrack}
+import everyui.component.{MediaDiagnostics, MediaRetry, MediaSidecar, MediaTrack}
 import org.scalajs.dom
 import org.scalajs.dom.html
 
@@ -47,6 +47,13 @@ final class WebMedia(el: html.Element) {
   private var night = 0.0
   private var allowed = false
   private lazy val fold = new CenterFold(el, () => tell("mixing"))
+  // the element's own tracks, the playlist's where the player lists none, and the sidecar files (WebTracks)
+  private val extra = new WebTracks(el)
+  // where the source opened is to start, set again until the player has played on from there (ResumeSeek)
+  private var landing = new ResumeSeek(0.0)
+  // a track chosen from the playlist where the element plays it without listing it: the source is opened again through
+  // hls.js, there, with it (kind, place)
+  private var pick: Option[(String, Int)] = None
 
   el.addEventListener("error", (_: dom.Event) => refused())
   // the browser pausing it of itself while it is meant to play: taken off the page (a media element is paused as it is
@@ -58,6 +65,9 @@ final class WebMedia(el: html.Element) {
     tries = 0
     played = true
   })
+  // the start set again where the player dropped it
+  for (event <- List("loadedmetadata", "canplay", "playing", "timeupdate"))
+    el.addEventListener(event, (_: dom.Event) => resumed(event))
 
   /** Hear `error`, and `retry` while hls.js retries a load; the element's own events are heard where they happen. */
   def listen(f: String => Unit): Unit = listeners = listeners :+ f
@@ -69,12 +79,52 @@ final class WebMedia(el: html.Element) {
       tell("mixing")
     }
     else if (!url.contains(to)) {
-      close()
-      url = Some(to)
-      from = start
+      pick = None
+      val at = start
       start = 0.0
-      if (WebMedia.hls(to) && script) attach(to, opened) else native(to)
+      open(to, at, through = false)
     }
+
+  // `to` opened `at` seconds in, through hls.js where it is HLS and hls.js is to play it (or `through` says so)
+  private def open(to: String, at: Double, through: Boolean): Unit = {
+    close()
+    url = Some(to)
+    from = at
+    landing = new ResumeSeek(at)
+    WebMedia.holding += this
+    val scripted = WebMedia.hls(to) && (through || script)
+    extra.opened(to, !scripted, headers)
+    if (scripted) attach(to, opened) else native(to)
+  }
+
+  /** Subtitle files to offer beside the source's own tracks (`MediaSidecar`, [[WebTracks]]). */
+  def sidecars(list: List[MediaSidecar]): Unit = extra.sidecars(list, url.nonEmpty, headers)
+
+  /** Seconds in, for saving: where it was asked to start until it has played on from there. */
+  def position: Double = landing.position(m.currentTime.asInstanceOf[Double])
+
+  /** Sought to `seconds`, the viewer's or the app's: a start not yet landed is given up. */
+  def seek(seconds: Double): Unit =
+    // before it has loaded, where an older engine refuses a time, it is a start to land at instead
+    if (!placed(seconds)) landing = new ResumeSeek(seconds)
+    else landing.cancel()
+
+  // the playhead set to `seconds`, and whether the engine took it: before Chromium 39 or so, and on a TV, a time set
+  // before the element has loaded anything (HAVE_NOTHING) throws
+  private def placed(seconds: Double): Boolean =
+    try {
+      m.currentTime = seconds
+      true
+    } catch { case _: Throwable => false }
+
+  // the player's word as it opens: the start set again while it stands short of it
+  private def resumed(event: String): Unit = if (url.nonEmpty) {
+    landing.heard(event, m.currentTime.asInstanceOf[Double], m.seeking.asInstanceOf[Boolean]).foreach { at =>
+      if (event != "loadedmetadata") everyui.scribe.info("media: starting at " + at.toInt + " s again, the player at " +
+        m.currentTime.asInstanceOf[Double].toInt + " s (" + event + ")")
+      placed(at)
+    }
+  }
 
   /** The centre of a surround source at `db` dB over the usual (MediaSupport.centerMix). */
   def centerMix(db: Double): Unit = {
@@ -124,38 +174,50 @@ final class WebMedia(el: html.Element) {
     if (b.isNaN || b <= 0.0) 0L else b.toLong
   }.getOrElse(0L)
 
+  /** The tracks: hls.js's sound tracks and subtitles and the stream's closed captions where hls.js plays it; else the
+    * element's own, or, for an HLS stream it plays without listing them, the master playlist's; then the sidecars
+    * ([[WebTracks]]). */
   def tracks: List[MediaTrack] = hls match {
-    case Some(h) => listed(h.audioTracks, MediaTrack.Audio) ++ listed(h.subtitleTracks, MediaTrack.Text) ++ captions
-    // the browser lists the tracks a file carries; `audioTracks` is not in every engine, so a missing list is no list
-    case None => owned("audioTracks", MediaTrack.Audio) ++ owned("textTracks", MediaTrack.Text)
+    case Some(h) => listed(h.audioTracks, MediaTrack.Audio) ++ listed(h.subtitleTracks, MediaTrack.Text) ++
+      extra.captions ++ extra.side
+    case None =>
+      val audio = extra.own(MediaTrack.Audio)
+      val text = extra.own(MediaTrack.Text)
+      (if (audio.nonEmpty) audio else extra.listed(MediaTrack.Audio)) ++
+        (if (text.nonEmpty) text else extra.listed(MediaTrack.Text)) ++ extra.side
   }
 
   /** The track `id` heard or read; "" leaves the audio alone and shows no text. A stream's closed captions (`cc<n>`)
-    * are the element's own tracks, hls.js's subtitles its, and one showing hides the other. */
+    * are the element's own tracks, hls.js's subtitles its, a sidecar (`side<n>`) a `<track>` of its own, and one
+    * showing hides the others. A track the element plays without listing (the playlist's) opens the stream again
+    * through hls.js, where it is, with that track. */
   def select(kind: String, id: String): Unit = {
     val audio = kind == MediaTrack.Audio
+    if (!audio) extra.showSide(if (id.startsWith("side")) id else "")
+    val i = if (id.startsWith("side")) -1 else id.toIntOption.getOrElse(-1)
     hls match {
       case Some(h) =>
-        val i = id.toIntOption.getOrElse(-1)
         if (audio) { if (i >= 0) h.audioTrack = i }
         else {
           h.subtitleTrack = i
           h.subtitleDisplay = i >= 0
-          // hidden rather than disabled, so hls.js goes on filling them
-          captions.foreach { t =>
-            show(t.id.drop(2), if (t.id == id) "showing" else "hidden")
-          }
+          extra.showCaptions(id)
         }
-      case None => if (!audio || id.nonEmpty) {
-        val list = m.selectDynamic(if (audio) "audioTracks" else "textTracks")
-        if (!js.isUndefined(list) && list != null) {
-          (0 until list.length.asInstanceOf[Int]).foreach { i =>
-            val t = list.selectDynamic(i.toString)
-            val on = id == i.toString
-            if (audio) t.enabled = on else t.mode = if (on) "showing" else "disabled"
+      case None =>
+        val own = extra.own(kind)
+        if (own.nonEmpty || (!audio && i < 0)) extra.selectOwn(kind, if (i < 0) "" else id)
+        else if (i >= 0 && i < extra.listed(kind).size && (audio && i != extra.listedDefault(kind) || !audio))
+          url.foreach { to =>
+            if (!WebMedia.mse) everyui.scribe.warn("media: the player lists no " + kind + " tracks, and there is no " +
+              "Media Source here to choose one through hls.js")
+            else {
+              everyui.scribe.info("media: " + kind + " track " + i + " of the playlist chosen: opening it again " +
+                "through hls.js at " + position.toInt + " s")
+              val at = position
+              open(to, at, through = true)
+              pick = Some(kind -> i)
+            }
           }
-        }
-      }
     }
   }
 
@@ -207,7 +269,7 @@ final class WebMedia(el: html.Element) {
     el.setAttribute("src", to)
     // before the file has said anything, a time set is where it starts once it has (its default playback start
     // position), rather than a seek after it
-    if (from > 0.0) m.currentTime = from
+    if (from > 0.0) placed(from)
     if (playing) resume()
     settled()
   }
@@ -219,7 +281,12 @@ final class WebMedia(el: html.Element) {
     tell("mixing")
   }
 
-  private def resume(): Unit = m.play().asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => if (meantToPlay) onThePage())
+  // (`play()` answers a promise from Chromium 50; nothing before it)
+  private def resume(): Unit = {
+    val started = m.play()
+    if (!js.isUndefined(started) && started != null)
+      started.asInstanceOf[js.Promise[Unit]].`catch`((_: Any) => if (meantToPlay) onThePage())
+  }
 
   // whether it is meant to be playing and is not: something to play, asked to play, not at its end and not failed
   private def meantToPlay: Boolean = url.nonEmpty && playing && failure.isEmpty && m.paused.asInstanceOf[Boolean] &&
@@ -274,28 +341,6 @@ final class WebMedia(el: html.Element) {
     else "MediaError " + e.code.toString + Some(text(e.message)).filter(_.nonEmpty).map(": " + _).getOrElse("")
   }
 
-  // the closed captions hls.js found in the video, each a `captions` track of the element's own
-  private def captions: List[MediaTrack] = {
-    val list = m.textTracks
-    (0 until list.length.asInstanceOf[Int]).toList.flatMap { i =>
-      val t = list.selectDynamic(i.toString)
-      if (text(t.kind) != "captions") None
-      else Some(MediaTrack("cc" + i, MediaTrack.Text, text(t.language), text(t.label), "CC"))
-    }
-  }
-
-  private def show(index: String, mode: String): Unit =
-    index.toIntOption.foreach(i => m.textTracks.selectDynamic(i.toString).mode = mode)
-
-  private def owned(field: String, kind: String): List[MediaTrack] = {
-    val list = m.selectDynamic(field)
-    if (js.isUndefined(list) || list == null) Nil
-    else (0 until list.length.asInstanceOf[Int]).toList.map { i =>
-      val t = list.selectDynamic(i.toString)
-      MediaTrack(i.toString, kind, text(t.language), text(t.label))
-    }
-  }
-
   // ---- hls.js ----
 
   // where hls.js plays it: with Media Source Extensions, and where the browser does not play HLS itself as well (and
@@ -311,6 +356,7 @@ final class WebMedia(el: html.Element) {
         el.removeAttribute("src")
         val h = js.Dynamic.newInstance(HlsScript.hls)(config())
         hls = Some(h)
+        WebMedia.scripts += 1
         settled()
         val events = HlsScript.hls.Events
         h.on(events.MANIFEST_PARSED, ((_: js.Any, _: js.Any) => parsed()): js.Function2[js.Any, js.Any, Unit])
@@ -353,15 +399,18 @@ final class WebMedia(el: html.Element) {
 
   // the tracks in the languages asked for, the first time each list is known: just after, as hls.js makes its own
   // choice once it has told of them
+  // (a track picked from the playlist before hls.js played it is the choice over the languages)
   private def heard(h: js.Dynamic): Unit = js.timers.setTimeout(0) {
-    if (hls.exists(_ eq h)) chosen(h.audioTracks, wanted._1).foreach(i => h.audioTrack = i)
+    if (hls.exists(_ eq h)) picked(MediaTrack.Audio).orElse(chosen(h.audioTracks, wanted._1)).foreach(i => h.audioTrack = i)
   }
   private def read(h: js.Dynamic): Unit = js.timers.setTimeout(0) {
-    if (hls.exists(_ eq h)) chosen(h.subtitleTracks, wanted._2).foreach { i =>
+    if (hls.exists(_ eq h)) picked(MediaTrack.Text).orElse(chosen(h.subtitleTracks, wanted._2)).foreach { i =>
       h.subtitleTrack = i
       h.subtitleDisplay = true
     }
   }
+
+  private def picked(kind: String): Option[Int] = pick.filter(_._1 == kind).map(_._2)
 
   // a failed load hls.js will try again is a retry; a media error is recovered from once; anything else fatal ends it
   private def error(h: js.Dynamic, data: js.Dynamic): Unit = if (hls.exists(_ eq h)) {
@@ -411,8 +460,15 @@ final class WebMedia(el: html.Element) {
 
   // ---- either ----
 
+  /** What it held let go, the same however often it is asked: hls.js destroyed (and with it its MediaSource), the
+    * sidecars' `<track>`s taken off, and the element paused, its `src` and any `<source>` taken away and loaded empty,
+    * which is what lets a TV's player give its decoder back. The element itself goes with its component. */
   private def close(): Unit = {
     opened += 1
+    val held = url.nonEmpty || hls.nonEmpty || el.hasAttribute("src") || extra.held > 0 ||
+      el.querySelector("source") != null
+    WebMedia.holding -= this
+    landing = new ResumeSeek(0.0)
     played = false
     url = None
     tries = 0
@@ -424,11 +480,19 @@ final class WebMedia(el: html.Element) {
     retries = 0
     retry = None
     failure = ""
-    hls.foreach(_.destroy())
+    hls.foreach { h =>
+      h.destroy()
+      WebMedia.scripts -= 1
+    }
     hls = None
-    m.pause()
-    el.removeAttribute("src")
-    m.load()
+    extra.clear()
+    if (held) {
+      m.pause()
+      el.removeAttribute("src")
+      val sources = el.querySelectorAll("source")
+      (0 until sources.length).foreach(i => el.removeChild(sources(i)))
+      m.load()
+    }
   }
 
   /** Its end, as the element says it: the end where the source played, and otherwise an error, as on every platform
@@ -448,6 +512,15 @@ final class WebMedia(el: html.Element) {
 }
 
 object WebMedia {
+  // the players holding a source, and hls.js's players (each with its MediaSource) not yet destroyed
+  private[render] var holding: Set[WebMedia] = Set.empty
+  private[render] var scripts: Int = 0
+
+  /** What the page's media elements hold now: how many have a source open, and how many hls.js players (each with
+    * its MediaSource and buffers) are alive. Both 0 once every player is let go: a check of teardown, for a spec,
+    * the memory check and the player check. */
+  def held: (Int, Int) = (holding.size, scripts)
+
   /** How many times a source the browser paused of itself is started again before it is let be, and how long each wait
     * for it to be on the page in sight is, in ms. */
   private val restarts: Int = 20

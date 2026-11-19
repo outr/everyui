@@ -23,7 +23,10 @@ trait MediaSupport { self: Component =>
     own(new Prop[List[MediaSidecar]](Nil, s => node.setMediaSidecars(s)))
 
   /** A URL: a file, or an HLS stream (`.m3u8`). Empty stops it. */
-  lazy val source: Prop[String] = own(new Prop[String]("", s => node.setMediaSource(s)))
+  lazy val source: Prop[String] = own(new Prop[String]("", s => {
+    node.setMediaSource(s)
+    holding(s.nonEmpty)
+  }))
 
   /** `url` opened afresh, `from` seconds in: where it starts is said with it, so the player's first request is for
     * that part of the file, rather than the start of it followed by a seek that races the opening. The same address
@@ -297,6 +300,14 @@ trait MediaSupport { self: Component =>
     deviceWatch = None
     asleep = None
     node.releaseMedia()
+    holding(false)
+  }
+
+  // whether this holds a player: counted in MediaSupport.held
+  private var holds = false
+  private def holding(on: Boolean): Unit = if (on != holds) {
+    holds = on
+    MediaSupport.count += (if (on) 1 else -1)
   }
 
   // twice a second: on the screen, or off it — taken down with a scene, or a page left behind
@@ -325,6 +336,7 @@ trait MediaSupport { self: Component =>
   private def sleep(): Unit = {
     asleep = Some((source(), playhead()))
     node.releaseMedia()
+    holding(false)
   }
 
   /** Back in sight: the same thing playing, from where it left off. */
@@ -339,6 +351,7 @@ trait MediaSupport { self: Component =>
       // from where it was, said with the source rather than sought to after it
       node.setMediaStart(at)
       node.setMediaSource(url)
+      holding(true)
       node.setMediaLoop(loop())
       node.setMediaMuted(muted())
       node.setMediaVolume(volume())
@@ -348,4 +361,13 @@ trait MediaSupport { self: Component =>
       node.setMediaPlaying(playing())
     }
   }
+}
+
+object MediaSupport {
+  private[component] var count: Int = 0
+
+  /** How many views and players hold a player now: a source set and not let go, put away out of sight or released.
+    * 0 once every screen that played something has been left, whatever the platform: a check of teardown for a spec
+    * or a memory check (on the web, `everyui.render.WebMedia.held` says what the page's elements still hold). */
+  def held: Int = count
 }

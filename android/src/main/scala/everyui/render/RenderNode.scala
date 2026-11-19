@@ -3120,8 +3120,9 @@ object Platform {
   def launchesApps(): Boolean = true
 
   /** Whether it can play `codec` (a media server's name for it: "hevc", "ac3"), with a decoder of its own or by passing
-    * the sound through: see [[Codecs]]. */
-  def decodes(codec: String): Boolean = Codecs.plays(codec)
+    * the sound through: see [[Codecs]], or a codec string (`hvc1.2.4.L153.B0`), or HDR the screen
+    * shows ("hdr10", "hlg", "dolbyvision"). */
+  def decodes(codec: String): Boolean = Codecs.plays(everyui.component.MediaFormat.of(codec, "", "", "", 0))
   /** Whether it can play `codec` in `container` ("mkv", "mp4", "ts"; "" for any), at `profile` ("main", "main 10",
     * "high"), `level` ("5.1", or a server's "51" or HEVC "153") and `bitDepth` (10 asks the ten-bit profile where none
     * is named), each "" or 0 for any: a decoder that lists that profile at that level or above ([[Codecs]]). */

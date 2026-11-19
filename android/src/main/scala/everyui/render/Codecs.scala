@@ -22,7 +22,7 @@ object Codecs {
     "truehd" -> "audio/true-hd", "mlp" -> "audio/true-hd",
     "mp3" -> "audio/mpeg", "mp2" -> "audio/mpeg-L2",
     "flac" -> "audio/flac", "opus" -> "audio/opus", "vorbis" -> "audio/vorbis",
-    "pcm_s16le" -> "audio/raw", "pcm" -> "audio/raw")
+    "pcm_s16le" -> "audio/raw", "pcm" -> "audio/raw", "dolbyvision" -> "video/dolby-vision")
 
   /** Every name it can play, or nothing where the device would not say — which is read as able to play anything. */
   lazy val playable: Set[String] =
@@ -68,7 +68,9 @@ object Codecs {
     * opens every container a server sends (MP4, Matroska, WebM, TS, HLS, DASH), so the container rules nothing out. A
     * decoder that lists no profiles, or a profile not known here, is a yes. */
   def plays(f: MediaFormat): Boolean =
-    if (!plays(f.codec)) false
+    if (f.hdr.nonEmpty && hdr(f.hdr).contains(false)) false
+    else if (f.hdr == "dolbyvision" && f.codec.nonEmpty && !plays("dolbyvision")) false
+    else if (!plays(f.codec)) false
     else if (!f.video || (f.profile.isEmpty && f.level <= 0.0 && !f.deep)) true
     else mimes.get(f.codec).forall { mime =>
       val wanted = profileOf(f)
@@ -87,6 +89,23 @@ object Codecs {
           true
       }
     }
+
+  /** Whether the screen shows `kind` of HDR ("hdr10", "hlg", "dolbyvision", "hdr10plus"), as the display says
+    * (`Display.HdrCapabilities`, Android 7 on; HDR10+ from 10): on a box, what the television over HDMI takes. None
+    * where it cannot be asked. */
+  def hdr(kind: String): Option[Boolean] =
+    if (android.os.Build.VERSION.SDK_INT < 24 || Host.activity == null) None
+    else try {
+      import android.view.Display.HdrCapabilities as H
+      val types = Host.activity.getWindowManager.getDefaultDisplay.getHdrCapabilities.getSupportedHdrTypes.toSet
+      kind match {
+        case "hdr10" => Some(types.contains(H.HDR_TYPE_HDR10))
+        case "hlg" => Some(types.contains(H.HDR_TYPE_HLG))
+        case "dolbyvision" => Some(types.contains(H.HDR_TYPE_DOLBY_VISION))
+        case "hdr10plus" => if (android.os.Build.VERSION.SDK_INT < 29) None else Some(types.contains(H.HDR_TYPE_HDR10_PLUS))
+        case _ => None
+      }
+    } catch { case _: Throwable => None }
 
   private def profileOf(f: MediaFormat): Option[Int] = {
     import MediaCodecInfo.CodecProfileLevel as P

@@ -8,6 +8,7 @@
 | Container | container | 3263 | 2249 | 1.0 | 0.0 | 1.0 | 0.0 | 0.0 | 0.0 |
 | ImageView | view | 3003 | 2563 | 2.0 | 0.0 | 1.0 | 0.01 | 0.0 | 0.0 |
 | ScrollContainer | scroll | 12868 | 9884 | 4.0 | 1.0 | 3.0 | 0.01 | 0.0 | 0.0 |
+| VideoView, playing a clip | video | 43777 | 58590 | 148.0 | 9.0 | 1.0 | 0.13 | 0.0 | 0.0 |
 | ScrollContainer of cards | card | 14589 | 15727 | 7.0 | 1.0 | 4.0 | 0.01 | 0.0 | 0.0 |
 | VirtualList of 1,000 rows | list | 556737 | 243910 | 107.0 | 7.0 | 81.0 | 0.13 | 0.0 | 0.0 |
 | DataTable of 100 rows | table | 965827 | 454354 | 284.0 | 154.0 | 148.0 | 0.13 | 0.0 | 0.0 |

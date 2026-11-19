@@ -40,6 +40,8 @@ object WebOSTv extends AppHost {
   def launchParams(): Map[String, String] = LaunchParams.parse(text("launchParams"))
 
   def listen(relaunched: Map[String, String] => Unit, pointer: Boolean => Unit): Unit = {
+    // what the TV shows and plays, asked as the app starts so it is in before a player asks
+    displayed()
     // its parameters as an object (`detail`), or as the runtime's string where the event carries none
     dom.document.addEventListener("webOSRelaunch", (e: dom.Event) => {
       val detail = e.asInstanceOf[js.Dynamic].detail
@@ -79,6 +81,28 @@ object WebOSTv extends AppHost {
   override def appInstalled(id: String, done: Option[Boolean] => Unit): Unit =
     if (id.isEmpty || !WebOSApps.loadStatusAsked(osVersion)) done(None)
     else call(WebOSApps.service, "getAppLoadStatus", WebOSApps.loadStatus(id), reply => done(WebOSApps.exists(reply)))
+
+  /** HDR10, HLG, Dolby Vision, Atmos and a UHD panel as the TV says them (`WebOSDisplay`): from the runtime's
+    * `deviceInfo`, then webOSTV.js's `webOS.deviceInfo` where the app bundles it, else the configuration service's
+    * `getConfigs` over the Luna bus; asked once, as the app starts, and None until (and unless) it is said. */
+  override def display(feature: String): Option[Boolean] = {
+    displayed()
+    shown.get(feature)
+  }
+  private lazy val initial: Map[String, Boolean] = WebOSDisplay.fromDeviceInfo(text("deviceInfo"))
+  private var told: Map[String, Boolean] = Map.empty
+  private def shown: Map[String, Boolean] = initial ++ told
+  private var asked = false
+  private def displayed(): Unit = if (!asked) {
+    asked = true
+    val info = defined(window.webOS).map(_.deviceInfo).filter(f => js.typeOf(f) == "function")
+    if (info.nonEmpty) {
+      val heard: js.Function1[js.Any, Unit] = r => told = told ++ WebOSDisplay.fromDeviceInfo(js.JSON.stringify(r))
+      try window.webOS.deviceInfo(heard) catch { case _: Throwable => () }
+    }
+    else if (luna) call(WebOSDisplay.configService, "getConfigs", WebOSDisplay.configNames,
+      reply => told = told ++ WebOSDisplay.fromConfigs(reply))
+  }
 
   /** The runtime plays HLS itself, in the TV's own media pipeline, which LG recommends over Media Source Extensions:
     * the TV's decoders, its HDR and its sound formats, and none of hls.js's memory. */

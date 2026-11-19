@@ -15,6 +15,7 @@ import reactify.*
   * each source in turn. `now=1` tells the system what plays (`nowPlaying`). `start=<seconds>` opens each source that
   * far in (`open(url, start)`, a resume), `text=<language>` asks for its subtitles in that language (`languages`), and
   * `seek=<seconds>` with `after=<seconds>` seeks there that long after each opening (a viewer's seek as it opens).
+  * `rounds=<n>` enters and leaves a player screen n times instead ([[PlayerRounds]]).
   * `cycle=<seconds>` instead lets the player go mid-playback, as a screen left then does, a tenth of that to the whole
   * of it after it was opened (as it opens, as it buffers, as it plays, in turn), and opens the first source in a new
   * VideoView at once or `rest=<seconds>` later (with `same=1` in the same one at once), `cycles=<n>` times (30),
@@ -37,9 +38,13 @@ object PlayerDemo {
       case "" => defaults
       case list => list.split(',').toList.map(_.trim).filter(_.nonEmpty)
     }
-    val cycle = Platform.launchArg("cycle").toDoubleOption.getOrElse(0.0)
-    if (cycle > 0.0) cycling(sources.head, cycle, Platform.launchArg("cycles").toIntOption.getOrElse(30))
-    else demo(sources)
+    val rounds = Platform.launchArg("rounds").toIntOption.getOrElse(0)
+    if (rounds > 0) PlayerRounds.run(sources.head, rounds)
+    else {
+      val cycle = Platform.launchArg("cycle").toDoubleOption.getOrElse(0.0)
+      if (cycle > 0.0) cycling(sources.head, cycle, Platform.launchArg("cycles").toIntOption.getOrElse(30))
+      else demo(sources)
+    }
   }
 
   // a VideoView made, played and let go mid-playback, again and again, each the moment the last is let go

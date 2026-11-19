@@ -1,92 +1,84 @@
 package everyui.render
 
+import everyui.component.MediaFormat
 import org.scalajs.dom
 
 import scala.scalajs.js
 
-/** What this browser plays (`Platform.decodes`), by the names a media server gives codecs ("vp9", "hevc", "aac"), each
-  * asked of the browser as a MIME type with its codecs: Media Source's `isTypeSupported` where there is one (what a
-  * stream plays through), else a video element's `canPlayType`. A whole MIME type (`video/webm; codecs="vp9"`) is
-  * asked as it is. A name not known here is a yes, since the cost of a wrong no is a transcode nobody needed; one a
-  * browser has nothing for (DTS, TrueHD) is a no. */
+/** What this browser, or this TV's engine, plays (`Platform.decodes`), each question asked of it as a MIME type with
+  * its codecs: Media Source's `isTypeSupported` (what a stream plays through) or a media element's `canPlayType` (what
+  * the element plays itself, which on a TV is the TV's own pipeline), either one's yes a yes.
+  *
+  *  - A codec by a media server's name ("hevc", "eac3") with its container, profile, level and bit depth is written
+  *    out as the codec string that says them (`hvc1.2.4.L153.B0` for HEVC Main 10 at 5.1); a codec string as RFC 6381
+  *    writes it (`hvc1.2.4.L153.B0`, `mp4a.40.2`, `ec-3`, `dvh1.08.06`) is asked as it is; a whole MIME type
+  *    (`video/webm; codecs="vp9"`) as it is.
+  *  - The container sets the MIME type: MP4 (and MOV, M4V) as `video/mp4`, a TS or HLS stream as MP4 too (hls.js
+  *    turns it into that, and a TV's player takes it), WebM as `video/webm`, Matroska as `video/x-matroska` (which few
+  *    engines say they play), any other as `video/<it>`. A sound is asked in `audio/mp4`, but Opus and Vorbis in
+  *    `audio/webm` unless the container is MP4, MP3 alone as `audio/mpeg`, FLAC in a `.flac` as `audio/flac`, PCM as
+  *    WAV.
+  *  - HDR ("hdr10", "hlg", "hdr10plus", "dolbyvision", alone or in a codec string's transfer characteristics) is
+  *    what the host says it shows (`AppHost.display`: an LG TV's own flags, `WebOSDisplay`), else the screen's
+  *    `(dynamic-range: high)` where the engine knows the query, else not known; Dolby Vision with no word from the host
+  *    is the engine's answer for its codec string (`dvh1.05.06` where none is given). "atmos" is the host's flag, else
+  *    E-AC-3's answer (Atmos's bed plays wherever E-AC-3 does).
+  *
+  * A name not known here is a yes, since the cost of a wrong no is a transcode nobody needed; codecs no browser plays
+  * (VC-1, MPEG-2, WMV and WMA) are a no. The engine's answers are kept; HDR's are asked each time, as a TV says them a
+  * moment after the app starts. */
 object WebCodecs {
-  private val types: Map[String, String] = Map(
-    "h264" -> "video/mp4; codecs=\"avc1.42E01E\"", "avc" -> "video/mp4; codecs=\"avc1.42E01E\"",
-    "hevc" -> "video/mp4; codecs=\"hvc1.1.6.L93.B0\"", "h265" -> "video/mp4; codecs=\"hvc1.1.6.L93.B0\"",
-    "vp8" -> "video/webm; codecs=\"vp8\"", "vp9" -> "video/webm; codecs=\"vp9\"",
-    "av1" -> "video/mp4; codecs=\"av01.0.05M.08\"",
-    "aac" -> "audio/mp4; codecs=\"mp4a.40.2\"", "ac3" -> "audio/mp4; codecs=\"ac-3\"",
-    "eac3" -> "audio/mp4; codecs=\"ec-3\"", "opus" -> "audio/webm; codecs=\"opus\"",
-    "vorbis" -> "audio/ogg; codecs=\"vorbis\"", "flac" -> "audio/flac", "mp3" -> "audio/mpeg")
-  private val none: Set[String] = Set("dca", "dts", "dts_hd", "truehd", "mlp", "vc1", "mpeg2video", "mpeg1video")
+  private val never: Set[String] = Set("vc1", "mpeg2video", "mpeg1video", "msmpeg4", "wmv3", "wmv2", "wmav2", "wma")
 
   private var asked: Map[String, Boolean] = Map.empty
 
+  /** Whether it plays `codec`: a name, a codec string, a whole MIME type, an HDR name or "atmos". */
   def plays(codec: String): Boolean = {
-    val name = codec.trim.toLowerCase
-    if (name.isEmpty) true
-    else asked.getOrElse(name, {
-      val answer =
-        if (name.contains("/")) supported(codec.trim)
-        else if (none.contains(name)) false
-        else types.get(name).forall(supported)
-      asked = asked + (name -> answer)
-      answer
-    })
+    val c = codec.trim
+    if (c.isEmpty) true
+    else if (c.contains("/")) engine(c)
+    else if (c.toLowerCase == "atmos") host("atmos").getOrElse(plays(MediaFormat.of("eac3", "", "", "", 0)))
+    else plays(MediaFormat.of(c, "", "", "", 0))
   }
 
-  private def supported(mime: String): Boolean = {
+  /** Whether it plays `f`: its HDR shown, and its codec in its container. */
+  def plays(f: MediaFormat): Boolean =
+    if (f.codec.isEmpty) hdr(f.hdr).getOrElse(f.hdr != "dolbyvision" || engine("video/mp4; codecs=\"dvh1.05.06\"") ||
+      engine("video/mp4; codecs=\"dvhe.05.06\""))
+    else if (never.contains(f.codec)) false
+    else hdr(f.hdr).getOrElse(true) && CodecMime.of(f, host("dolbyvision").nonEmpty).forall(engine)
+
+  /** What the host or the screen says of `kind` of HDR, None where neither says; "" is no HDR, shown everywhere. */
+  def hdr(kind: String): Option[Boolean] =
+    if (kind.isEmpty) Some(true)
+    else host(kind).orElse(if (kind == "dolbyvision") None else dynamicRange)
+
+  private def host(feature: String): Option[Boolean] = AppHosts.current.flatMap(_.display(feature))
+
+  // the screen's dynamic range, where the engine knows the query (Chrome 98 and later, Safari): neither range matching
+  // is a query it does not know
+  private def dynamicRange: Option[Boolean] = {
+    val window = dom.window.asInstanceOf[js.Dynamic]
+    if (js.typeOf(window.matchMedia) != "function") None
+    else try {
+      if (window.matchMedia("(dynamic-range: high)").matches.asInstanceOf[Boolean]) Some(true)
+      else if (window.matchMedia("(dynamic-range: standard)").matches.asInstanceOf[Boolean]) Some(false)
+      else None
+    } catch { case _: Throwable => None }
+  }
+
+  // the engine's answer for a MIME type with its codecs, kept: Media Source's yes, else the element's
+  private def engine(mime: String): Boolean = asked.getOrElse(mime, {
     val source = WebFeatures.global("MediaSource").orNull
     val bySource =
       if (source == null || js.typeOf(source.isTypeSupported) != "function") None
       else try Some(source.isTypeSupported(mime).asInstanceOf[Boolean]) catch { case _: Throwable => None }
-    bySource.filter(identity).getOrElse {
+    val answer = bySource.filter(identity).getOrElse {
       val tag = if (mime.startsWith("audio")) "audio" else "video"
-      val video = dom.document.createElement(tag).asInstanceOf[js.Dynamic]
-      try video.canPlayType(mime).asInstanceOf[String].nonEmpty catch { case _: Throwable => bySource.getOrElse(true) }
+      val element = dom.document.createElement(tag).asInstanceOf[js.Dynamic]
+      try element.canPlayType(mime).asInstanceOf[String].nonEmpty catch { case _: Throwable => bySource.getOrElse(true) }
     }
-  }
-
-  /** Whether the browser plays `f`: a picture's codec asked as the MIME type that says its container, profile, level
-    * and bit depth (`video/mp4; codecs="hvc1.2.4.L153.B0"` for HEVC Main 10 at 5.1); a TS or HLS stream as MP4, which
-    * hls.js turns it into, Matroska as `video/x-matroska`, which few browsers say they play; a sound's codec as
-    * [[plays]] has it. */
-  def plays(f: everyui.component.MediaFormat): Boolean =
-    mime(f).fold(plays(f.codec))(m => asked.getOrElse(m, {
-      val answer = !none.contains(f.codec) && supported(m)
-      asked = asked + (m -> answer)
-      answer
-    }))
-
-  /** The MIME type with its codecs that asks after `f`, or None for a codec not written out here. */
-  def mime(f: everyui.component.MediaFormat): Option[String] = {
-    val base = f.container match {
-      case "webm" => "video/webm"
-      case "mkv" => "video/x-matroska"
-      case _ => "video/mp4"
-    }
-    def two(n: Int): String = if (n < 10) "0" + n else n.toString
-    val depth = if (f.deep) 10 else 8
-    val codecs = f.codec match {
-      case "hevc" =>
-        val level = if (f.level > 0.0) math.round(f.level * 30.0).toInt else 93
-        Some((if (f.profile == "main10" || f.deep) "hvc1.2.4.L" else "hvc1.1.6.L") + level + ".B0")
-      case "h264" =>
-        val profile =
-          if (f.profile == "high10" || f.deep) "6E00" else if (f.profile == "high") "6400"
-          else if (f.profile == "main") "4D40" else "42E0"
-        val level = if (f.level > 0.0) math.round(f.level * 10.0).toInt else 30
-        Some("avc1." + profile + (if (level < 16) "0" else "") + Integer.toHexString(level).toUpperCase)
-      case "vp9" =>
-        val level = if (f.level > 0.0) math.round(f.level * 10.0).toInt else 10
-        Some("vp09." + (if (f.profile == "2" || f.deep) "02" else "00") + "." + two(level) + "." + two(depth))
-      case "av1" =>
-        // seq_level_idx: (major - 2) * 4 + minor, 5 (3.1) where none is said
-        val level = if (f.level >= 2.0) (f.level.toInt - 2) * 4 + math.round((f.level - f.level.toInt) * 10.0).toInt
-          else 5
-        Some("av01.0." + two(level) + "M." + two(depth))
-      case _ => None
-    }
-    codecs.map(c => base + "; codecs=\"" + c + "\"")
-  }
+    asked = asked + (mime -> answer)
+    answer
+  })
 }

@@ -5010,6 +5010,119 @@ and with `headers` for its preflight too (`Access-Control-Allow-Headers: Authori
 
 `demo=video` plays an HLS stream, one with alternate audio and subtitles, and an `.mp4`, with `header=` and `lang=`.
 
+## A TV's player on the web: decodes, tracks, resume and teardown
+
+What a TV app built on the web (LG webOS first, Samsung Tizen and Vega after it) needs of a `VideoView` to play films
+and series in the app itself: the same calls as Android and the Roku, answered by the TV's own engine.
+
+**Direct play or transcode (`Platform.decodes`).** `Platform.decodes(codec, container)` (and with `profile`, `level`,
+`bitDepth`) answers a Boolean, as it always has, and now also takes a codec string as an HLS playlist or a DASH manifest
+writes it (RFC 6381, read by `everyui.component.CodecString`): `avc1.640028`, `hvc1.2.4.L153.B0`, `hev1...`,
+`vp09.02.51.10.01.09.16.09.00`, `av01.0.13M.10...`, `dvh1.08.06` (Dolby Vision), `mp4a.40.2`, `ac-3`, `ec-3`, `ec+3`
+(Atmos), `opus`, `fLaC`, `dtsc`, `dtsh`, `dtsx`, `mlpa`. The string is read into the same fields as a server's names
+(`MediaFormat`: codec, profile, level, bit depth, and now `hdr` and the string itself, `tag`), so every platform reads
+it: Android asks its decoders for the profile and level, a Roku its `CanDecodeVideo`. On the web the browser is asked
+exactly the string, inside the MIME type its container calls for (`everyui.render.CodecMime`):
+
+| container | picture | sound |
+|---|---|---|
+| `mp4`, `mov`, `m4v`, `ts`, `hls`, none | `video/mp4` | `audio/mp4` (Opus and Vorbis in `audio/webm` unless the container is MP4; MP3 alone `audio/mpeg`; FLAC alone `audio/flac`; PCM `audio/wav`) |
+| `webm` | `video/webm` | `audio/webm` |
+| `mkv` | `video/x-matroska` (few engines say yes) | as `mp4`, Opus and Vorbis as `webm` |
+| any other | `video/<it>` | |
+
+Each is asked of Media Source (`isTypeSupported`, what a stream plays through) and of the element (`canPlayType`, which
+on a TV is the TV's own pipeline), either one's yes a yes; VC-1, MPEG-2, WMV and WMA are a no in a browser, and a codec
+not known at all is a yes (a wrong no costs a transcode nobody needed).
+
+HDR is asked by name, alone: `decodes("hdr10")`, `"hlg"`, `"hdr10plus"`, `"dolbyvision"` (or `"dovi"`), and Atmos as
+`"atmos"`; or as part of a codec string (a VP9 or AV1 string's transfer characteristics, 16 for PQ and 18 for HLG; a
+Dolby Vision sample entry). On the web the answer is what the host says it shows (`AppHost.display`), else the
+screen's `(dynamic-range: high)` where the engine knows that query, else a yes; Dolby Vision with no word from the host
+is the engine's answer for its codec string, and Atmos is E-AC-3's (its bed plays wherever E-AC-3 does). Android asks
+the display (`Display.HdrCapabilities`, Android 7 on: on a box, the television over HDMI) and needs a
+`video/dolby-vision` decoder for Dolby Vision. A Roku, the Apple TV and the desktop do not say: yes.
+
+On an LG TV the host is the TV itself (`WebOSDisplay`): webOSTV.js's `webOS.deviceInfo` where the app bundles it (its
+`hdr10`, `dolbyVision`, `uhd`, `dolbyAtmos`), else the configuration service over the Luna bus as webOSTV.js 1.2 asks
+it (`luna://com.webos.service.config/getConfigs`: `tv.model.supportHDR`, `tv.config.supportDolbyHDRContents`,
+`tv.hw.panelResolution` "UD" or "8K", `tv.config.supportDolbyTVATMOS` or a `tv.model.soundModeType` of "Dolby Atmos"),
+asked once as the app starts; HLG is read as HDR10 (LG names no flag of its own for it, and its HDR10 sets have taken
+HLG since 2017's). Until that answer is in (a moment after launch), HDR is the engine's.
+
+```scala
+val direct = Platform.decodes(info.videoCodec, info.container) && Platform.decodes(info.audioCodec, info.container) &&
+  (!info.hdr10 || Platform.decodes("hdr10")) && (!info.dolbyVision || Platform.decodes("dvh1.08.06"))
+```
+
+What LG publishes and is widely reported, by model rather than by release (not checked on a TV here, and the same
+release differs by model, so ask rather than assume):
+
+| webOS (year, Chromium) | what plays in the TV's player |
+|---|---|
+| 3.x (2016–17, 38) | H.264; HEVC Main and Main 10 and VP9 on UHD sets; AAC, AC-3, E-AC-3; DTS on most; HDR10 and HLG on HDR sets, Dolby Vision on OLED and some LCDs |
+| 4 (2018, 53) | as 3.x; HEVC on most FHD sets too; Atmos on OLED (E-AC-3 JOC, passed through or decoded) |
+| 5 (2020, 68) | AV1 on most UHD sets added; no DTS on 2020 models |
+| 6 (2021, 79) | as 5; no DTS on 2021 models |
+| 22 and later (87 on) | DTS back on most; AV1 throughout; HDR10, HLG and Dolby Vision on HDR sets; HDR10+ on few if any |
+
+`demo=decodes` logs every answer (`[ui] decodes: hvc1.2.4.L153.B0 mp4 = false`).
+
+**Tracks.** `tracks`, `audioTracks`, `textTracks`, `audioTrack` and `captions` work on the web as on Android and the
+Roku, with labels and languages, whichever player plays:
+
+- hls.js (a browser without HLS of its own, or a stream with headers): the stream's sound renditions, its subtitle
+  renditions and its closed captions (`cc<n>`, format "CC"), as before.
+- The element itself (a file; an HLS stream a TV or Safari plays): its own `audioTracks` where the engine has them (a
+  TV's runtime, Safari; Chromium keeps them behind a flag), and its `textTracks` of kind `subtitles` and `captions` (an
+  HLS stream's WebVTT renditions, its CEA-608 captions, format "CC"; metadata left out), each id its place among them.
+  Where it plays an HLS stream without listing its sound tracks or subtitles, the master playlist is read once
+  (`HlsRenditions`: the `#EXT-X-MEDIA` of the group the first variant names) and its renditions listed, ids their
+  place, which is hls.js's index for them too. Choosing one other than the default opens the stream again through
+  hls.js where it is, with that one (`media: audio track 1 of the playlist chosen: opening it again through hls.js at
+  20 s`), and the id chosen stays the id: a TV's own player cannot be told a rendition. Without Media Source nothing
+  changes, and it is said.
+- Sidecars (`sidecars`, `MediaSidecar`): now on the web too. Each file is fetched (with `headers`; from another origin
+  its server must allow CORS), SubRip made WebVTT (`SubRipVtt`), and given to the element as a `<track>` of a `blob:`
+  of the page's own, so neither the file's origin nor the element's `crossorigin` matters. They are listed after the
+  file's own tracks, in the order given, ids `side<n>`, labelled as Android labels them (the label, else the language,
+  else "Subtitles"). SubStation and picture subtitles cannot be shown by a browser and are left out (logged).
+
+**Resume.** `open(url, from)` starts there: hls.js is given it as its start, and the element is given it before it has
+loaded (its default start). A TV's player may drop that, or a seek made before it could take one, so the time is set
+again as it says more (`loadedmetadata`, `canplay`, `playing`, `timeupdate`) while it stands short of it, until it has
+played on from there, up to 6 times (`ResumeSeek`; `media: starting at 1260 s again, the player at 0 s (canplay)`); a
+seek of the viewer's ends it. Until it has landed `playhead()` says the start rather than 0, so a checkpoint saved as
+it opens saves where the viewer is, not the beginning.
+
+**Teardown.** A source changed or emptied, a view released (`release`, `dispose`) or put away out of sight: hls.js is
+destroyed (and its MediaSource with it), the sidecars' `<track>`s are taken off and their `blob:`s revoked, and the
+element is paused, its `src` and any `<source>` taken away, and loaded empty, which is what lets a TV's player give its
+hardware decoder back; the element itself goes with its component. It is the same however often it is asked. What is
+held can be counted:
+
+- `MediaSupport.held` (every platform): the views and players with a source set and not let go;
+- `everyui.render.WebMedia.held` (the web): the page's elements with a source open, and hls.js's live players.
+
+Both are 0 once every screen that played something has been left. The memory check's VideoView case plays a clip and
+fails where anything is held after a case is taken apart (`everyuiMemory.media()`), and `MediaHeldSpec` holds a screen
+left and come back to twenty times to one player at most and none at the end.
+
+**Checked** by webcheck's `PlayerCheck <page dir> <media dir> [--webos] [--chrome <binary>] [--rounds <n>]`, over test
+media of its own served by a server of its own (an HLS stream of H.264 with two AAC renditions and two WebVTT
+subtitle renditions, a VP8 and Opus WebM, a WebVTT and a SubRip sidecar, made with ffmpeg), headless and muted: the
+example's `demo=decodes`, then `demo=player rounds=20` (`PlayerRounds`), a player screen entered at 20 s, its second
+sound track chosen, each text track shown and then none, a seek, and left, twenty times, with nothing held after each
+(no source, `<track>` or open MediaSource; every MediaSource the page makes is counted) and nothing at the end. In Chrome
+157 through hls.js and, as webOS, through the browser's own HLS and the playlist's renditions; in Chromium 53 (webOS
+4's engine, on the ES2015 build) and Chromium 38 (webOS 3's, on the ES 5.1 build), which have no H.264 in a snapshot
+build, the WebM with its sidecars.
+
+```sh
+env -u WAYLAND_DISPLAY xvfb-run -a java -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.PlayerCheck \
+  <example's web build, with everyui-hls/ beside it> <media dir> --webos --chrome /path/to/chrome53.sh
+```
+
 ## A film's dialogue: the centre mix (`centerMix`)
 
 A film keeps its dialogue in the centre channel of its 5.1 or 7.1, and on a television's own speakers the usual fold
@@ -6422,6 +6535,9 @@ against 836 with Brotli) and as fast. Its faces need TrueType beside WOFF2 (`eve
 What an older engine lacks is asked of the browser itself (`WebFeatures`), never of its name, and a plainer way is
 taken there while every newer browser keeps its own:
 
+- **A media element's older ways**: `play()` answers no promise before Chromium 50, and a time set before the element
+  has loaded anything throws before about 39 (as a TV's player may drop it): a start or a seek made then is set again
+  once it has (`ResumeSeek`), and nothing waits on a promise that is not there.
 - **No `fetch`** (before 42): EveryUI's own requests (a translation, an SVG icon, a form, HLS's probes, byte ranges)
   go through an XMLHttpRequest that answers as `fetch` does (`WebFetch`), a file's answer read as 200; Spice's client
   uses XMLHttpRequest already.
@@ -6563,15 +6679,16 @@ mode 600 under `target/webos/ssh`, removed after, and the passphrase is never lo
 A `VideoView` is the TV's own `<video>`. An HLS stream plays in the TV's own player (it says it plays
 `application/vnd.apple.mpegurl`), which LG recommends over Media Source Extensions: the TV's decoders, HDR and sound
 formats, and none of hls.js's memory; hls.js is used only where a stream needs request headers sent (the TV's player
-sends none). `Platform.decodes` asks the TV's engine (`MediaSource.isTypeSupported`, then `canPlayType`), which answers
-for its own decoders. What LG publishes, by model rather than by release: H.264 and AAC on every webOS; HEVC (Main
-and Main 10) and VP9 on UHD models; AV1 on most models from 2020 (webOS 5) on; Dolby Digital and Digital Plus (`ac-3`,
-`ec-3`) on most; no DTS on the models of 2020 and 2021. Ask rather than assume: the same release differs by model.
+sends none). `Platform.decodes` asks the TV's engine (`MediaSource.isTypeSupported`, then `canPlayType`) by codec
+string and container, and the TV itself for HDR10, HLG, Dolby Vision and Atmos (`webOS.deviceInfo`, else the
+configuration service's `getConfigs`); LG's limits by year are in "A TV's player on the web" above. Ask rather than
+assume: the same release differs by model.
 
-Sound tracks are listed and chosen where the TV's engine lists `audioTracks` on the video, which Chromium keeps behind a
-flag; where it does not, the stream plays its default track and none is listed. Subtitles: the WebVTT tracks of an HLS
-playlist are the element's own text tracks, shown or hidden as on the web. Sidecar subtitles (`MediaSidecar`) are not
-added on the web yet.
+Sound tracks are listed and chosen where the TV's engine lists `audioTracks` on the video; where it does not, the master
+playlist's renditions are listed, and choosing one opens the stream again through hls.js where it is. Subtitles: the
+WebVTT and CEA-608 tracks of an HLS stream are the element's own text tracks, else the playlist's, and sidecar files
+(`MediaSidecar`) are `<track>`s of WebVTT (SubRip made so). A resume is set again where the TV's player drops it, and
+a player let go gives its decoder back (`src` taken away and loaded empty): all in "A TV's player on the web" above.
 
 LG's webOS TV Simulator (`ares-launch -s <version> <app dir>`, on the staged `target/webos/app`) runs the app as a TV
 does, from its files, with `webOSSystem` (the 26 Simulator's `PalmSystem` is the same object; no `webOS`), a keyboard on
@@ -6580,7 +6697,9 @@ and leaves by its `platformBack()` there, and Chrome DevTools reaches it as it d
 
 Not yet seen on a TV (no TV has run these yet): the key codes and `cursorStateChange` as sent, `platformBack` and the
 exit prompt, `launchParams` and `webOSRelaunch` from a real launch, `deviceInfo`'s `platformVersionMajor`, the native
-HLS player with its sound tracks and subtitles, `Platform.decodes`' answers, and an ipk from `webosPackage` installed
+HLS player with its sound tracks and subtitles, `Platform.decodes`' answers and its `getConfigs` flags (and
+whether webOS 26's `requiredACG` lets the configuration service be asked), a resume on the TV's own player, a decoder
+given back as a player is left, and an ipk from `webosPackage` installed
 with `ares-install`. In a headless Chrome made to look like webOS 24 (its user agent, a stubbed `webOSSystem`, or
 `PalmSystem` alone as in the Simulator, the TV's events dispatched), the example's package, staged and loaded from its
 files, starts with its faces loaded, and its `demo=tv` goes Back from its second screen, leaves by `platformBack` at its first,
@@ -6805,8 +6924,9 @@ These cover what a web app would otherwise reach the browser for directly, so th
   if (serverBuild != Platform.buildId() && !Platform.reload()) offerUpdate()
   ```
 - **Codecs.** `Platform.decodes(codec)` answers on the web too. It takes a media server's name ("vp9", "hevc", "aac")
+  a codec string (`hvc1.2.4.L153.B0`, `mp4a.40.2`, `ec-3`), an HDR name ("hdr10", "hlg", "dolbyvision") or "atmos",
   or a whole MIME type with its codecs (`video/webm; codecs="vp9"`). The browser is asked through Media Source's
-  `isTypeSupported`, falling back to `canPlayType`. DTS and TrueHD are always no, and a name not known here is yes.
+  `isTypeSupported` and the element's `canPlayType`; a name not known here is yes ("A TV's player on the web").
   `Platform.decodes(codec, container, profile, level, bitDepth)` asks after a file as it is, for an app deciding
   whether to play it directly: `container` "mkv", "mp4", "ts", "hls" (a server's "matroska" or "mpegts" too),
   `profile` "main", "main 10", "high", `level` "5.1" (or a server's "51", and HEVC's "153", the level times 30) and
