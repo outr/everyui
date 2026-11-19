@@ -6121,6 +6121,27 @@ asks of an app:
   app over it): `onAway` and `onResume`, as in a browser.
 - **Its server**: the page comes from no server, so, as on a Roku, `Platform.origin()` is the setting
   "everyui.origin" the app saves (else "") and `webSocketOrigin()` is "": the app names its server.
+- **Its screen**: 540 units tall, as on Android TV and a Roku, so a screen designed for one TV is the same size on
+  all of them: at 1080p (1920 by 1080 CSS pixels) `Platform.screenWidth()` and `screenHeight()` are 960 and 540, and a
+  unit is two CSS pixels (`TvUnits`: CSS pixels over `innerHeight / 540`). The app's root is drawn at that scale, as a
+  size chosen (`UiScale`) is, so words, pictures, borders and the pointer's place all follow it, and a size chosen
+  multiplies it. `Platform.pixelRatio()` is the CSS pixels to a unit times the page's `devicePixelRatio`: 2 on an LG at
+  1080p, as on Android TV, so a picture asked for by its width in pixels stays sharp. Any host (`AppHosts`: Tizen's and
+  Vega's next) is laid out so; a browser, a phone's or a desktop's, is not.
+- **Text fields**: as on Android TV. The arrows move the focus onto a field and off it, lighting it and no more: its
+  `<input>` is not given the page's focus, so the TV's keyboard does not come up and the arrows go on. OK gives the
+  input the page's focus, which brings the TV's keyboard up (webOS shows it for any focused text input), and submits
+  nothing; a click of the Magic Remote's pointer on it does the same at once. While the keyboard is up the TV keeps the
+  remote's keys from the page but Enter, Left and Right (Left and Right move the caret), and its Back, or an arrow off
+  its edge, puts it away; the keyboard's Enter ends the typing and submits (`submitted`, a `TextInput.bound`'s action),
+  the focus staying on the field. The keyboard going down by itself (`keyboardStateChange`, heard through
+  `AppHost.hearKeyboard`) leaves the input focused, as webOS does, and is not answered at once (LG warns that taking the
+  focus from the field then breaks its voice input, whose button takes the keyboard down and up again): the next key
+  the remote sends lets the field go first (`SystemKeyboard`), so an arrow moves the focus on from it, OK starts the
+  typing again, and Back goes back. A USB keyboard typing on keeps it. Where Back, Up or Down do reach the page while a
+  field is typed in (a host whose keyboard leaves them to the app), Back ends the typing and goes no further, and Up
+  and Down end it and move the focus on, as they do in `TextInput` and `SearchField` wherever the keyboard is on the
+  screen.
 
 #### Packaging (`everyuiWebOS`, `webosPackage`)
 
@@ -6198,7 +6219,8 @@ playlist are the element's own text tracks, shown or hidden as on the web. Sidec
 added on the web yet.
 
 LG's webOS TV Simulator (`ares-launch -s <version> <app dir>`, on the staged `target/webos/app`) runs the app as a TV
-does, from its files, with `PalmSystem` alone (no `webOSSystem`, no `webOS`): the backend reads its launch parameters
+does, from its files, with `webOSSystem` (the 26 Simulator's `PalmSystem` is the same object; no `webOS`), a keyboard on
+the screen as described above, and a page 1920 by 1080 at a `devicePixelRatio` of about 1.17: the backend reads its launch parameters
 and leaves by its `platformBack()` there, and Chrome DevTools reaches it as it does a TV.
 
 Not yet seen on a TV (no TV has run these yet): the key codes and `cursorStateChange` as sent, `platformBack` and the
@@ -6207,7 +6229,9 @@ HLS player with its sound tracks and subtitles, `Platform.decodes`' answers, and
 with `ares-install`. In a headless Chrome made to look like webOS 24 (its user agent, a stubbed `webOSSystem`, or
 `PalmSystem` alone as in the Simulator, the TV's events dispatched), the example's package, staged and loaded from its
 files, starts with its faces loaded, and its `demo=tv` goes Back from its second screen, leaves by `platformBack` at its first,
-hears a relaunch's parameters and the pointer's focus (webcheck's `WebOSCheck`).
+hears a relaunch's parameters and the pointer's focus, lays its screen out 960 by 540 at a scale of 2, and on a sign-in form
+moves over the fields, types in one only after OK, and ends the typing with Back, an arrow or the keyboard's Enter, with
+the TV's keyboard stubbed as the Simulator has it (webcheck's `WebOSCheck`).
 
 ## Launches (`Platform.launchArg`, `Platform.onLaunch`)
 

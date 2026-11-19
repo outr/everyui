@@ -546,8 +546,9 @@ lazy val desktop = (project in file("desktop"))
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
     // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
-    // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), plain Scala too
-    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "LaunchParams.scala")
+    // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), and when its
+    // keyboard on the screen lets a field go (SystemKeyboard) and its units (TvUnits), plain Scala too
+    Test / unmanagedSources ++= Seq("WebOSFacts.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala")
       .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here
     Test / unmanagedSources += (file("sbt-support") / "src" / "main" / "scala" / "everyui" / "sbt" / "WebPushText.scala").getAbsoluteFile,

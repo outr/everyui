@@ -17,9 +17,10 @@ import reactify.*
   * Where the platform has a text field of its own (a browser, a desktop, a phone) the field is that. With a keyboard at
   * hand the focus moving onto it puts the caret there. Where the keyboard is on the screen (a TV remote, a phone) the
   * focus only lights the field, and Enter or a tap starts `editing` and brings the keyboard up, so moving across a form
-  * never opens it; the keyboard's Done or Back ends it. Where it has none (a Roku, an Apple TV) the field shows its
-  * value, and Enter or a click asks the platform's keyboard for a new one (`Platform.editText`); what is typed while it
-  * has the focus (a Roku's phone app, its voice entry: `Container.typeInto`) goes straight in. */
+  * never opens it; the keyboard's Done or Back ends it, and so do Up and Down, which then move the focus on. Where it
+  * has none (a Roku, an Apple TV) the field shows its value, and Enter or a click asks the platform's keyboard for a
+  * new one (`Platform.editText`); what is typed while it has the focus (a Roku's phone app, its voice entry:
+  * `Container.typeInto`) goes straight in. */
 class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) extends Container {
   val value: Var[String] = own(Var(""))
   /** What the label says; bind it to change it (a language change, say). */
@@ -143,8 +144,17 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
     }
     input.node.onInputDone(() => editing @= false)
     event.click.attach(_ => editing @= true)
-    // a key the list of completions takes (Enter choosing from it) is not the field's
-    event.key.down.attach(k => if (!completer.exists(_.key(k)) && k.key == Key.Enter && editing()) submitted @= value())
+    // a key the list of completions takes (Enter choosing from it) is not the field's. Typed on a keyboard on the
+    // screen (a remote's: `direct` false), Enter or the keyboard's Done ends the typing before submitting, and Up, Down
+    // and Back end it, the field keeping the focus: Up and Down then move it on, as from any component, and Back goes
+    // no further
+    event.key.down.attach { k =>
+      if (!completer.exists(_.key(k)) && k.key == Key.Enter && editing()) {
+        if (!direct) editing @= false
+        submitted @= value()
+      }
+      else if (!direct && editing() && TextInput.endsTyping(k.key)) editing @= false
+    }
     completions.attach(s => if (s.nonEmpty && completer.isEmpty) completer = Some(new FieldCompletion(this, input,
       value, editing, completions, completingNow, completed, 16.0, () => title())))
     children ++= List(caption, input)
@@ -174,7 +184,9 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
 
   /** The keys its list of completions takes while it shows (`CompletionKey`): Down, Up, Enter, Tab and Escape, and
     * Shift+Delete where the lit row has an action that removes it. */
-  override def keepsEvent(e: everyui.event.KeyEvent): Boolean = completer.exists(_.keeps(e)) || super.keepsEvent(e)
+  override def keepsEvent(e: everyui.event.KeyEvent): Boolean = completer.exists(_.keeps(e)) || super.keepsEvent(e) ||
+    // and Back while typing on a keyboard on the screen, which ends the typing rather than leaving the screen
+    (native && !direct && editing() && TextInput.backs(e.key))
 
   override def dispose(): Unit = {
     completer.foreach(_.dispose())
@@ -195,6 +207,13 @@ class TextInput(label: String, secure: Boolean = false, width: Double = 320.0) e
 }
 
 object TextInput {
+  /** Whether `key`, heard while a field is typed in on a keyboard on the screen (a remote's), ends the typing: Up and
+    * Down, which go on to move the focus, and Back (`backs`). Left and Right stay the caret's. */
+  def endsTyping(key: Key): Boolean = key == Key.ArrowUp || key == Key.ArrowDown || backs(key)
+
+  /** Whether `key` is Back, which while typing on a keyboard on the screen ends the typing and goes no further. */
+  def backs(key: Key): Boolean = key == Key.Back || key == Key.Escape
+
   /** A field `width` wide whose label follows what it reads, bound both ways to `value`; Enter in it runs `submit`. */
   def bound(label: => String, value: Var[String], secure: Boolean = false, width: Double = 320.0)
            (submit: => Unit): TextInput = {

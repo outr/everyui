@@ -27,6 +27,10 @@ trait AppHost {
     * pressed or released: told as the page's own keys are, Back at the root leaving the app too. None by default. */
   def hearKeys(key: (String, Boolean) => Unit): Unit = ()
 
+  /** Hear the system's keyboard on the screen shown (true) and hidden (false), where the host says (`SystemKeyboard`).
+    * None by default: a host that does not say has its fields let go only by the app. */
+  def hearKeyboard(shown: Boolean => Unit): Unit = ()
+
   /** Leave the app, as Back at its root does (the system's own way: its launcher, or its exit prompt). */
   def exit(): Unit
 

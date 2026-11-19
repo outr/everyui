@@ -17,6 +17,7 @@ import everyui.render.Platform
 object TvDemo extends ScreenManager {
   lazy val home: TvHomeScreen = new TvHomeScreen
   lazy val details: TvDetailScreen = new TvDetailScreen
+  lazy val signIn: TvSignInScreen = new TvSignInScreen
 
   def run(): Unit = {
     Platform.onLaunch(params =>
@@ -24,6 +25,6 @@ object TvDemo extends ScreenManager {
     Platform.onAway(() => Platform.log("tv: away"))
     Platform.onResume(() => Platform.log("tv: resumed"))
     Focus.focused.attach(_.foreach(c => Platform.log("tv: focus " + Focus.named(c))))
-    run(home, details)
+    run(home, details, signIn)
   }
 }

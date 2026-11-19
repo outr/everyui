@@ -1520,8 +1520,13 @@ object RenderNode {
     "everyui-described-" + descriptions.toString
   }
 
-  /** The size the app is drawn at (everyui.theme.UiScale): what a box on the screen, and a place on it, are read over. */
-  def drawnAt: Double = everyui.theme.UiScale()
+  /** The size the app is drawn at (everyui.theme.UiScale), on a TV in its units (`hostScale`): what a box on the screen,
+    * and a place on it, are read over. */
+  def drawnAt: Double = everyui.theme.UiScale() * hostScale
+
+  /** CSS pixels to one of the app's units before any size chosen (everyui.theme.UiScale): on a TV (`AppHosts`), the
+    * screen 540 units tall (`TvUnits`), so 960 by 540 at 1080p as on Android TV and a Roku; 1 in a browser. */
+  lazy val hostScale: Double = AppHosts.current.fold(1.0)(_ => TvUnits.scale(dom.window.innerHeight.toDouble))
 
   /** The size `e`'s place is read over: the size drawn at as the first node heard it, kept on the event, so one that
     * changes the size as it is heard (a click on a + that turns it up) is the same place to every node it climbs
@@ -3027,12 +3032,13 @@ object Platform {
     }.getOrElse(WebAssets.url("fonts/" + file))
   }
 
-  /** The window in the app's units: its CSS pixels over the size the app is drawn at (everyui.theme.UiScale), less
-    * what a phone's on-screen keyboard covers (VisibleArea). */
+  /** The window in the app's units: its CSS pixels over the size the app is drawn at (everyui.theme.UiScale; on a TV,
+    * in its units: 960 by 540 at 1080p), less what a phone's on-screen keyboard covers (VisibleArea). */
   def screenWidth(): Double = dom.window.innerWidth.toDouble / RenderNode.drawnAt
   def screenHeight(): Double = VisibleArea.height() / RenderNode.drawnAt
   /** Screen pixels to a layout unit: the browser's device pixel ratio (2 on a HiDPI screen, often 1.5 or 2 on a
-    * television whose page is laid out smaller than its panel), times the size the app is drawn at. */
+    * television whose page is laid out smaller than its panel), times the size the app is drawn at: 2 on an LG at 1080p,
+    * as on Android TV, where an image asked for by its width in pixels stays sharp. */
   def pixelRatio(): Double =
     (if (dom.window.devicePixelRatio > 0.0) dom.window.devicePixelRatio else 1.0) * RenderNode.drawnAt
 
@@ -3042,18 +3048,20 @@ object Platform {
     * (`getWidth`); a pointer's place too. The page's stylesheets have it too, as `--everyui-ui-scale` on the page's
     * root, for what a guest draws over the page outside the app's root (Monaco's tooltips and menus). */
   def setUiScale(factor: Double): Unit = {
-    dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-ui-scale", factor.toString)
+    // and on a TV, its units' size (RenderNode.hostScale)
+    val at = factor * RenderNode.hostScale
+    dom.document.documentElement.asInstanceOf[html.Element].style.setProperty("--everyui-ui-scale", at.toString)
     val app = dom.document.getElementById("app").asInstanceOf[html.Element]
     if (app != null) {
-      if (factor == 1.0) {
+      if (at == 1.0) {
         app.style.removeProperty("scale")
         app.style.width = "100%"
         app.style.height = "100%"
       }
       else {
-        app.style.setProperty("scale", factor.toString)
-        app.style.width = "calc(100% / " + factor.toString + ")"
-        app.style.height = "calc(100% / " + factor.toString + ")"
+        app.style.setProperty("scale", at.toString)
+        app.style.width = "calc(100% / " + at.toString + ")"
+        app.style.height = "calc(100% / " + at.toString + ")"
       }
     }
   }
@@ -3150,6 +3158,8 @@ object Platform {
   /** Every key on the page, by its DOM name, pressed or released; a key the hook takes is kept from the browser. */
   def onKey(f: (String, Boolean) => Boolean): Unit = {
     def hear(e: dom.KeyboardEvent, pressed: Boolean): Unit = {
+      // a field whose keyboard on the screen went down by itself, let go before a key of the remote's goes on from it
+      if (pressed && keyboard.letsGo(RenderNode.keyName(e), appField())) letGo()
       held = everyui.event.Modifiers(e.ctrlKey, e.metaKey, e.altKey, e.shiftKey)
       embedded = RenderNode.embedOf(dom.document.activeElement)
       repeating = e.repeat
@@ -3173,6 +3183,8 @@ object Platform {
         host.exit()
         true
       }
+    // the system's keyboard on the screen shown and hidden (a TV's: SystemKeyboard)
+    AppHosts.current.foreach(_.hearKeyboard(shown => keyboard.shown(shown, appField())))
     // the keys a host sends itself (a shell's bridge), heard as the page's own are
     AppHosts.current.foreach(_.hearKeys((name, pressed) => {
       held = everyui.event.Modifiers(false, false, false, false)
@@ -3198,6 +3210,20 @@ object Platform {
       f(name, pressed)
     })
     NavButtons.listen(dom.window)
+  }
+
+  // the system's keyboard on the screen, as a TV's runtime says it shows and hides
+  private val keyboard = new SystemKeyboard
+  // an app's field has the page's focus (not an embed's)
+  private def appField(): Boolean = {
+    val active = dom.document.activeElement
+    RenderNode.editable(active) && RenderNode.embedOf(active).isEmpty
+  }
+  // the page's focus taken from the app's field, as the app takes it (`focusInput`): the field's typing over, the
+  // focus layer's focus left on it
+  private def letGo(): Unit = {
+    FieldBlur.blurring = true
+    try dom.document.activeElement.asInstanceOf[dom.html.Element].blur() finally FieldBlur.blurring = false
   }
 
   private var held = everyui.event.Modifiers(false, false, false, false)

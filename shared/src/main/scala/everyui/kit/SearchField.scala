@@ -1,6 +1,6 @@
 package everyui.kit
 
-import everyui.component.{Container, InputView, MaterialIconView, TextView}
+import everyui.component.{Container, InputView, MaterialIconView, TextInput, TextView}
 import everyui.component.types.{Autofill, Semantics, TextDirection}
 import everyui.event.{Key, KeyEvent}
 import everyui.font.MaterialIcon
@@ -103,7 +103,15 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     }
     input.node.onInputDone(() => editing @= false)
     event.click.attach(_ => editing @= true)
-    event.key.down.attach(k => if (k.key == Key.Enter && editing()) submitted @= value())
+    // typed on a keyboard on the screen (a remote's), Enter ends the typing before submitting, and Up, Down and Back
+    // end it, as in a TextInput
+    event.key.down.attach { k =>
+      if (k.key == Key.Enter && editing()) {
+        if (!direct) editing @= false
+        submitted @= value()
+      }
+      else if (!direct && editing() && TextInput.endsTyping(k.key)) editing @= false
+    }
     children ++= List(icon, input, clear)
     platformField = Some(input)
   } else {
@@ -127,7 +135,8 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
     // entry): after the words, Backspace taking off the last, Enter submitting
     typeInto(everyui.focus.TextEntry(value, () => submitted @= value()))
   }
-  event.key.down.attach(k => if (k.key == Key.Escape && value().nonEmpty) value @= "")
+  // Escape empties it; where its field is typed on a keyboard on the screen (a remote's), it ends the typing instead
+  event.key.down.attach(k => if (k.key == Key.Escape && value().nonEmpty && (direct || !native)) value @= "")
 
   /** Emptied, as the × and Escape empty it, the caret kept in it. */
   def empty(): Unit = {
@@ -151,8 +160,13 @@ class SearchField(hint: String = everyui.i18n.Words.search, width: Double = 320.
 
   override private[everyui] def refocus(): Unit = platformField.foreach(_.retake(editing, direct))
 
-  /** Escape is its own while it holds something (it empties it); empty, Escape goes on. */
-  override def keepsEvent(e: KeyEvent): Boolean = e.key == Key.Escape && value().nonEmpty
+  /** Escape is its own while it holds something (it empties it); empty, Escape goes on. Back while typing on a keyboard
+    * on the screen is its own too: it ends the typing. */
+  override def keepsEvent(e: KeyEvent): Boolean =
+    (e.key == Key.Escape && value().nonEmpty) || (typingOnScreen && TextInput.backs(e.key))
+
+  // typed in on a keyboard on the screen, a remote's
+  private def typingOnScreen: Boolean = native && !direct && editing()
 
   /** Being edited, it types Enter and the keys that move along its line (the platform's field has them); the up and
     * down arrows move the focus on. */

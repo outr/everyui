@@ -54,6 +54,14 @@ object WebOSTv extends AppHost {
     })
   }
 
+  /** `keyboardStateChange`, with `detail.visibility` (LG's "System UI Visibility"), heard on its way to the page. */
+  override def hearKeyboard(shown: Boolean => Unit): Unit =
+    dom.window.addEventListener("keyboardStateChange", (e: dom.Event) => {
+      val detail = e.asInstanceOf[js.Dynamic].detail
+      if (!js.isUndefined(detail) && detail != null)
+        shown(detail.visibility.asInstanceOf[js.UndefOr[Boolean]].getOrElse(false))
+    }, true)
+
   /** The runtime plays HLS itself, in the TV's own media pipeline, which LG recommends over Media Source Extensions:
     * the TV's decoders, its HDR and its sound formats, and none of hls.js's memory. */
   def nativeHls: Boolean = true
