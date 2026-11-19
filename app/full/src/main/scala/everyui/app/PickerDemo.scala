@@ -1,10 +1,11 @@
 package everyui.app
 
 import everyui.async.Task
-import everyui.component.{Button, ButtonStyle, TextView}
+import everyui.component.{Button, ButtonStyle, Component, Container, MaterialIconView, TextView}
 import everyui.font.MaterialIcon
 import everyui.i18n.{Direction, Language, Strings}
-import everyui.picker.{FilterPicker, Match, PickerField, PickerToggle, Segment, SegmentIcon}
+import everyui.kit.Spinner
+import everyui.picker.{FilterPicker, HighlightRow, Match, PickerField, PickerToggle, Segment, SegmentIcon}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -18,8 +19,10 @@ import reactify.*
   * is in Arabic, `icons=0` leaves the icons off, `q=` puts words in the field and `segment=` chooses a segment by its
   * key. `find=1` shows a Search Everywhere in its place (All, Files, Conversations, Messages), its Files with Match
   * case, Regex and Whole word and a file mask, which its search follows; `on=crw` turns those three on to begin with,
-  * and `mask=` fills the mask.
-  * Logs `picker chose <model>` when one is chosen. */
+  * and `mask=` fills the mask. `switch=1` shows a workspace switcher shaped like Voidcraft's in its place (no segments, an
+  * icon toggle at the field's end, a picture before each row's words with a spinning ring round those at work, more rows
+  * than show, and a menu on a held row), to try taps on its rows with a phone's keyboard up.
+  * Logs `picker chose <model>` when one is chosen, and `picker menu <row>` when a row is held. */
 object PickerDemo {
   // (name, provider's key, provider's name)
   private val models: Vector[(String, String, String)] = Vector(
@@ -52,8 +55,9 @@ object PickerDemo {
     // the one in use to begin with (`using=`), drawn apart in the picker
     val chose = Var(Platform.launchArg("using"))
     val finding = Platform.launchArg("find") == "1"
-    val open = new Button(if (finding) "Search everywhere" else "Choose a model",
-      () => if (finding) find(chose) else show(chose), style = ButtonStyle.Filled)
+    val switching = Platform.launchArg("switch") == "1"
+    val open = new Button(if (switching) "Switch workspace" else if (finding) "Search everywhere" else "Choose a model",
+      () => if (switching) switch(chose) else if (finding) find(chose) else show(chose), style = ButtonStyle.Filled)
     val said = TextView.bound(if (chose().isEmpty) (if (finding) "Nothing chosen" else "No model chosen")
       else (if (finding) "Chose: " else "Model: ") + chose(), 14.0, Theme.muted())
     open.position.left @= 24.0
@@ -61,7 +65,7 @@ object PickerDemo {
     said.position.left @= 24.0
     said.position.top := open.position.top() + open.size.height() + 12.0
     ui.children ++= List(open, said)
-    Platform.after(0.2, () => if (finding) find(chose) else show(chose))
+    Platform.after(0.2, () => if (switching) switch(chose) else if (finding) find(chose) else show(chose))
   }
 
   private def show(chose: Var[String]): Unit = {
@@ -135,5 +139,48 @@ object PickerDemo {
     picker.open(Platform.launchArg("q"))
     val segment = Platform.launchArg("segment")
     if (segment.nonEmpty) picker.segment @= segment
+  }
+
+  // the workspaces a switcher offers: (name, conversations, whether one is working)
+  private val spaces: Vector[(String, Int, Boolean)] = Vector(("All workspaces", 41, true), ("EveryUI", 12, true),
+    ("NaboTV", 9, false), ("DataWrangler", 6, false), ("Home", 3, true), ("Writing", 7, false), ("Garden", 2, false),
+    ("New workspace", 0, false)) ++ (1 to 14).map(i => (s"Project $i", i, i % 4 == 0))
+  private val byName = Var(false)
+
+  /** A workspace switcher: no segments, an icon toggle at the field's end, a picture before each row's words (a
+    * spinning ring round those at work) and a menu on a held row. */
+  private def switch(chose: Var[String]): Unit = {
+    val points = if (ui.size.width() < 900.0) 18.0 else 14.0
+    val picker = new FilterPicker[(String, Int, Boolean)](q =>
+      Task.pure((if (byName()) spaces.sortBy(_._1) else spaces).filter(_._1.toLowerCase.contains(q.trim.toLowerCase))),
+      _._1, _._1, s => if (s._2 == 0) "" else s"${s._2} conversations", placeholder = "Switch workspace",
+      toggles = List(PickerToggle("sortByName", "", byName, "Sort by name", icon = MaterialIcon.SortByAlpha)),
+      row = Some(words => new HighlightRow[(String, Int, Boolean)](_._1, s => Match.spans(words(), s._1).getOrElse(Nil),
+        s => if (s._2 == 0) "" else s"${s._2} conversations", points, leading = Some { item =>
+          val face = points + 8.0
+          val icon = new Container
+          icon.size.width @= face
+          icon.size.height @= face
+          item.attachAndFire(s => icon.children.replaceMaking(s.toVector.flatMap[Component] { space =>
+            val glyph = new MaterialIconView(MaterialIcon.Workspaces, face * 0.8)
+            glyph.color := Theme.muted()
+            glyph.position.left @= face * 0.1
+            glyph.position.top @= face * 0.1
+            val ring = if (space._3) {
+              val r = new Spinner(face + 6.0, () => Theme.accent())
+              r.position.left @= -3.0
+              r.position.top @= -3.0
+              List(r)
+            } else Nil
+            glyph :: ring
+          }))
+          icon
+        })))
+    picker.chosen.attach { s =>
+      chose @= s._1
+      Platform.log("picker chose " + s._1)
+    }
+    picker.list.menu.attach(p => Platform.log("picker menu " + p.item._1))
+    picker.open()
   }
 }

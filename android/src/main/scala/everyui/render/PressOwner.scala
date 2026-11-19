@@ -23,9 +23,12 @@ private[render] object PressOwner {
     case _ => false
   }
 
+  // where `view` shows on the screen, with every scale on the way to it (the root's) and cut by what holds it: its own
+  // size times its own scale alone was the root's units read as the screen's pixels, a part 2.6 times too small
   private def holds(view: View, x: Float, y: Float): Boolean = {
-    val at = Array(0, 0)
-    view.getLocationOnScreen(at)
-    x >= at(0) && y >= at(1) && x < at(0) + view.getWidth * view.getScaleX && y < at(1) + view.getHeight * view.getScaleY
+    val shown = new android.graphics.Rect
+    val window = Array(0, 0)
+    view.getRootView.getLocationOnScreen(window)
+    view.getGlobalVisibleRect(shown) && shown.contains(math.floor(x).toInt - window(0), math.floor(y).toInt - window(1))
   }
 }
