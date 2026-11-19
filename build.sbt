@@ -643,6 +643,8 @@ lazy val android = (project in file("android"))
     // notifications ask (EveryUILibraries.firebase: compiled against; without its runtime and configuration, no push)
     libraryDependencies += EveryUILibraries.credentials,
     libraryDependencies ++= EveryUILibraries.firebase,
+    // androidx.webkit, which runs a script at a page's start (EveryUILibraries.webkit, everyui.render.PageParent)
+    libraryDependencies += EveryUILibraries.webkit,
     // WorkManager, which scheduled work runs on (everyui.background.Work, EveryUILibraries.work), and what it runs with
     libraryDependencies ++= EveryUILibraries.work,
     libraryDependencies ++= Seq(

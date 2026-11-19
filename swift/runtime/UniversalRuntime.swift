@@ -1814,8 +1814,14 @@ final class WebPage: WKWebView, WKNavigationDelegate, WKUIDelegate {
         if bridge.isEmpty || !lent || released { return }
         content.add(WebSaid(self), name: bridge)
         let name = webJson(bridge)
+        // and what the page posts to its parent (itself, here) heard through it too, as the web hears a framed page:
+        // everyui.component.WebViewParent's script, which this follows word for word
         let script = "window[\(name)] = { postMessage: function (m) { " +
-            "window.webkit.messageHandlers[\(name)].postMessage(String(m)); } };"
+            "window.webkit.messageHandlers[\(name)].postMessage(String(m)); } };" +
+            "(function () { var w = window, post = w.postMessage; if (w.parent !== w || post.everyuiHeard) return; " +
+            "w.postMessage = function (m) { var b = w[\(name)]; " +
+            "if (b && !(m && m.everyui === 'ask')) { try { b.postMessage(typeof m === 'string' ? m : JSON.stringify(m)); } " +
+            "catch (e) {} } return post.apply(w, arguments); }; w.postMessage.everyuiHeard = true; })();"
         content.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 

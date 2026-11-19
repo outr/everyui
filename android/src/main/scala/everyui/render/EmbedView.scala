@@ -114,10 +114,13 @@ object EmbedView {
     "everyui-embed-" + made.toString
   }
 
-  /** How much larger than its layout units `view` is laid out: the screen's density for an embed's web view (see
-    * above), 1 for anything else. */
+  /** How much larger than its layout units `view` is laid out, and so how much it is shrunk back by (Host.unscale):
+    * the root's scale for an embed's web view (see above); the display's density for a page's web view (Nodes.web),
+    * which is its CSS pixel's size in its own pixels, so the page is as many CSS pixels wide as its box is units and
+    * drawn at the size the app is (everyui.theme.UiScale) with the rest; 1 for anything else. */
   def scaleOf(view: View): Double = view match {
     case _: EmbedView => Host.scale
+    case page: WebView => page.getResources.getDisplayMetrics.density.toDouble
     case _ => 1.0
   }
 }

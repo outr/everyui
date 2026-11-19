@@ -94,3 +94,8 @@
 # These have no $lzyHandle for the rule above to match. Keep the storage of reachable classes, not whole libraries.
 -keepclassmembers class ** { *** *$lzy*; }
 -keepclassmembers class ** { *** *bitmap*; }
+
+# androidx.webkit (EveryUILibraries.webkit) runs a page's start script (everyui.render.PageParent): an app that leaves
+# it out builds all the same, and a page there is heard through its bridge alone; its annotations are not shipped.
+-dontwarn androidx.webkit.**
+-dontwarn org.jspecify.**

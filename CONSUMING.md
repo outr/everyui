@@ -6560,6 +6560,22 @@ around it still while it plays. Anything that draws the web view into a layer of
 plane on Android 13 and later and draws the page twice: a cached ancestor (`cached`), an ancestor fading
 (`opacity` below 1). `Platform.tint` draws no layer; while the screen is tinted a web view is drawn into the window on
 Android 13 and later so its video is tinted with the rest, at a frame of the app's for each of the video's.
+
+**Sizes on Android.** A page's CSS pixel is a unit of the app's, as on the web: a box 336 wide shows a page whose
+`innerWidth` is 336, and a page's 16 px words are as large as a 16-unit TextView's. The web view is laid out at the
+display's density (`devicePixelRatio`, 2.625 on a Pixel 7) times the box, and drawn shrunk back by as much, as an
+embed's is. So a height the page says in CSS pixels sizes its box exactly, and taps land on what they are drawn over.
+Before 0.1.23 a plain WebView was laid out at one pixel to a unit: the page saw a viewport `devicePixelRatio` times too
+narrow (92 CSS px in a 240-unit box), drew everything that much too large, and a box sized to the height it said
+showed only part of it.
+
+**Dragging over a page in a scroll on Android.** A ScrollContainer scrolls its whole length whatever it holds. A drag
+on a page's web view goes to the page while the page can still scroll its own document the way the drag goes, and to
+the scroll it is in otherwise: a page sized to its box, or one with `overflow: hidden`, never keeps a drag, and a flick
+glides the scroll on. Which one has a drag is settled as it starts, as every scroll's is (DragAxis): a drag that brings
+the page to its end stays the page's, and the next drag past its end is the scroll's. A box inside the page that
+scrolls on its own is not seen from outside, so a drag on it is the scroll's; size such a page to its box and let the
+ScrollContainer scroll it instead. `demo=webfit` (`fit=scroll`, `own=1` for a page that scrolls itself) shows both.
 `demo=webboard` (app/full) shows a page over a busy board, with `page=<url>`, `tint=1` and `prewarm=1`.
 `demo=webview` shows `web/webview.html` (copied beside the build), or `src=<url>` for the same page served from another
 origin.
@@ -6643,10 +6659,25 @@ still does nothing. Set it before `source`.
 - **Android**: the page is lent `<bridge>` and nothing more.
 - **iOS**: as on Android, `<bridge>` on the page's window and nothing more.
 
-A page written for both says it however it can:
+**Posting to the parent everywhere.** A page heard on Android or iOS is the top of its window, its own parent, so
+`parent.postMessage(m, '*')` reached only the page itself. Now each document the view shows is given a script before
+its own (`WebViewParent`): what the page posts to its own window goes to `<bridge>` too, a string as it is and an object
+as its JSON, as the web hears a framed page, so one page written for the web is heard on every platform.
+`window[<bridge>].postMessage(string)` works as before. What it does not change:
+
+- the message still reaches the page as well, so a page that posts to itself (a script that waits a turn on its own
+  message) works as before, and the app hears that too;
+- the app's own asks (`ask`, posted to the page's window) are not handed back;
+- a page that is not heard (sandboxed, without `hearSandboxed`) has no bridge, and its posts go nowhere more;
+- a frame inside the page posts to the page as it always did.
+
+On Android the script runs through androidx.webkit, which `EveryUILibraries.android` brings (`EveryUILibraries.webkit`);
+an app that leaves it out, or a device whose web view is older than Chromium 87, hears the page through `<bridge>` only,
+and logs `[web] a page's parent.postMessage is not heard, only its bridge: …` once. The desktop has no WebView engine
+(an empty box), so there is nothing to hear there.
 
 ```js
-const say = m => window.previewBridge ? previewBridge.postMessage(JSON.stringify(m)) : parent.postMessage(m, '*')
+parent.postMessage({ height: document.documentElement.scrollHeight }, '*')   // heard on the web, Android and iOS
 ```
 
 **Asking a page and hearing its answer.** `ask(request, seconds = 10)(answered)` posts

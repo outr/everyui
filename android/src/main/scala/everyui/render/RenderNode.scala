@@ -84,10 +84,12 @@ class RenderNode(val view: View) {
     view.setRotation(math.toDegrees(radians).toFloat)
   }
 
-  /** Drawn larger or smaller about its own centre, which is what a View pivots on unless told otherwise. */
+  /** Drawn larger or smaller about its own centre, which is what a View pivots on unless told otherwise; a web view,
+    * laid out larger and shrunk back from its top left (EmbedView.scaleOf), from there and as much smaller again. */
   def setScale(factor: Double): Unit = if (Hop.needed(this)) Hop(() => setScale(factor)) else {
-    view.setScaleX(factor.toFloat)
-    view.setScaleY(factor.toFloat)
+    val by = factor / EmbedView.scaleOf(view)
+    view.setScaleX(by.toFloat)
+    view.setScaleY(by.toFloat)
   }
 
   def setFontSize(size: Double): Unit = if (Hop.needed(this)) Hop(() => setFontSize(size)) else view match {
@@ -1752,7 +1754,8 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
     * the whole touch, as the shared scrolls settle their own drags (DragAxis, with the same slop, so both settle on
     * the same move): only one mostly along the scroll is taken, and one mostly across never is, so a page lets a rail
     * in it have a sideways swipe, and a slider across it its drag, and a rail lets the page have a swipe down. Nor is
-    * a drag taken from a scroll the same way in this one, under the finger: the innermost has it. */
+    * a drag taken from a scroll the same way in this one, under the finger: the innermost has it; nor from a page's web
+    * view that can still scroll its page the way the drag would take it (`scrollUnder`). */
   override def onInterceptTouchEvent(e: MotionEvent): Boolean = scrollsAlong != 0 && takeDrag != null && {
     val action = e.getActionMasked
     if (action == MotionEvent.ACTION_DOWN) {
@@ -1765,7 +1768,9 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
     else if (action == MotionEvent.ACTION_MOVE && settled == 0) {
       settled = everyui.event.DragAxis.settle(e.getRawX - downX, e.getRawY - downY, scrollsAlong == 1,
         everyui.event.ScrollPress.slop * Host.touchScale)
-      taking = settled > 0 && !NodeGroup.scrollUnder(this, scrollsAlong, downX, downY)
+      // the way the content under the finger would go: on, where the finger goes back up or left
+      val toward = -math.signum(if (scrollsAlong == 1) e.getRawY - downY else e.getRawX - downX).toInt
+      taking = settled > 0 && !NodeGroup.scrollUnder(this, scrollsAlong, downX, downY, toward)
       taking
     }
     else false
@@ -1827,23 +1832,33 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
 
 object NodeGroup {
   /** Whether a scroll the way `along` goes (`NodeGroup.scrollsAlong`) lies inside `group` under the point `x`, `y` on
-    * the screen, where a finger went down: a list in a dialog's scroll, a panel that scrolls in a list's row. */
-  private[render] def scrollUnder(group: ViewGroup, along: Int, x: Float, y: Float): Boolean =
+    * the screen, where a finger went down: a list in a dialog's scroll, a panel that scrolls in a list's row; or a
+    * page's web view whose page can still scroll `toward` (1 on, -1 back) along it. A page that scrolls keeps the drags
+    * along it while it has further to go that way, and one at its end, or one that cannot scroll (a page sized to its
+    * box, `overflow: hidden`), leaves them to the scroll it is in: settled as the drag is, so a drag that brings a page
+    * to its end stays the page's, and the next one past it is the scroll's. What scrolls inside the page (a box of its
+    * own that overflows) is not seen from here, and a drag on it is the scroll's. */
+  private[render] def scrollUnder(group: ViewGroup, along: Int, x: Float, y: Float, toward: Int): Boolean =
     (0 until group.getChildCount).exists { i =>
       group.getChildAt(i) match {
+        case page: android.webkit.WebView if page.getVisibility == View.VISIBLE && holds(page, x, y) =>
+          toward != 0 && (if (along == 1) page.canScrollVertically(toward) else page.canScrollHorizontally(toward))
         case child: ViewGroup if child.getVisibility == View.VISIBLE && holds(child, x, y) =>
           (child match {
             case g: NodeGroup => g.scrollsAlong == along && g.takeDrag != null
             case _ => false
-          }) || scrollUnder(child, along, x, y)
+          }) || scrollUnder(child, along, x, y, toward)
         case _ => false
       }
     }
 
+  // where `view` shows on the screen, with every scale on the way to it (the root's, a web view's shrinking back) and
+  // cut by what holds it: its own size times its own scale alone was the root's units read as the screen's pixels
   private def holds(view: View, x: Float, y: Float): Boolean = {
-    val at = Array(0, 0)
-    view.getLocationOnScreen(at)
-    x >= at(0) && y >= at(1) && x < at(0) + view.getWidth * view.getScaleX && y < at(1) + view.getHeight * view.getScaleY
+    val shown = new android.graphics.Rect
+    val window = Array(0, 0)
+    view.getRootView.getLocationOnScreen(window)
+    view.getGlobalVisibleRect(shown) && shown.contains(math.floor(x).toInt - window(0), math.floor(y).toInt - window(1))
   }
 }
 
@@ -2319,7 +2334,7 @@ object Host {
   var touchScale: Double = 1.0
 
   /** The render root scaled from its top left by `density` times the size the app is drawn at, and what is drawn at
-    * the screen's own pixels under it (an embed's web view, a video's surface) shrunk back by as much again. */
+    * the screen's own pixels under it (an embed's web view, a page's, a video's surface) shrunk back by as much again. */
   def scaleRoot(): Unit = if (root != null) {
     scale = density * everyui.theme.UiScale()
     root.setPivotX(0f)
@@ -2347,10 +2362,21 @@ object Host {
     case _ => ()
   }
 
+  /** A page's web view (Nodes.web) shrunk back from its top left by as much as it is laid out larger (EmbedView.scaleOf),
+    * so it is drawn as large as its box. */
+  private[render] def shrinkPage(page: android.webkit.WebView): Unit = {
+    val by = (1.0 / EmbedView.scaleOf(page)).toFloat
+    page.setPivotX(0f)
+    page.setPivotY(0f)
+    page.setScaleX(by)
+    page.setScaleY(by)
+  }
+
   private def unscale(view: View): Unit = view match {
     case embed: EmbedView =>
       embed.setScaleX((1.0 / scale).toFloat)
       embed.setScaleY((1.0 / scale).toFloat)
+    case page: android.webkit.WebView => shrinkPage(page)
     case surface: android.view.SurfaceView if surface.getParent.isInstanceOf[VideoFrame] =>
       surface.setScaleX((1.0 / scale).toFloat)
       surface.setScaleY((1.0 / scale).toFloat)
@@ -2421,11 +2447,15 @@ object Nodes {
     // the keys are the app's: a page that took them would swallow the remote
     view.setFocusable(false)
     view.setFocusableInTouchMode(false)
+    // laid out at its own CSS pixels and shrunk back, so a CSS pixel of the page is a unit of the app's (EmbedView.scaleOf)
+    Host.shrinkPage(view)
     // in the window while the screen is tinted (Host.tintPages)
     Host.tintPages(view)
     val node = new RenderNode(view)
     val said = new WebBridge(node)
     view.addJavascriptInterface(said, bridge)
+    // and what the page posts to its parent (itself, here) heard through it too, as the web hears a framed page
+    PageParent.lend(view, bridge)
     node.webSandbox = new WebSandbox(view, bridge, said)
     node
   }

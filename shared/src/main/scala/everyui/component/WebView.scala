@@ -51,8 +51,9 @@ class WebView(bridge: String, supplied: RenderNode = null)
 
   /** Hear a sandboxed page too, which is otherwise not heard: what it posts from this view's own frame alone, as a
     * string (an object as its JSON), and nothing lent it but that, run in it or posted to it but `ask`. Set it before
-    * `source`, as on Android the bridge goes with the loads after it. The page says it as it can: through `<bridge>`
-    * where its window has one (Android), else to `window.parent` (the web). CONSUMING.md, WebView. */
+    * `source`, as on Android the bridge goes with the loads after it. The page says it to `window.parent`, heard on
+    * every platform (where the page is its own parent, through `<bridge>`: WebViewParent), or through `<bridge>` where
+    * its window has one (Android, iOS). CONSUMING.md, WebView. */
   def hearSandboxed(f: String => Unit): Unit = {
     this.node.setWebHearSandboxed(true)
     hear(f)

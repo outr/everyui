@@ -98,6 +98,8 @@ import everyui.render.Platform
   *   webview    a page of the web (WebView) that is pinged and answers: web/webview.html beside the web build, or
   *              `src=<url>` (the same page on another origin); an empty box where there is no engine to lend;
   *              `sandbox=none|scripts|<flags>` shows web/sandbox.html sandboxed, trying to reach the app
+  *   webfit     a page fitted to its box: a 16 px "Hello" beside a 16-unit one with the page's innerWidth and DPR;
+  *              `fit=height` a page sized to the height it says; `fit=scroll` one 9,000 CSS px tall in a scroll
   *   colors     the colour picker: on the page with alpha and presets, and in a dialog (`dialog=1`)
   *   charts     every chart (everyui.chart) on a daily briefing's data in a grid of cards: spend, meetings, mail per
   *              account, model use, a donut, a pie, a week by hour heatmap, meters, a gauge and stat tiles; New data
@@ -271,6 +273,7 @@ import everyui.render.Platform
   else if (demo == "spinner") SpinnerDemo.run()
   else if (demo == "textmeasure") TextMeasureDemo.run()
   else if (demo == "webview") WebViewDemo.run()
+  else if (demo == "webfit") WebFitDemo.run()
   else if (demo == "badge") BadgeDemo.run()
   else if (demo == "tabs") TabsDemo.run()
   else if (demo == "tabgroups") TabGroupsDemo.run()
