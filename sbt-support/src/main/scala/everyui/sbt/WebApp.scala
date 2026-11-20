@@ -82,7 +82,9 @@ object WebApp {
     * running no app code without a window (Chrome then may show its own "updated in the background" notice). A
     * Markdown push (`"format": "markdown"`) is shown as plain words, its title, body and lines (`WebPushText`), and
     * handed to a window as it was sent. A push's "noticePicture" (`everyui.push.PushMessage`) is its notification's
-    * icon where it names none of its own under "icon". A path off the app's own origin opens the app's start instead.
+    * icon where it names none of its own under "icon", else a conversation's "senderPicture" or "conversationPicture";
+    * a conversation's message ("conversationId") is titled with its sender and the conversation ("Ann · Team chat",
+    * `everyui.push.PushConversation.heading`), and its keys handed to a window with the rest. A path off the app's own origin opens the app's start instead.
     * A subscription the browser renews is subscribed again with the same key and handed to the open windows
     * (`everyui.push.Push.tokens`). A notification a page showed itself (`Platform.showNotice`) is answered by the page:
     * a click on it focuses the window that showed it, which the page learnt by asking the worker its id
@@ -120,7 +122,8 @@ object WebApp {
        |const tell = (client, data) => client.postMessage(data);
        |const KEYS = ['title', 'body', 'path', 'tag', 'renotify', 'close', 'actions', 'group', 'groupSummary', 'lines',
        |  'silent', 'channel', 'channelName', 'channelGroup', 'channelGroupName', 'channelImportance', 'format',
-       |  'noticeIcon', 'noticeColor', 'noticePicture', 'dataOnly'];
+       |  'noticeIcon', 'noticeColor', 'noticePicture', 'conversationId', 'conversationTitle', 'conversationPicture',
+       |  'senderName', 'senderPicture', 'isGroup', 'dataOnly'];
        |const yes = v => v === true || v === 'true';
        |${WebPushText.function}
        |self.addEventListener('push', e => {
@@ -145,7 +148,12 @@ object WebApp {
        |    summary: yes(m.groupSummary), lines, silent: yes(m.silent),
        |    format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain',
        |    noticeIcon: m.noticeIcon ? String(m.noticeIcon) : null, noticeColor: m.noticeColor ? String(m.noticeColor) : null,
-       |    noticePicture: m.noticePicture ? String(m.noticePicture) : null };
+       |    noticePicture: m.noticePicture ? String(m.noticePicture) : null,
+       |    conversationId: m.conversationId ? String(m.conversationId) : null,
+       |    conversationTitle: m.conversationTitle ? String(m.conversationTitle) : null,
+       |    conversationPicture: m.conversationPicture ? String(m.conversationPicture) : null,
+       |    senderName: m.senderName ? String(m.senderName) : null, senderPicture: m.senderPicture ? String(m.senderPicture) : null,
+       |    isGroup: yes(m.isGroup) };
        |  // a Markdown push shown as plain words, a notification showing no styles (the window is handed it as it was sent)
        |  const plain = t => message.format === 'markdown' ? pushText(t) : t;
        |  // those shown with a tag taken away (read elsewhere), and nothing more where that is all the push is
@@ -174,13 +182,20 @@ object WebApp {
        |    const options = { body, data: message, silent: message.silent };
        |    const tag = message.tag || message.group;
        |    if (tag) { options.tag = tag; options.renotify = message.renotify && !message.silent; }
-       |    // its picture as the notification's icon, where the push names none of its own under "icon"
-       |    if (message.noticePicture && !m.icon) options.icon = message.noticePicture;
+       |    // its picture as the notification's icon, where the push names none of its own under "icon": a conversation's
+       |    // sender's face, or the conversation's, where it names none
+       |    const picture = message.noticePicture || message.senderPicture || message.conversationPicture;
+       |    if (picture && !m.icon) options.icon = picture;
        |    // a copy button left out: a browser writes the clipboard only from a page, as the person acts in it
        |    const shown = actions.filter(a => !a.copy);
        |    if (shown.length) options.actions = shown.map(a => a.input
        |      ? { action: a.id, title: a.label, type: 'text', placeholder: a.hint || a.label } : { action: a.id, title: a.label });
-       |    return self.registration.showNotification(plain(message.title), options);
+       |    // a conversation's message titled with its sender and the conversation's title (PushConversation.heading)
+       |    const from = message.senderName || plain(message.title) || message.conversationTitle || '';
+       |    const about = message.conversationTitle || '';
+       |    const title = !message.conversationId ? plain(message.title)
+       |      : !about || about === from ? from : from ? from + ' \\u00b7 ' + about : about;
+       |    return self.registration.showNotification(title, options);
        |  }));
        |});
        |self.addEventListener('message', e => {

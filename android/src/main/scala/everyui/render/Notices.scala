@@ -4,7 +4,7 @@ import android.app.{ActivityManager, Notification, NotificationManager, PendingI
 import android.content.Intent
 import android.os.Build
 import everyui.Permission
-import everyui.push.{LargeIcon, Notice}
+import everyui.push.{ConversationLine, LargeIcon, Notice}
 import reactify.*
 
 import scala.collection.mutable
@@ -13,7 +13,9 @@ import scala.collection.mutable
   * "Notifications"), so the person has one switch for both. A tag is the notification's tag, so a later one with the
   * same tag replaces it. A tap brings the app to the front with the notice's key, and the activity's new intent runs
   * what the tap does ([[tapped]]); one tapped after the app was closed only opens it. Not on a television, which shows
-  * no notifications of this kind; Android 13 and later ask the person first (POST_NOTIFICATIONS in the manifest). */
+  * no notifications of this kind; Android 13 and later ask the person first (POST_NOTIFICATIONS in the manifest). A notice
+  * of a conversation (`Notice.conversation`) is posted as the conversation's, stacked with its recent messages
+  * (`ConversationNotices`). */
 object Notices {
   private val channel = "everyui.push"
   private val notifications = "android.permission.POST_NOTIFICATIONS"
@@ -65,10 +67,19 @@ object Notices {
         .setContentIntent(PendingIntent.getActivity(context, key.hashCode, launch,
           PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
       notice.noticeColor.foreach(c => builder.setColor(NoticeIcon.argb(c)))
-      NoticeIcon.large(context, LargeIcon.of(notice)).foreach(b => builder.setLargeIcon(b))
-      val notification = builder.build()
-      try notify.notify(key, 0, notification)
-      catch { case t: SecurityException => Platform.log("notification not posted: " + t.getMessage) }
+      val conversation = notice.conversation.filter(_ => ConversationNotices.supported)
+      if (conversation.isEmpty) NoticeIcon.large(context, LargeIcon.of(notice)).foreach(b => builder.setLargeIcon(b))
+      val post = () => {
+        // a conversation's message stacked with its others, its sender's face fetched (off the main thread)
+        conversation.foreach(c => ConversationNotices.style(context, notify, builder, c,
+          Vector(ConversationLine(c.sender(notice.title), c.senderPicture.getOrElse(""),
+            if (notice.body.nonEmpty) notice.body else notice.title, System.currentTimeMillis())),
+          key, 0, notice.title, None, None, notice.noticeIcon, notice.noticeColor))
+        try notify.notify(key, 0, builder.build())
+        catch { case t: SecurityException => Platform.log("notification not posted: " + t.getMessage) }
+      }
+      if (conversation.toList.flatMap(ConversationNotices.pictures).forall(u => NoticePicture.ready(context, u))) post()
+      else NoticePicture.later("notice: not posted", post)
     }
 
   /** The activity's new intent: a tap on one of the app's notices runs what it does. */

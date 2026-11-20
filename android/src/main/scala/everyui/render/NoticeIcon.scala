@@ -52,10 +52,30 @@ object NoticeIcon {
       // the glyph's em three fifths of the circle, its ink (20/24 of the em) half the circle across
       kept(drawn, LargeIcon.key(g.icon, g.color, pixels),
         draw(context, g.icon, pixels, math.round(pixels * 0.6f), Some(argb(g.color))))
+    case m: LargeIcon.Monogram =>
+      val pixels = context.getResources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width)
+      kept(drawn, LargeIcon.letterKey(m.letter, m.color, pixels), Some(letter(m.letter, pixels, argb(m.color))))
   }.nextOption()
 
   /** `color` as Android writes one, alpha first. */
   def argb(color: Color): Int = (color.alphaInt << 24) | (color.redInt << 16) | (color.greenInt << 8) | color.blueInt
+
+  /** `text` white and bold, its ink centred, on a circle of `circle` `pixels` across, its height half the circle's. */
+  private def letter(text: String, pixels: Int, circle: Int): Bitmap = {
+    val bitmap = Bitmap.createBitmap(pixels, pixels, Bitmap.Config.ARGB_8888)
+    val canvas = new Canvas(bitmap)
+    val fill = new Paint(Paint.ANTI_ALIAS_FLAG)
+    fill.setColor(circle)
+    canvas.drawCircle(pixels / 2f, pixels / 2f, pixels / 2f, fill)
+    val paint = new Paint(Paint.ANTI_ALIAS_FLAG)
+    paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+    paint.setTextSize(pixels * 0.5f)
+    paint.setColor(AndroidColor.WHITE)
+    val ink = new Rect
+    paint.getTextBounds(text, 0, text.length, ink)
+    canvas.drawText(text, (pixels - ink.width) / 2f - ink.left, (pixels - ink.height) / 2f - ink.top, paint)
+    bitmap
+  }
 
   private def png(bitmap: Bitmap): Array[Byte] = {
     val out = new java.io.ByteArrayOutputStream

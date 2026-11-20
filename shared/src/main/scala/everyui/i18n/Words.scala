@@ -88,6 +88,8 @@ object Words {
   def leaveMessage: String = apply("leaveMessage")
   def leave: String = apply("leave")
   def stay: String = apply("stay")
+  /** The person using the device, as a conversation's notification names their own messages (on Android). */
+  def you: String = apply("push.you")
 
   private lazy val english: Map[String, String] = Map("ok" -> "OK", "cancel" -> "Cancel", "close" -> "Close",
     "chart.bar" -> "Bar chart", "chart.line" -> "Line chart", "chart.area" -> "Area chart",
@@ -105,6 +107,7 @@ object Words {
     "larger" -> "Larger", "smaller" -> "Smaller", "defaultSize" -> "Default size",
     "leave" -> "Leave", "stay" -> "Stay", "leaveTitle" -> "Leave the app?",
     "leaveMessage" -> "Changes you made may not be saved.",
+    "push.you" -> "You",
     "chat.queued" -> "{n, plural, =0{No messages queued} =1{1 message queued} other{# messages queued}}",
     "chat.queuePaused" -> "Paused", "chat.resume" -> "Resume", "chat.addToQueue" -> "Add to queue",
     "chat.edit" -> "Edit", "chat.remove" -> "Remove", "chat.files" -> "{n, plural, =1{1 file} other{# files}}",
@@ -210,6 +213,7 @@ object Words {
     "larger" -> "Größer", "smaller" -> "Kleiner", "defaultSize" -> "Standardgröße",
     "leave" -> "Verlassen", "stay" -> "Bleiben", "leaveTitle" -> "App verlassen?",
     "leaveMessage" -> "Ihre Änderungen werden möglicherweise nicht gespeichert.",
+    "push.you" -> "Du",
     "chat.queued" -> ("{n, plural, =0{Keine Nachrichten in der Warteschlange} =1{1 Nachricht in der Warteschlange} " +
       "other{# Nachrichten in der Warteschlange}}"),
     "chat.queuePaused" -> "Pausiert", "chat.resume" -> "Fortsetzen", "chat.addToQueue" -> "Zur Warteschlange hinzufügen",
@@ -323,6 +327,7 @@ object Words {
     "larger" -> "Más grande", "smaller" -> "Más pequeño", "defaultSize" -> "Tamaño predeterminado",
     "leave" -> "Salir", "stay" -> "Quedarse", "leaveTitle" -> "¿Salir de la aplicación?",
     "leaveMessage" -> "Es posible que no se guarden los cambios que hayas hecho.",
+    "push.you" -> "Tú",
     "chat.queued" -> "{n, plural, =0{No hay mensajes en cola} =1{1 mensaje en cola} other{# mensajes en cola}}",
     "chat.queuePaused" -> "En pausa", "chat.resume" -> "Reanudar", "chat.addToQueue" -> "Añadir a la cola",
     "chat.edit" -> "Editar", "chat.remove" -> "Quitar", "chat.files" -> "{n, plural, =1{1 archivo} other{# archivos}}",
@@ -436,6 +441,7 @@ object Words {
     "larger" -> "Plus grand", "smaller" -> "Plus petit", "defaultSize" -> "Taille par défaut",
     "leave" -> "Quitter", "stay" -> "Rester", "leaveTitle" -> "Quitter l'application ?",
     "leaveMessage" -> "Les modifications que vous avez apportées ne seront peut-être pas enregistrées.",
+    "push.you" -> "Vous",
     "chat.queued" -> "{n, plural, =0{Aucun message en attente} =1{1 message en attente} other{# messages en attente}}",
     "chat.queuePaused" -> "En pause", "chat.resume" -> "Reprendre", "chat.addToQueue" -> "Ajouter à la file d'attente",
     "chat.edit" -> "Modifier", "chat.remove" -> "Retirer",
@@ -551,6 +557,7 @@ object Words {
     "larger" -> "Più grande", "smaller" -> "Più piccolo", "defaultSize" -> "Dimensione predefinita",
     "leave" -> "Esci", "stay" -> "Resta", "leaveTitle" -> "Uscire dall'app?",
     "leaveMessage" -> "Le modifiche apportate potrebbero non essere salvate.",
+    "push.you" -> "Tu",
     "chat.queued" -> "{n, plural, =0{Nessun messaggio in coda} =1{1 messaggio in coda} other{# messaggi in coda}}",
     "chat.queuePaused" -> "In pausa", "chat.resume" -> "Riprendi", "chat.addToQueue" -> "Aggiungi alla coda",
     "chat.edit" -> "Modifica", "chat.remove" -> "Rimuovi", "chat.files" -> "{n, plural, =1{1 file} other{# file}}",
@@ -661,6 +668,7 @@ object Words {
     "larger" -> "Groter", "smaller" -> "Kleiner", "defaultSize" -> "Standaardgrootte",
     "leave" -> "Verlaten", "stay" -> "Blijven", "leaveTitle" -> "App verlaten?",
     "leaveMessage" -> "Wijzigingen die je hebt aangebracht, worden mogelijk niet opgeslagen.",
+    "push.you" -> "Jij",
     "chat.queued" -> ("{n, plural, =0{Geen berichten in de wachtrij} =1{1 bericht in de wachtrij} " +
       "other{# berichten in de wachtrij}}"),
     "chat.queuePaused" -> "Gepauzeerd", "chat.resume" -> "Hervatten", "chat.addToQueue" -> "Aan wachtrij toevoegen",
@@ -772,6 +780,7 @@ object Words {
     "larger" -> "Maior", "smaller" -> "Menor", "defaultSize" -> "Tamanho padrão",
     "leave" -> "Sair", "stay" -> "Ficar", "leaveTitle" -> "Sair do app?",
     "leaveMessage" -> "As alterações feitas talvez não sejam salvas.",
+    "push.you" -> "Você",
     "chat.queued" -> "{n, plural, =0{Nenhuma mensagem na fila} =1{1 mensagem na fila} other{# mensagens na fila}}",
     "chat.queuePaused" -> "Pausado", "chat.resume" -> "Retomar", "chat.addToQueue" -> "Adicionar à fila",
     "chat.edit" -> "Editar", "chat.remove" -> "Remover", "chat.files" -> "{n, plural, =1{1 arquivo} other{# arquivos}}",
@@ -882,6 +891,7 @@ object Words {
     "larger" -> "Daha büyük", "smaller" -> "Daha küçük", "defaultSize" -> "Varsayılan boyut",
     "leave" -> "Ayrıl", "stay" -> "Kal", "leaveTitle" -> "Uygulamadan ayrılınsın mı?",
     "leaveMessage" -> "Yaptığınız değişiklikler kaydedilmeyebilir.",
+    "push.you" -> "Siz",
     "chat.queued" -> "{n, plural, =0{Sırada mesaj yok} other{Sırada # mesaj}}",
     "chat.queuePaused" -> "Duraklatıldı", "chat.resume" -> "Devam et", "chat.addToQueue" -> "Sıraya ekle",
     "chat.edit" -> "Düzenle", "chat.remove" -> "Kaldır", "chat.files" -> "{n, plural, other{# dosya}}",
@@ -991,6 +1001,7 @@ object Words {
     "larger" -> "أكبر", "smaller" -> "أصغر", "defaultSize" -> "الحجم الافتراضي",
     "leave" -> "مغادرة", "stay" -> "البقاء", "leaveTitle" -> "هل تريد مغادرة التطبيق؟",
     "leaveMessage" -> "قد لا يتم حفظ التغييرات التي أجريتها.",
+    "push.you" -> "أنت",
     "chat.queued" -> ("{n, plural, =0{لا توجد رسائل في قائمة الانتظار} =1{رسالة واحدة في قائمة الانتظار} " +
       "=2{رسالتان في قائمة الانتظار} few{# رسائل في قائمة الانتظار} other{# رسالة في قائمة الانتظار}}"),
     "chat.queuePaused" -> "متوقف مؤقتًا", "chat.resume" -> "استئناف", "chat.addToQueue" -> "إضافة إلى قائمة الانتظار",
@@ -1102,6 +1113,7 @@ object Words {
     "larger" -> "放大", "smaller" -> "缩小", "defaultSize" -> "默认大小",
     "leave" -> "离开", "stay" -> "留下", "leaveTitle" -> "要离开应用吗？",
     "leaveMessage" -> "系统可能不会保存您所做的更改。",
+    "push.you" -> "你",
     "chat.queued" -> "{n, plural, =0{没有排队的消息} other{# 条消息正在排队}}",
     "chat.queuePaused" -> "已暂停", "chat.resume" -> "继续", "chat.addToQueue" -> "加入队列",
     "chat.edit" -> "编辑", "chat.remove" -> "移除", "chat.files" -> "{n, plural, other{# 个文件}}",
@@ -1201,6 +1213,7 @@ object Words {
     "larger" -> "放大", "smaller" -> "縮小", "defaultSize" -> "預設大小",
     "leave" -> "離開", "stay" -> "留下", "leaveTitle" -> "要離開應用程式嗎？",
     "leaveMessage" -> "系統可能不會儲存你所做的變更。",
+    "push.you" -> "你",
     "chat.queued" -> "{n, plural, =0{沒有排隊的訊息} other{# 則訊息正在排隊}}",
     "chat.queuePaused" -> "已暫停", "chat.resume" -> "繼續", "chat.addToQueue" -> "加入佇列",
     "chat.edit" -> "編輯", "chat.remove" -> "移除", "chat.files" -> "{n, plural, other{# 個檔案}}",

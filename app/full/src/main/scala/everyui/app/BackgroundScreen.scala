@@ -20,7 +20,8 @@ import reactify.*
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
   * ExampleBackground with the app closed (Approve once the device is unlocked) and are heard by Push.acted with it
   * running; an agent's answer in Markdown, styled; kinds of push told apart by their icon, colour and picture
-  * (noticeIcon, noticeColor, noticePicture), alone and stacked by kind; and mail for three accounts (Push.deliver),
+  * (noticeIcon, noticeColor, noticePicture), alone and stacked by kind; three conversations (conversationId), one a group, with
+  * a mail among them, and closed by tag and by id; and mail for three accounts (Push.deliver),
   * each message stacked under its account's summary on its account's channel, with a Reply typed into it; three
   * channels declared up front (Push.channels) at low, default and high importance, three more made by pushes asking
   * each (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
@@ -94,7 +95,12 @@ class BackgroundScreen extends UIScreen {
         new Button("Mail for three accounts", () => mail()),
         new Button("An answer in Markdown", () => push(answer)),
         new Button("Kinds at a glance", () => kinds()),
-        new Button("Kinds, stacked", () => stacked())),
+        new Button("Kinds, stacked", () => stacked()),
+        new Button("Conversations", () => conversations()),
+        new Button("Close the conversations", () => {
+          List("example:team", "example:cy", "example:dee").foreach(Push.close)
+          pushed @= "Team chat closed by its tag, Cy and Dee by their ids"
+        })),
       section("A one-time code, in 3 s", coded)(
         new Button("A code arrived", () => push(code(dismisses = false))),
         new Button("Copy closes it", () => push(code(dismisses = true))),
@@ -266,6 +272,36 @@ class BackgroundScreen extends UIScreen {
     pushed @= "Three kinds stacked by group, and an event alone, from 3 s on: leave the app"
     pushes.zipWithIndex.foreach { (p, i) =>
       Platform.after(3.0 + i * 0.5, () => Push.deliver(p ++ Map("path" -> "/background")))
+    }
+  }
+
+  /** Conversations, from three seconds on, a second apart (`PushConversation`): a group, "Team chat", under one tag,
+    * with its picture and Ann's and Bob's faces; Cy, one person, with her face and a Reply typed into it, under no tag
+    * (so shown under her conversation's); Dee, with no picture, so her initial; and a mail push among them, which stays
+    * as it was. The pictures are the launch's "pictures" (an http(s) URL ending in "/", serving team.png, ann.png,
+    * bob.png and cy.png), none where it has none. Android posts each conversation's messages as one, the newest last,
+    * under Conversations on Android 11 and later. */
+  private def conversations(): Unit = {
+    val at = Platform.launchArg("pictures")
+    val picture = (name: String) => if (at.isEmpty) "" else at + name + ".png"
+    val team = (sender: String, body: String) => Map("title" -> sender, "body" -> body, "tag" -> "example:team",
+      "conversationId" -> "example:team", "conversationTitle" -> "Team chat", "conversationPicture" -> picture("team"),
+      "senderName" -> sender, "senderPicture" -> picture(sender.toLowerCase), "isGroup" -> "true",
+      "noticeIcon" -> "forum", "noticeColor" -> "#43A047")
+    val cy = (body: String) => Map("title" -> "Cy", "body" -> body, "conversationId" -> "example:cy",
+      "conversationTitle" -> "Cy", "senderName" -> "Cy", "senderPicture" -> picture("cy"), "noticeIcon" -> "chat",
+      "noticeColor" -> "#1E88E5", "actions" -> PushButton.json(Vector(PushButton("reply", "Reply", input = true,
+        hint = "Reply to Cy"))))
+    val pushes = Vector(team("Ann", "Lunch on Friday?"), cy("Are you coming tonight?"), team("Bob", "I'm in"),
+      Map("title" -> "Ann", "body" -> "The draft, attached", "noticeIcon" -> "mail", "noticeColor" -> "#1E88E5",
+        "tag" -> "example:mail"),
+      cy("Bring the cake"), team("Ann", "12:30 then"),
+      Map("title" -> "Dee", "body" -> "Call me", "conversationId" -> "example:dee", "senderName" -> "Dee",
+        "noticeColor" -> "#8E24AA"))
+    pushed @= "Three conversations and a mail, from 3 s on: leave the app"
+    pushes.zipWithIndex.foreach { (p, i) =>
+      val data = (p + ("path" -> "/background")).filter((_, v) => v.nonEmpty)
+      Platform.after(3.0 + i * 1.0, () => Push.deliver(data))
     }
   }
 

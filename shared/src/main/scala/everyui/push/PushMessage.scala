@@ -43,6 +43,10 @@ import everyui.font.MaterialIcon
   * icon looks as the latest of its group (`lookingAs`). A plain "icon", "color" or "largeIcon" is the app's own data,
   * unread.
   *
+  * `conversation` makes it a message of a conversation (`PushConversation`: "conversationId", "conversationTitle",
+  * "conversationPicture", "senderName", "senderPicture", "isGroup"), which Android posts as a conversation, headed by
+  * the sender's face and stacked with the conversation's other messages, and a browser titles "Sender · Conversation".
+  *
   * A push with neither title nor body, or with `"dataOnly": "true"`, is no notification but a data push
   * (`PushMessage.isData`), never shown: its keys go to the app's `BackgroundApp.onPush`, or `Push.data`. */
 case class PushMessage(title: String, body: String, path: Option[String], tag: Option[String] = None,
@@ -51,7 +55,7 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
                        lines: Vector[String] = Vector.empty, silent: Boolean = false,
                        channel: Option[PushChannel] = None, format: PushFormat = PushFormat.Plain,
                        noticeIcon: Option[String] = None, noticeColor: Option[Color] = None,
-                       noticePicture: Option[String] = None) {
+                       noticePicture: Option[String] = None, conversation: Option[PushConversation] = None) {
   /** The Material icon `noticeIcon` names, None where it names none the font has. */
   def shownIcon: Option[MaterialIcon] = noticeIcon.flatMap(MaterialIcon.named)
 
@@ -92,7 +96,7 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
       "channelImportance" -> (if (c.importance == NoticeImportance.Default) "" else c.importance.word),
       "format" -> (if (format == PushFormat.Plain) "" else format.word), "noticeIcon" -> noticeIcon.getOrElse(""),
       "noticeColor" -> noticeColor.map(PushMessage.hex).getOrElse(""), "noticePicture" -> noticePicture.getOrElse(""))
-      .filter((_, v) => v.nonEmpty)
+      .filter((_, v) => v.nonEmpty) ++ conversation.map(_.fields).getOrElse(Map.empty[String, String])
   }
 }
 
@@ -118,7 +122,7 @@ object PushMessage {
   /** The keys a push's data says what it is with; the rest are its `data`. */
   val keys: Set[String] = Set("title", "body", "path", "tag", "renotify", "close", "actions", "group", "groupSummary",
     "lines", "silent", "channel", "channelName", "channelGroup", "channelGroupName", "channelImportance",
-    "format", "noticeIcon", "noticeColor", "noticePicture", dataOnlyKey)
+    "format", "noticeIcon", "noticeColor", "noticePicture", dataOnlyKey) ++ PushConversation.keys
 
   /** A push from its data as the server sent it, every value text (an FCM data message's): its title, body, path,
     * tag, renotify ("true"), its buttons (`PushButton.parse` of "actions"), its group, whether it is the group's
@@ -126,7 +130,8 @@ object PushMessage {
     * names one: its name "channelName", the id where it has none, "channelGroup" with its "channelGroupName", and
     * its importance "channelImportance", `NoticeImportance.named`: default where it names none it knows),
     * its format ("format": "markdown", `PushFormat.named`: plain where it names none it knows), how Android shows it
-    * ("noticeIcon", "noticeColor" where it is a colour, `colorOf`, and "noticePicture"),
+    * ("noticeIcon", "noticeColor" where it is a colour, `colorOf`, and "noticePicture"), its conversation
+    * (`PushConversation.of`),
     * and the rest as `data`, less what the push service adds itself (keys from "google." and "gcm."). */
   def of(data: Map[String, String]): PushMessage = {
     val text = (k: String) => data.getOrElse(k, "")
@@ -139,7 +144,7 @@ object PushMessage {
       some("channel").map(id => PushChannel(id, some("channelName").getOrElse(id), group,
         some("channelGroupName").getOrElse(group), NoticeImportance.named(text("channelImportance")))),
       PushFormat.named(text("format")), some("noticeIcon").map(_.trim).filter(_.nonEmpty),
-      colorOf(text("noticeColor")), some("noticePicture").map(_.trim).filter(_.nonEmpty))
+      colorOf(text("noticeColor")), some("noticePicture").map(_.trim).filter(_.nonEmpty), PushConversation.of(data))
   }
 
   /** The colour a push's "noticeColor" names: `#RRGGBB`, or `#AARRGGBB` as Android writes a colour with its alpha

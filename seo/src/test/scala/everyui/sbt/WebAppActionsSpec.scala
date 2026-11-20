@@ -11,7 +11,7 @@ import org.scalatest.wordspec.AnyWordSpec
   * Markdown push shown as plain words (WebPushText), and handed to a window as it was sent. Their behaviour is
   * checked by running the worker in Node (the scratch directory's push-actions probe, and here for Markdown and for
   * a data push, handed to a window of the app and never shown, and for a push's noticePicture, its icon where it
-  * names none). */
+  * names none, and for a conversation's message, titled with its sender and the conversation's title). */
 class WebAppActionsSpec extends AnyWordSpec with Matchers {
   private val worker = WebApp.worker("abc123")
 
@@ -38,7 +38,8 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("at.searchParams.set('everyui-push', JSON.stringify(message));")
     }
     "hand a data push to a window of the app, in sight or not, and show nothing" in {
-      worker should include("'channelImportance', 'format',\n  'noticeIcon', 'noticeColor', 'noticePicture', 'dataOnly'];")
+      worker should include("'channelImportance', 'format',\n  'noticeIcon', 'noticeColor', 'noticePicture', 'conversationId',")
+      worker should include("'senderName', 'senderPicture', 'isGroup', 'dataOnly'];")
       worker should include("if (yes(m.dataOnly) || (!m.title && !m.body && (!m.close || Object.keys(sent).length)))")
       worker should include("if (to) tell(to, { everyui: 'data', data: sent });")
       val out = Files.createTempDirectory("webapp-data").toFile
@@ -143,7 +144,8 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("const pushText = markdown => {")
       worker should include("format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain',")
       worker should include("const plain = t => message.format === 'markdown' ? pushText(t) : t;")
-      worker should include("return self.registration.showNotification(plain(message.title), options);")
+      worker should include("const title = !message.conversationId ? plain(message.title)")
+      worker should include("return self.registration.showNotification(title, options);")
       val out = Files.createTempDirectory("webapp-markdown").toFile
       Files.write(new File(out, "sw.js").toPath, worker.getBytes(UTF_8))
       Files.write(new File(out, "harness.js").toPath,
@@ -183,7 +185,7 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
         """["**Seen**","markdown"]""")
     }
     "show a push's noticePicture as its icon where it names no icon, and hand the window the notice keys" in {
-      worker should include("if (message.noticePicture && !m.icon) options.icon = message.noticePicture;")
+      worker should include("if (picture && !m.icon) options.icon = picture;")
       val out = Files.createTempDirectory("webapp-picture").toFile
       Files.write(new File(out, "sw.js").toPath, worker.getBytes(UTF_8))
       Files.write(new File(out, "harness.js").toPath,
@@ -222,6 +224,56 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
         """["Own icon",null,null,null,null,"https://x.io/a.png",{"icon":"/own.png"}]""",
         """["None",null,null,null,null,null,{"color":"red","largeIcon":"https://x.io/l.png"}]""",
         """["forum","https://x.io/p.png"]""")
+    }
+    "title a conversation's message with its sender and the conversation, and hand the window its keys" in {
+      val out = Files.createTempDirectory("webapp-conversation").toFile
+      Files.write(new File(out, "sw.js").toPath, worker.getBytes(UTF_8))
+      Files.write(new File(out, "harness.js").toPath,
+        """const handlers = {};
+          |const log = [];
+          |let windows = [];
+          |global.self = {
+          |  addEventListener: (kind, f) => { handlers[kind] = f; },
+          |  location: { origin: 'https://app.test' },
+          |  registration: { scope: 'https://app.test/', getNotifications: () => Promise.resolve([]),
+          |    showNotification: (title, options) => { log.push(JSON.stringify([title, options.body, options.icon || null,
+          |      options.data.conversationId, options.data.isGroup, options.data.data])); return Promise.resolve(); } },
+          |  clients: { matchAll: () => Promise.resolve(windows), claim: () => Promise.resolve() }
+          |};
+          |global.caches = { open: () => Promise.resolve({ add: () => Promise.resolve() }), keys: () => Promise.resolve([]) };
+          |require('./sw.js');
+          |const push = payload => new Promise(done => {
+          |  const waits = [];
+          |  handlers.push({ data: { json: () => payload }, waitUntil: p => waits.push(p) });
+          |  Promise.all(waits).then(done);
+          |});
+          |(async () => {
+          |  await push({ title: 'Ann', body: 'Lunch?', conversationId: 'team', conversationTitle: 'Team chat',
+          |    senderName: 'Ann', senderPicture: 'https://x.io/ann.png', isGroup: 'true' });
+          |  await push({ title: 'Bob', body: 'Hi', conversationId: 'bob', conversationTitle: 'Bob',
+          |    conversationPicture: 'https://x.io/bob.png' });
+          |  await push({ title: 'New message', body: 'Hi', conversationId: 'c', senderName: 'Cy' });
+          |  await push({ title: 'Ann', body: 'b', conversationId: 'team', conversationTitle: 'Team chat',
+          |    senderPicture: 'https://x.io/ann.png', noticePicture: 'https://x.io/n.png' });
+          |  await push({ title: 'Plain', body: 'b', senderName: 'Not a conversation', conversationTitle: 'None' });
+          |  windows = [{ focused: true, visibilityState: 'visible', postMessage: d => log.push(JSON.stringify([d.message.title,
+          |    d.message.conversationId, d.message.conversationTitle, d.message.senderName, d.message.senderPicture,
+          |    d.message.conversationPicture, d.message.isGroup])) }];
+          |  await push({ title: 'Ann', body: 'Seen', conversationId: 'team', conversationTitle: 'Team chat', senderName: 'Ann',
+          |    senderPicture: 'https://x.io/ann.png', isGroup: true });
+          |  console.log(log.join('\n'));
+          |})();
+          |""".stripMargin.getBytes(UTF_8))
+      val node = new ProcessBuilder("node", "harness.js").directory(out).redirectErrorStream(true).start()
+      val printed = new String(node.getInputStream.readAllBytes(), UTF_8).trim
+      node.waitFor() shouldBe 0
+      printed.split("\n").toList shouldBe List(
+        """["Ann · Team chat","Lunch?","https://x.io/ann.png","team",true,{}]""",
+        """["Bob","Hi","https://x.io/bob.png","bob",false,{}]""",
+        """["Cy","Hi",null,"c",false,{}]""",
+        """["Ann · Team chat","b","https://x.io/n.png","team",false,{}]""",
+        """["Plain","b",null,null,false,{}]""",
+        """["Ann","team","Team chat","Ann","https://x.io/ann.png",null,true]""")
     }
   }
 }

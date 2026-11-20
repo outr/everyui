@@ -74,12 +74,16 @@ object Notices {
         options.tag = notice.tag
         options.renotify = true
       }
-      if (notice.icon.nonEmpty) options.icon = notice.icon
+      // a conversation's titled with its sender and the conversation, its sender's face its icon where it names none
+      val title = notice.conversation.map(_.heading(notice.title)).filter(_.nonEmpty).getOrElse(notice.title)
+      val icon = if (notice.icon.nonEmpty) notice.icon
+        else notice.conversation.flatMap(c => c.fetchedSender.orElse(c.fetchedPicture)).getOrElse("")
+      if (icon.nonEmpty) options.icon = icon
       registration {
-        case Some(r) => r.showNotification(notice.title, options).asInstanceOf[js.Promise[Any]]
+        case Some(r) => r.showNotification(title, options).asInstanceOf[js.Promise[Any]]
           .`catch`[Any]((e: Any) => Platform.log("notification not shown: " + WebErrors.message(e)))
         case None => try {
-          val shownHere = js.Dynamic.newInstance(window.Notification)(notice.title, options)
+          val shownHere = js.Dynamic.newInstance(window.Notification)(title, options)
           shownHere.onclick = (_: js.Any) => {
             window.focus()
             shownHere.close()

@@ -8,8 +8,8 @@ import android.os.{Build, Bundle, Handler, Looper}
 import everyui.Permission
 import everyui.activity.ServiceRuntime
 import everyui.background.Background
-import everyui.push.{LargeIcon, Push, PushAction, PushAnswer, PushButton, PushChannel, PushFormat, PushMessage,
-  PushToken, ReplyOutcome}
+import everyui.push.{ConversationLine, LargeIcon, Push, PushAction, PushAnswer, PushButton, PushChannel, PushConversation,
+  PushFormat, PushMessage, PushToken, ReplyOutcome}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import scala.jdk.CollectionConverters.*
 
@@ -28,7 +28,8 @@ import scala.jdk.CollectionConverters.*
   * 13 and later ask the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). A posted
   * one has the small icon its "noticeIcon" names (`NoticeIcon`), the colour of its "noticeColor", and as its large icon
   * the picture of its "noticePicture" (`NoticePicture`), else its icon white on a circle of its colour (`LargeIcon`),
-  * where it names them; a group's summary that names no icon looks as the latest of its group. */
+  * where it names them; a group's summary that names no icon looks as the latest of its group. A conversation's message
+  * ("conversationId") is posted as the conversation's, stacked with its recent messages (`ConversationNotices`). */
 object PushAccess {
   /** A notification's button that runs in the background, as `BackgroundReceiver` hears it. */
   val actionIntent = "everyui.push.ACTION"
@@ -115,25 +116,39 @@ object PushAccess {
   /** The notifications shown with `tag` taken away. */
   def close(tag: String): Unit = if (Host.activity != null) withdraw(Host.activity, tag)
 
-  /** The notifications shown with `tag` taken away: `Push.close`, or a message of `{"close": tag}` (`PushService`). */
-  def withdraw(context: Context, tag: String): Unit = manager(context).cancel(tag, tagged)
+  /** The notifications shown with `tag` taken away: `Push.close`, or a message of `{"close": tag}` (`PushService`); a
+    * conversation shown under it, or whose id it is, forgotten too (`ConversationNotices.closed`). */
+  def withdraw(context: Context, tag: String): Unit = {
+    val notify = manager(context)
+    notify.cancel(tag, tagged)
+    ConversationNotices.closed(notify, tag)
+  }
 
   /** `message` posted: as `at` (its tag and id) where it is posted again in its own place, else under its shown tag or
-    * an id of its own; quietly where it is posted again, with `replies` under it (Android's reply history). Off the
-    * main thread where its picture is still to fetch (`NoticePicture`). */
+    * an id of its own; quietly where it is posted again, with `replies` under it (Android's reply history). A
+    * conversation's message (`ConversationNotices`) is posted with the conversation's recent messages, `replies` among
+    * them as the person's own, and itself the newest where it is `own`, a message come in (not one replied to). Off
+    * the main thread where a picture is still to fetch (`NoticePicture`). */
   private def show(context: Context, message: PushMessage, at: Option[(String, Int)] = None,
-                   replies: Vector[String] = Vector.empty): Unit =
-    if (message.fetchedPicture.forall(u => NoticePicture.ready(context, u))) post(context, message, at, replies)
-    else NoticePicture.later("push: notification not posted", () => post(context, message, at, replies))
+                   replies: Vector[String] = Vector.empty, own: Boolean = true): Unit =
+    if (pictures(message).forall(u => NoticePicture.ready(context, u))) post(context, message, at, replies, own)
+    else NoticePicture.later("push: notification not posted", () => post(context, message, at, replies, own))
+
+  /** The pictures `message` shows, to fetch before it is posted. */
+  private def pictures(message: PushMessage): List[String] =
+    message.fetchedPicture.toList ::: message.conversation.toList.flatMap(ConversationNotices.pictures)
 
   private def post(context: Context, sent: PushMessage, at: Option[(String, Int)],
-                   replies: Vector[String]): Unit = {
+                   replies: Vector[String], own: Boolean): Unit = {
     val notify = manager(context)
     val message = kindOf(notify, sent)
     val channel = message.channel.getOrElse(PushChannel.default)
     open(notify, channel)
     val id = (message.title + message.body + message.path.getOrElse("") + System.nanoTime().toString).hashCode
-    val shownAs = at.getOrElse(message.shownTag.map(t => (t, tagged)).getOrElse(("", id)))
+    // a conversation's message stacked with its others (not a summary, which lists its group's)
+    val conversation = message.conversation.filter(_ => ConversationNotices.supported && !message.summary)
+    val shownAs = at.getOrElse(message.shownTag.orElse(conversation.map(c => PushConversation.shortcutId(c.id)))
+      .map(t => (t, tagged)).getOrElse(("", id)))
     val launch = put(launcher(context), message, None)
     message.path.foreach(p => launch.putExtra("path", p))
     val info = context.getApplicationInfo
@@ -146,13 +161,13 @@ object PushAccess {
       .setContentText(if (message.format == PushFormat.Markdown) PushSpans.firstLine(body) else body)
       .setStyle(new Notification.BigTextStyle().bigText(body))
       .setAutoCancel(true)
-      // in place of the one shown with its tag, sounding again only where it says so
-      .setOnlyAlertOnce(at.nonEmpty || (message.shownTag.nonEmpty && !message.renotify))
+      // in place of the one shown with its tag, sounding again only where it says so; a conversation's at each message
+      .setOnlyAlertOnce(at.nonEmpty || (conversation.isEmpty && message.shownTag.nonEmpty && !message.renotify))
       .setContentIntent(PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
     message.noticeColor.foreach(c => builder.setColor(NoticeIcon.argb(c)))
     // its picture, else its icon on a circle of its colour: Android 16 heads each notification with the app's icon,
     // so the large icon is where its kind shows in the shade
-    NoticeIcon.large(context, LargeIcon.of(message)).foreach(b => builder.setLargeIcon(b))
+    if (conversation.isEmpty) NoticeIcon.large(context, LargeIcon.of(message)).foreach(b => builder.setLargeIcon(b))
     // its look kept on it, for a summary of its group posted after it (`kindOf`)
     if (!message.summary && message.noticeIcon.nonEmpty) builder.addExtras(look(message))
     message.group.foreach(g => builder.setGroup(g))
@@ -172,7 +187,14 @@ object PushAccess {
       if (message.group.isEmpty) builder.setGroup("everyui.silent")
       builder.setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY)
     }
-    if (replies.nonEmpty && Build.VERSION.SDK_INT >= 24) builder.setRemoteInputHistory(replies.toArray[CharSequence])
+    conversation.foreach { c =>
+      val now = System.currentTimeMillis()
+      val added = replies.map(r => ConversationLine.reply(r, now)) ++
+        (if (own) Vector(ConversationLine.of(message, now)) else Vector.empty)
+      ConversationNotices.style(context, notify, builder, c, added, shownAs._1, shownAs._2, message.shownTitle,
+        message.path, message.group, message.shownIcon, message.noticeColor)
+    }
+    if (conversation.isEmpty && replies.nonEmpty && Build.VERSION.SDK_INT >= 24) builder.setRemoteInputHistory(replies.toArray[CharSequence])
     // its buttons: one that runs in the background, takes a reply or copies, a broadcast to the BackgroundReceiver
     // where the app has a BackgroundApp, else (and one that opens the app) the app's launch with the button chosen;
     // one that requires an unlock waits for it from Android 12, and before opens the app, which the lock screen guards.
@@ -353,8 +375,10 @@ object PushAccess {
     val at = (Option(intent.getStringExtra("everyui.push.shownTag")).getOrElse(""), intent.getIntExtra("everyui.push.shownId", 0))
     try outcome match {
       case ReplyOutcome.ReplyClosed => dismiss(context, intent)
-      case ReplyOutcome.ReplyShown => show(context, action.message, Some(at), action.text.toVector)
-      case ReplyOutcome.ReplyUpdated(message) => show(context, message, Some(at))
+      case ReplyOutcome.ReplyShown => show(context, action.message, Some(at), action.text.toVector, own = false)
+      // a conversation's with the reply, then the message as its newest
+      case ReplyOutcome.ReplyUpdated(message) =>
+        show(context, message, Some(at), if (message.conversation.nonEmpty) action.text.toVector else Vector.empty)
     }
     catch { case t: Throwable => Platform.logError("push: the notification replied to not updated", t) }
   }

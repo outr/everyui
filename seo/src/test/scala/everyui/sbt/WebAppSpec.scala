@@ -41,7 +41,7 @@ class WebAppSpec extends AnyWordSpec with Matchers {
     "answer pushes, taps and renewed subscriptions in the worker" in {
       val worker = read(new File(out, "sw.js"))
       worker should include("addEventListener('push'")
-      worker should include("showNotification(plain(message.title)")
+      worker should include("showNotification(title, options)")
       worker should include("everyui: 'push'")
       worker should include("addEventListener('notificationclick'")
       worker should include("openWindow(url.href)")

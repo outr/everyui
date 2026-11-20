@@ -1,7 +1,8 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushFormat, PushMessage, PushToken}
+import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushConversation, PushFormat, PushMessage,
+  PushToken}
 import org.scalajs.dom
 
 import scala.scalajs.js
@@ -161,6 +162,9 @@ object PushAccess {
     PushMessage(text(m.title), text(m.body), some(m.path), some(m.tag), (m.renotify: Any) == true, buttons, data,
       some(m.group), (m.summary: Any) == true, lines, (m.silent: Any) == true, format = PushFormat.named(text(m.format)),
       noticeIcon = some(m.noticeIcon), noticeColor = PushMessage.colorOf(text(m.noticeColor)),
-      noticePicture = some(m.noticePicture))
+      noticePicture = some(m.noticePicture), conversation = PushConversation.of(Map(
+        "conversationId" -> text(m.conversationId), "conversationTitle" -> text(m.conversationTitle),
+        "conversationPicture" -> text(m.conversationPicture), "senderName" -> text(m.senderName),
+        "senderPicture" -> text(m.senderPicture), "isGroup" -> (if ((m.isGroup: Any) == true) "true" else ""))))
   }
 }

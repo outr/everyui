@@ -20,7 +20,7 @@ class WordsSpec extends FxSpec {
   /** The families of words that were English alone until they were given to Words, and how many each has. */
   private val families = List("chat." -> 57, "composer." -> 14, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
     "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4, "call." -> 26,
-    "push." -> 1)
+    "push." -> 2)
 
   /** The names of a message's arguments: `{n}`, `{n, plural, …}`, not a plural's own branches. */
   private def arguments(message: String): Set[String] = "\\{(\\w+)[,}]".r.findAllMatchIn(message).map(_.group(1)).toSet

@@ -4440,8 +4440,8 @@ So the person tells mail from a conversation from an error at a glance, a push n
   colour, and in an open stack show a child's large icon in place of its small icon where both its small icon and
   its colour are its summary's; so the small icon is a PNG's bytes, which Android tells the same as another's. A
   closed stack on Android 16 shows the app's icon over its newest lines, which nothing an app sets changes short of
-  a conversation (MessagingStyle with a sharing shortcut and a person, whose face heads it), which EveryUI does not
-  post.
+  a conversation (MessagingStyle with a sharing shortcut and a person, whose face heads it): a push that names a
+  `conversationId` is posted as one (below).
 - A group's summary (`groupSummary`) that names no `noticeIcon` takes the icon of the latest of its group, and its
   colour where it names none (`PushMessage.lookingAs`): the last posted in the app's process, else the newest Android
   still shows. So a server that groups by kind (`"group": "app:mail"`) need not name the icon on the summary.
@@ -4459,6 +4459,62 @@ ones name an icon and a colour in code:
   its own (the service worker sets no other). All three reach the window as `PushMessage`'s fields. The worker draws
   no glyph circle: it has no Material Icons face of its own to draw with, and a browser shows the site's icon where
   there is none.
+- **Apple, desktop, Roku, Apple TV**: no push; the fields are read as anywhere.
+
+### Conversations (`conversationId`, `PushConversation`)
+
+A message from a person is posted as a conversation's, which Android 11 and later file under Conversations at the top
+of the shade, headed by the sender's face rather than the app's icon (on Android 16 the only notification an app's
+icon does not head), with the conversation's recent messages stacked in it:
+
+```json
+{"title": "Ann", "body": "Lunch on Friday?", "path": "/chats/team", "tag": "chat:team",
+ "conversationId": "team", "conversationTitle": "Team chat", "conversationPicture": "https://x.io/team.png",
+ "senderName": "Ann", "senderPicture": "https://x.io/ann.png", "isGroup": "true",
+ "noticeIcon": "forum", "noticeColor": "#43A047"}
+```
+
+- `conversationId` is the app's own stable id for the conversation, and makes the push a conversation's message;
+  without it the other keys are read as nothing. `conversationTitle` is its name (a group's; a one-to-one
+  conversation's is the person's), `conversationPicture` its picture (an http(s) URL), `senderName` and
+  `senderPicture` who sent this message and their face (an http(s) URL), and `isGroup` (`"true"`) says it has several
+  people. `PushMessage.conversation` is a `PushConversation` of them, written back with the push's other keys
+  (`fields`), and `Notice(..., conversation = Some(PushConversation(...)))` shows one from the app itself.
+- **Android**: posted in `Notification.MessagingStyle`, the person using the device its "me" (`Words.you`) and each
+  message's sender a person, their picture fetched as `noticePicture` is (5 seconds, 2 MB, the last few kept), else
+  the push's `noticeIcon` on a circle of its `noticeColor`, else their initial on one (`LargeIcon.person`).
+  `conversationTitle` titles a group (`setConversationTitle`, `setGroupConversation`). From Android 11 a long-lived
+  dynamic sharing shortcut (`ShortcutManager.pushDynamicShortcut`, `everyui.conversation:<id>`, category
+  `android.shortcut.conversation`) names it, with its title, its picture (a one-to-one conversation's, the sender's),
+  the sender as its person, and the push's path to open the app at; the notification names it (`setShortcutId`,
+  `setLocusId`). Where the app has as many shortcuts as Android allows (`getMaxShortcutCountPerActivity`), the
+  conversations' least recently pushed make room; the app's other shortcuts are left alone. The framework's classes,
+  as the rest of the app's notifications are built: androidx.core is among `EveryUILibraries.android`, but its
+  `NotificationCompat.MessagingStyle` wants its own builder, and conversations are Android 11's, where the framework
+  has them all. Android 7 to 8.1 show the style with names but no faces, Android 9 and 10 with faces but outside a
+  Conversations section; before Android 7 a conversation's push is shown as any other.
+- **Stacking**: a conversation's next message is posted in its place with the messages before it, the newest last,
+  ten at most (`ConversationStore`), under its `tag` (one tag per conversation is best; a message under another tag
+  takes the conversation over from the first), else under `everyui.conversation:<id>`. Each sounds as it comes:
+  `renotify` is not needed. The messages are kept in the app's process and on the notification itself, so a process
+  started for the next push rebuilds them; one the person no longer sees (read, swiped away) starts again from the
+  next message. A summary (`groupSummary`) is never a conversation's. Where the push names no `group`, the conversation
+  is in a group of its own (`everyui.conversation:<id>`, with no summary): Android 7 to 15 bundle an app's fourth
+  notification with no group under the app with the others, conversations among them and out of their section.
+- **Closing**: `{"close": tag}` or `Push.close(tag)` takes it away and forgets its messages, by the tag it is shown
+  under or by its `conversationId`. The shortcut stays, as a messaging app's does (the person's settings for the
+  conversation are kept by it).
+- **Replies**: a reply typed into it (`PushButton.input`, `onPushReply`) is added as the person's own message
+  (sender "me"), as Android expects of a conversation, rather than as reply history: `ReplyShown` posts it so,
+  `ReplyUpdated(message)` posts the reply and then `message` as the newest, and `ReplyClosed` takes it away.
+- **Bubbles**: allowed, never asked for: EveryUI sets no `BubbleMetadata`, so a conversation bubbles only where the
+  person bubbles it from the shade. An app that wants bubbles needs an activity that can be embedded (resizeable,
+  `allowEmbedded`) for the bubble to show, which EveryUI's single activity is not yet; it is left for an app that
+  asks.
+- **Web**: a browser has no conversations. The notification is titled with the sender and the conversation,
+  "Ann · Team chat" (the sender alone in a one-to-one conversation; `PushConversation.heading`), its icon the
+  sender's face, else the conversation's, where the push names neither `icon` nor `noticePicture`; the keys reach
+  the window with the rest (`PushMessage.conversation`).
 - **Apple, desktop, Roku, Apple TV**: no push; the fields are read as anywhere.
 
 ### Data pushes (`dataOnly`, `BackgroundApp.onPush`, `Push.data`)
