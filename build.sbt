@@ -651,6 +651,8 @@ lazy val android = (project in file("android"))
     // reactify compiled here rather than through `reactive`, so its lazy vals are the legacy kind too
     Compile / sourceGenerators += reactifySources.taskValue,
     name := "everyui-android-example",   // the example app; everyui-android is the published backend
+    // what runs on the JVM with no Android under it (MotionPacerSpec)
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
     publish / skip := true,
     Compile / unmanagedSourceDirectories ++= backendSources("android", spice = true),
     Compile / unmanagedSourceDirectories += (file("app") / "android" / "src" / "main" / "scala").getAbsoluteFile,   // the example's activity

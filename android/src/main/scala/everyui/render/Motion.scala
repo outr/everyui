@@ -24,7 +24,8 @@ import android.view.{Choreographer, View, ViewGroup, ViewTreeObserver}
   * breathing, kept a 120 Hz phone drawing 120 frames a second, 13% of its main thread, all day. A breath or a turn reads
   * the same at 30. Android cannot run them on its RenderThread for an app (the animator that does is hidden, and
   * refused). Android 15 on is also told the view wants a low frame rate (`setRequestedFrameRate`), so a display that
-  * can slow down for it does. While the app is away (another in front, the screen off) nothing is stepped.
+  * can slow down for it does. While the app is away (another in front, the screen off) nothing is stepped, and a frame
+  * asked for that never comes (away, or its surface made again) is asked again rather than waited on (MotionPacer).
   *
   * A box shown or hidden (`RenderNode.setVisible`) looks again at the motions in a window (`Motion.visibilityChanged`),
   * which are few; and a running or waiting motion looks again at whether it is in sight before a frame is drawn after
@@ -183,33 +184,26 @@ object Motion {
     java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Motion, java.lang.Boolean])
   // bumped as anything moves or is laid out: a motion looks again at whether it is in sight before the next frame
   private var generation = 0L
-  // whether the next step is asked for
-  private var stepping = false
   private val box = new RectF
-  // away (another app in front, the screen off) nothing is stepped, as Android 14 on pauses an endless animator: the
-  // steps go on as the app comes back
-  private var away = false
-  Platform.onAway(() => away = true)
-  Platform.onResume(() => {
-    away = false
-    step()
-  })
   private lazy val handler = new android.os.Handler(android.os.Looper.getMainLooper)
-  // the first frame after the gap, asked for once the gap is over
-  private val ask: Runnable = () => Choreographer.getInstance.postFrameCallback(stepper)
-  private val stepper: Choreographer.FrameCallback = now => {
-    stepping = false
-    if (!live.isEmpty) {
-      live.toArray(new Array[Motion](0)).foreach(_.step(now))
-      step()
-    }
-  }
+  private val stepper: Choreographer.FrameCallback = now => pacer.framed(now)
+  /** When the running motions are stepped (MotionPacer): a frame not come 250 ms after it was due is asked again. */
+  private lazy val pacer = new MotionPacer(gapMillis, 250L, (r, ms) => handler.postDelayed(r, ms),
+    r => handler.removeCallbacks(r), () => Choreographer.getInstance.postFrameCallback(stepper),
+    () => Choreographer.getInstance.removeFrameCallback(stepper), () => !live.isEmpty,
+    now => live.toArray(new Array[Motion](0)).foreach(_.step(now)))
+  // away (another app in front, the screen off) nothing is stepped, as Android 14 on pauses an endless animator, and
+  // nothing asked is left waiting: the steps are asked afresh as the app comes back, and each motion set looks again
+  // before the next frame at whether it can be seen (one stopped as its window was hidden, a pre-draw going out as the
+  // app went, waited on a move to look again)
+  Platform.onAway(() => pacer.away())
+  Platform.onResume(() => {
+    pacer.back()
+    moved()
+  })
 
   /** The next step of the running motions asked for, `gapMillis` on, unless it already is. */
-  private def step(): Unit = if (!stepping && !away && !live.isEmpty) {
-    stepping = true
-    handler.postDelayed(ask, gapMillis)
-  }
+  private def step(): Unit = pacer.ask()
 
   /** Something moved (a node placed again, a scroll) or was laid out: each motion set looks again, before the next
     * frame, at whether it is in sight. */
