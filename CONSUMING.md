@@ -938,6 +938,28 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
 - `Toast.show(words, seconds, top, margin)`: one short message at a time. Each one's words pass through
   `Toast.shown` (a `Channel[String]`) as it shows, for the app to keep: `RemoteLog.install(toasts = true)` sends them
   to the server's log as warnings ("toast: ..."), so a message gone in seconds can still be read.
+  Where toasts go is the app's to say once, not each call's: `Toast.placement` (a `Var[ToastPlacement]`,
+  `ToastPlacement.Bottom` by default, or `ToastPlacement.Top`, or `ToastPlacement(top, margin)`) is what `show` uses
+  when its own `top` and `margin` are not given. `Toast.topInset` is how far down a top toast starts at least: bind it
+  to the app's header (`Toast.topInset := header.size.height()`); the system's bars and a camera's cutout are already
+  outside the screen the app is laid out in (`Platform.safeArea`), so it is only what the app puts there.
+  `Toast.keepClear(component)` keeps toasts clear of a component while it is on the screen (shown, in a container
+  under `ui`): a bottom toast rises above it and a top toast sits below it, `Toast.clearance` (8) away, following its
+  size and place as they change (a composer growing a line). Whether it counts at the head or the foot is where its
+  middle is; of several at the foot a toast clears the highest, and of several at the head the lowest. It ends as the
+  component is taken apart (`dispose`), or by the function `keepClear` returns. A tap on a toast closes it, and so does
+  a swipe toward its edge (down at the foot, up at the head); a screen reader activates it to close it. A toast with an
+  action keeps a tap for its button, still closes on a swipe, and has a close button after the action (where a
+  pointer or a finger is used, not on a television). A toast never takes the focus, and on a television nothing
+  changes unless the app sets a placement.
+
+  ```scala
+  Toast.placement @= ToastPlacement.Top          // every toast at the head, under the header
+  Toast.topInset := header.size.height()
+  Toast.keepClear(composer)                      // and above the composer, while it shows
+  Toast.show("Copied")                           // where the app said
+  Toast.show("Archived", action = Some("Undo" -> (() => unarchive(thread))))
+  ```
 - `AsyncPress(spin, minSpin = 0.5)`: a press that runs slow work, with a delayed spinner, and failures toasted. The
   spinner (`spin(true)`, the app's own: a button swapped for a `Spinner`, say) shows only once the work has run
   `AsyncPress.spinAfter` (0.4 s), so quick work looks instant, and once shown stays at least `minSpin` seconds (Material's
