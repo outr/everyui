@@ -4441,7 +4441,7 @@ So the person tells mail from a conversation from an error at a glance, a push n
   its colour are its summary's; so the small icon is a PNG's bytes, which Android tells the same as another's. A
   closed stack on Android 16 shows the app's icon over its newest lines, which nothing an app sets changes short of
   a conversation (MessagingStyle with a sharing shortcut and a person, whose face heads it): a push that names a
-  `conversationId` is posted as one (below).
+  `noticeConversation` is posted as one (below).
 - A group's summary (`groupSummary`) that names no `noticeIcon` takes the icon of the latest of its group, and its
   colour where it names none (`PushMessage.lookingAs`): the last posted in the app's process, else the newest Android
   still shows. So a server that groups by kind (`"group": "app:mail"`) need not name the icon on the summary.
@@ -4461,7 +4461,7 @@ ones name an icon and a colour in code:
   there is none.
 - **Apple, desktop, Roku, Apple TV**: no push; the fields are read as anywhere.
 
-### Conversations (`conversationId`, `PushConversation`)
+### Conversations (`noticeConversation`, `PushConversation`)
 
 A message from a person is posted as a conversation's, which Android 11 and later file under Conversations at the top
 of the shade, headed by the sender's face rather than the app's icon (on Android 16 the only notification an app's
@@ -4469,22 +4469,27 @@ icon does not head), with the conversation's recent messages stacked in it:
 
 ```json
 {"title": "Ann", "body": "Lunch on Friday?", "path": "/chats/team", "tag": "chat:team",
- "conversationId": "team", "conversationTitle": "Team chat", "conversationPicture": "https://x.io/team.png",
- "senderName": "Ann", "senderPicture": "https://x.io/ann.png", "isGroup": "true",
+ "noticeConversation": "team", "noticeConversationTitle": "Team chat",
+ "noticeConversationPicture": "https://x.io/team.png",
+ "noticeSenderName": "Ann", "noticeSenderPicture": "https://x.io/ann.png", "noticeIsGroup": "true",
  "noticeIcon": "forum", "noticeColor": "#43A047"}
 ```
 
-- `conversationId` is the app's own stable id for the conversation, and makes the push a conversation's message;
-  without it the other keys are read as nothing. `conversationTitle` is its name (a group's; a one-to-one
-  conversation's is the person's), `conversationPicture` its picture (an http(s) URL), `senderName` and
-  `senderPicture` who sent this message and their face (an http(s) URL), and `isGroup` (`"true"`) says it has several
-  people. `PushMessage.conversation` is a `PushConversation` of them, written back with the push's other keys
-  (`fields`), and `Notice(..., conversation = Some(PushConversation(...)))` shows one from the app itself.
+- `noticeConversation` is the app's own stable id for the conversation, and makes the push a conversation's
+  message; without it the other keys are read as nothing. `noticeConversationTitle` is its name (a group's; a
+  one-to-one conversation's is the person's), `noticeConversationPicture` its picture (an http(s) URL),
+  `noticeSenderName` and `noticeSenderPicture` who sent this message and their face (an http(s) URL), and
+  `noticeIsGroup` (`"true"`) says it has several people. They take the `notice` prefix of `noticeIcon` and its
+  kin so an app's own data is never read as one: a plain `conversationId`, `senderName` or `isGroup` (Voidcraft
+  sends `conversationId` with approvals and quick replies, to open them on a tap) is the push's `data`, as before,
+  and makes nothing a conversation. `PushMessage.conversation` is a `PushConversation` of them, written back with the
+  push's other keys (`fields`), and `Notice(..., conversation = Some(PushConversation(...)))` shows one from the
+  app itself.
 - **Android**: posted in `Notification.MessagingStyle`, the person using the device its "me" (`Words.you`) and each
   message's sender a person, their picture fetched as `noticePicture` is (5 seconds, 2 MB, the last few kept), else
   the push's `noticeIcon` on a circle of its `noticeColor`, else their initial on one (`LargeIcon.person`).
-  `conversationTitle` titles a group (`setConversationTitle`, `setGroupConversation`). From Android 11 a long-lived
-  dynamic sharing shortcut (`ShortcutManager.pushDynamicShortcut`, `everyui.conversation:<id>`, category
+  `noticeConversationTitle` titles a group (`setConversationTitle`, `setGroupConversation`). From Android 11 a
+  long-lived dynamic sharing shortcut (`ShortcutManager.pushDynamicShortcut`, `everyui.conversation:<id>`, category
   `android.shortcut.conversation`) names it, with its title, its picture (a one-to-one conversation's, the sender's),
   the sender as its person, and the push's path to open the app at; the notification names it (`setShortcutId`,
   `setLocusId`). Where the app has as many shortcuts as Android allows (`getMaxShortcutCountPerActivity`), the
@@ -4502,7 +4507,7 @@ icon does not head), with the conversation's recent messages stacked in it:
   is in a group of its own (`everyui.conversation:<id>`, with no summary): Android 7 to 15 bundle an app's fourth
   notification with no group under the app with the others, conversations among them and out of their section.
 - **Closing**: `{"close": tag}` or `Push.close(tag)` takes it away and forgets its messages, by the tag it is shown
-  under or by its `conversationId`. The shortcut stays, as a messaging app's does (the person's settings for the
+  under or by its `noticeConversation`. The shortcut stays, as a messaging app's does (the person's settings for the
   conversation are kept by it).
 - **Replies**: a reply typed into it (`PushButton.input`, `onPushReply`) is added as the person's own message
   (sender "me"), as Android expects of a conversation, rather than as reply history: `ReplyShown` posts it so,

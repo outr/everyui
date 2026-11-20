@@ -28,8 +28,9 @@ import scala.jdk.CollectionConverters.*
   * 13 and later ask the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). A posted
   * one has the small icon its "noticeIcon" names (`NoticeIcon`), the colour of its "noticeColor", and as its large icon
   * the picture of its "noticePicture" (`NoticePicture`), else its icon white on a circle of its colour (`LargeIcon`),
-  * where it names them; a group's summary that names no icon looks as the latest of its group. A conversation's message
-  * ("conversationId") is posted as the conversation's, stacked with its recent messages (`ConversationNotices`). */
+  * where it names them; a group's summary that names no icon looks as the latest of its group. A conversation's
+  * message ("noticeConversation") is posted as the conversation's, stacked with its recent messages
+  * (`ConversationNotices`). */
 object PushAccess {
   /** A notification's button that runs in the background, as `BackgroundReceiver` hears it. */
   val actionIntent = "everyui.push.ACTION"

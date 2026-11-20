@@ -20,8 +20,8 @@ import reactify.*
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
   * ExampleBackground with the app closed (Approve once the device is unlocked) and are heard by Push.acted with it
   * running; an agent's answer in Markdown, styled; kinds of push told apart by their icon, colour and picture
-  * (noticeIcon, noticeColor, noticePicture), alone and stacked by kind; three conversations (conversationId), one a group, with
-  * a mail among them, and closed by tag and by id; and mail for three accounts (Push.deliver),
+  * (noticeIcon, noticeColor, noticePicture), alone and stacked by kind; three conversations (noticeConversation),
+  * one a group, with a mail among them, and closed by tag and by id; and mail for three accounts (Push.deliver),
   * each message stacked under its account's summary on its account's channel, with a Reply typed into it; three
   * channels declared up front (Push.channels) at low, default and high importance, three more made by pushes asking
   * each (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
@@ -285,18 +285,20 @@ class BackgroundScreen extends UIScreen {
     val at = Platform.launchArg("pictures")
     val picture = (name: String) => if (at.isEmpty) "" else at + name + ".png"
     val team = (sender: String, body: String) => Map("title" -> sender, "body" -> body, "tag" -> "example:team",
-      "conversationId" -> "example:team", "conversationTitle" -> "Team chat", "conversationPicture" -> picture("team"),
-      "senderName" -> sender, "senderPicture" -> picture(sender.toLowerCase), "isGroup" -> "true",
+      "noticeConversation" -> "example:team", "noticeConversationTitle" -> "Team chat",
+      "noticeConversationPicture" -> picture("team"), "noticeSenderName" -> sender,
+      "noticeSenderPicture" -> picture(sender.toLowerCase), "noticeIsGroup" -> "true",
       "noticeIcon" -> "forum", "noticeColor" -> "#43A047")
-    val cy = (body: String) => Map("title" -> "Cy", "body" -> body, "conversationId" -> "example:cy",
-      "conversationTitle" -> "Cy", "senderName" -> "Cy", "senderPicture" -> picture("cy"), "noticeIcon" -> "chat",
-      "noticeColor" -> "#1E88E5", "actions" -> PushButton.json(Vector(PushButton("reply", "Reply", input = true,
-        hint = "Reply to Cy"))))
+    // (its plain "conversationId" the app's own data, as Voidcraft sends one to open it on a tap: no conversation)
+    val cy = (body: String) => Map("title" -> "Cy", "body" -> body, "noticeConversation" -> "example:cy",
+      "noticeConversationTitle" -> "Cy", "noticeSenderName" -> "Cy", "noticeSenderPicture" -> picture("cy"),
+      "conversationId" -> "cy-42", "noticeIcon" -> "chat", "noticeColor" -> "#1E88E5",
+      "actions" -> PushButton.json(Vector(PushButton("reply", "Reply", input = true, hint = "Reply to Cy"))))
     val pushes = Vector(team("Ann", "Lunch on Friday?"), cy("Are you coming tonight?"), team("Bob", "I'm in"),
       Map("title" -> "Ann", "body" -> "The draft, attached", "noticeIcon" -> "mail", "noticeColor" -> "#1E88E5",
         "tag" -> "example:mail"),
       cy("Bring the cake"), team("Ann", "12:30 then"),
-      Map("title" -> "Dee", "body" -> "Call me", "conversationId" -> "example:dee", "senderName" -> "Dee",
+      Map("title" -> "Dee", "body" -> "Call me", "noticeConversation" -> "example:dee", "noticeSenderName" -> "Dee",
         "noticeColor" -> "#8E24AA"))
     pushed @= "Three conversations and a mail, from 3 s on: leave the app"
     pushes.zipWithIndex.foreach { (p, i) =>

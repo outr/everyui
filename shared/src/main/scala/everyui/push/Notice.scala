@@ -10,7 +10,7 @@ import everyui.font.MaterialIcon
   * the page is hidden or another window has the focus, on Android while the app is not in front. `noticeIcon` is the
   * Material icon Android draws its small icon from, and its large icon on a circle of `noticeColor` (`LargeIcon`), as
   * a push's "noticeIcon" and "noticeColor" are, the app's `everyui_notice` and no large icon where it has none.
-  * `conversation` makes it a message of a conversation, as a push's "conversationId" does (`PushConversation`): on
+  * `conversation` makes it a message of a conversation, as a push's "noticeConversation" does (`PushConversation`): on
   * Android stacked with the conversation's others and headed by the sender's face, on the web titled with the sender
   * and the conversation (`PushConversation.heading`). */
 case class Notice(title: String, body: String = "", tag: String = "", icon: String = "", onlyWhenHidden: Boolean = true,

@@ -163,8 +163,11 @@ object PushAccess {
       some(m.group), (m.summary: Any) == true, lines, (m.silent: Any) == true, format = PushFormat.named(text(m.format)),
       noticeIcon = some(m.noticeIcon), noticeColor = PushMessage.colorOf(text(m.noticeColor)),
       noticePicture = some(m.noticePicture), conversation = PushConversation.of(Map(
-        "conversationId" -> text(m.conversationId), "conversationTitle" -> text(m.conversationTitle),
-        "conversationPicture" -> text(m.conversationPicture), "senderName" -> text(m.senderName),
-        "senderPicture" -> text(m.senderPicture), "isGroup" -> (if ((m.isGroup: Any) == true) "true" else ""))))
+        "noticeConversation" -> text(m.noticeConversation),
+        "noticeConversationTitle" -> text(m.noticeConversationTitle),
+        "noticeConversationPicture" -> text(m.noticeConversationPicture),
+        "noticeSenderName" -> text(m.noticeSenderName),
+        "noticeSenderPicture" -> text(m.noticeSenderPicture),
+        "noticeIsGroup" -> (if ((m.noticeIsGroup: Any) == true) "true" else ""))))
   }
 }

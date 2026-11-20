@@ -13,16 +13,17 @@ import everyui.i18n.Words
 import everyui.push.{ConversationLine, ConversationStore, LargeIcon, PushConversation}
 import scala.jdk.CollectionConverters.*
 
-/** A notification posted as a conversation's (`PushConversation`: a push's "conversationId", a `Notice`'s
+/** A notification posted as a conversation's (`PushConversation`: a push's "noticeConversation", a `Notice`'s
   * `conversation`): MessagingStyle, the person using the device as its "me" and each message's sender as a person with
-  * their face (`senderPicture`, fetched as a push's picture is: `NoticePicture`), else the notice's icon on a circle of
-  * its colour, else their initial on one (`LargeIcon.person`); and on Android 11 and later a long-lived dynamic sharing
-  * shortcut for the conversation, named on it with its locus, which is what Android files under Conversations and heads
-  * with the sender's face rather than the app's icon. Its recent messages stack in it, the newest last
-  * (`ConversationStore`), kept in the process and on the notification, rebuilt from it in a new process; one the person
-  * no longer sees starts again. Android 7 to 8.1 show the style without people's faces; before Android 7, a push
-  * stays as it is. The framework's own classes, as the rest of the app's notifications are built: androidx.core's
-  * NotificationCompat would want its own builder, and conversations are Android 11's, where the framework has them. */
+  * their face ("noticeSenderPicture", fetched as a push's picture is: `NoticePicture`), else the notice's icon on a
+  * circle of its colour, else their initial on one (`LargeIcon.person`); and on Android 11 and later a long-lived
+  * dynamic sharing shortcut for the conversation, named on it with its locus, which is what Android files under
+  * Conversations and heads with the sender's face rather than the app's icon. Its recent messages stack in it, the
+  * newest last (`ConversationStore`), kept in the process and on the notification, rebuilt from it in a new process;
+  * one the person no longer sees starts again. Android 7 to 8.1 show the style without people's faces; before
+  * Android 7, a push stays as it is. The framework's own classes, as the rest of the app's notifications are built:
+  * androidx.core's NotificationCompat would want its own builder, and conversations are Android 11's, where the
+  * framework has them. */
 private[render] object ConversationNotices {
   private val idExtra = "everyui.push.conversationId"
   private val linesExtra = "everyui.push.conversationLines"

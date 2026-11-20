@@ -38,8 +38,8 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("at.searchParams.set('everyui-push', JSON.stringify(message));")
     }
     "hand a data push to a window of the app, in sight or not, and show nothing" in {
-      worker should include("'channelImportance', 'format',\n  'noticeIcon', 'noticeColor', 'noticePicture', 'conversationId',")
-      worker should include("'senderName', 'senderPicture', 'isGroup', 'dataOnly'];")
+      worker should include("'channelImportance', 'format',\n  'noticeIcon', 'noticeColor', 'noticePicture', 'noticeConversation',")
+      worker should include("'noticeSenderName', 'noticeSenderPicture', 'noticeIsGroup', 'dataOnly'];")
       worker should include("if (yes(m.dataOnly) || (!m.title && !m.body && (!m.close || Object.keys(sent).length)))")
       worker should include("if (to) tell(to, { everyui: 'data', data: sent });")
       val out = Files.createTempDirectory("webapp-data").toFile
@@ -144,7 +144,7 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
       worker should include("const pushText = markdown => {")
       worker should include("format: String(m.format || '').trim().toLowerCase() === 'markdown' ? 'markdown' : 'plain',")
       worker should include("const plain = t => message.format === 'markdown' ? pushText(t) : t;")
-      worker should include("const title = !message.conversationId ? plain(message.title)")
+      worker should include("const title = !message.noticeConversation ? plain(message.title)")
       worker should include("return self.registration.showNotification(title, options);")
       val out = Files.createTempDirectory("webapp-markdown").toFile
       Files.write(new File(out, "sw.js").toPath, worker.getBytes(UTF_8))
@@ -237,7 +237,7 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
           |  location: { origin: 'https://app.test' },
           |  registration: { scope: 'https://app.test/', getNotifications: () => Promise.resolve([]),
           |    showNotification: (title, options) => { log.push(JSON.stringify([title, options.body, options.icon || null,
-          |      options.data.conversationId, options.data.isGroup, options.data.data])); return Promise.resolve(); } },
+          |      options.data.noticeConversation, options.data.noticeIsGroup, options.data.data])); return Promise.resolve(); } },
           |  clients: { matchAll: () => Promise.resolve(windows), claim: () => Promise.resolve() }
           |};
           |global.caches = { open: () => Promise.resolve({ add: () => Promise.resolve() }), keys: () => Promise.resolve([]) };
@@ -248,19 +248,21 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
           |  Promise.all(waits).then(done);
           |});
           |(async () => {
-          |  await push({ title: 'Ann', body: 'Lunch?', conversationId: 'team', conversationTitle: 'Team chat',
-          |    senderName: 'Ann', senderPicture: 'https://x.io/ann.png', isGroup: 'true' });
-          |  await push({ title: 'Bob', body: 'Hi', conversationId: 'bob', conversationTitle: 'Bob',
-          |    conversationPicture: 'https://x.io/bob.png' });
-          |  await push({ title: 'New message', body: 'Hi', conversationId: 'c', senderName: 'Cy' });
-          |  await push({ title: 'Ann', body: 'b', conversationId: 'team', conversationTitle: 'Team chat',
-          |    senderPicture: 'https://x.io/ann.png', noticePicture: 'https://x.io/n.png' });
+          |  await push({ title: 'Ann', body: 'Lunch?', noticeConversation: 'team', noticeConversationTitle: 'Team chat',
+          |    noticeSenderName: 'Ann', noticeSenderPicture: 'https://x.io/ann.png', noticeIsGroup: 'true' });
+          |  await push({ title: 'Bob', body: 'Hi', noticeConversation: 'bob', noticeConversationTitle: 'Bob',
+          |    noticeConversationPicture: 'https://x.io/bob.png' });
+          |  await push({ title: 'New message', body: 'Hi', noticeConversation: 'c', noticeSenderName: 'Cy' });
+          |  await push({ title: 'Ann', body: 'b', noticeConversation: 'team', noticeConversationTitle: 'Team chat',
+          |    noticeSenderPicture: 'https://x.io/ann.png', noticePicture: 'https://x.io/n.png' });
+          |  // the plain names an app sends in its data (Voidcraft's conversationId) are its data, no conversation
           |  await push({ title: 'Plain', body: 'b', senderName: 'Not a conversation', conversationTitle: 'None' });
+          |  await push({ title: 'Approve?', body: 'b', conversationId: 'c42', senderPicture: 'https://x.io/s.png', isGroup: 'true' });
           |  windows = [{ focused: true, visibilityState: 'visible', postMessage: d => log.push(JSON.stringify([d.message.title,
-          |    d.message.conversationId, d.message.conversationTitle, d.message.senderName, d.message.senderPicture,
-          |    d.message.conversationPicture, d.message.isGroup])) }];
-          |  await push({ title: 'Ann', body: 'Seen', conversationId: 'team', conversationTitle: 'Team chat', senderName: 'Ann',
-          |    senderPicture: 'https://x.io/ann.png', isGroup: true });
+          |    d.message.noticeConversation, d.message.noticeConversationTitle, d.message.noticeSenderName, d.message.noticeSenderPicture,
+          |    d.message.noticeConversationPicture, d.message.noticeIsGroup])) }];
+          |  await push({ title: 'Ann', body: 'Seen', noticeConversation: 'team', noticeConversationTitle: 'Team chat', noticeSenderName: 'Ann',
+          |    noticeSenderPicture: 'https://x.io/ann.png', noticeIsGroup: true });
           |  console.log(log.join('\n'));
           |})();
           |""".stripMargin.getBytes(UTF_8))
@@ -272,7 +274,8 @@ class WebAppActionsSpec extends AnyWordSpec with Matchers {
         """["Bob","Hi","https://x.io/bob.png","bob",false,{}]""",
         """["Cy","Hi",null,"c",false,{}]""",
         """["Ann · Team chat","b","https://x.io/n.png","team",false,{}]""",
-        """["Plain","b",null,null,false,{}]""",
+        """["Plain","b",null,null,false,{"senderName":"Not a conversation","conversationTitle":"None"}]""",
+        """["Approve?","b",null,null,false,{"conversationId":"c42","senderPicture":"https://x.io/s.png","isGroup":"true"}]""",
         """["Ann","team","Team chat","Ann","https://x.io/ann.png",null,true]""")
     }
   }

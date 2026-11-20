@@ -43,9 +43,11 @@ import everyui.font.MaterialIcon
   * icon looks as the latest of its group (`lookingAs`). A plain "icon", "color" or "largeIcon" is the app's own data,
   * unread.
   *
-  * `conversation` makes it a message of a conversation (`PushConversation`: "conversationId", "conversationTitle",
-  * "conversationPicture", "senderName", "senderPicture", "isGroup"), which Android posts as a conversation, headed by
-  * the sender's face and stacked with the conversation's other messages, and a browser titles "Sender · Conversation".
+  * `conversation` makes it a message of a conversation (`PushConversation`: "noticeConversation",
+  * "noticeConversationTitle", "noticeConversationPicture", "noticeSenderName", "noticeSenderPicture", "noticeIsGroup"),
+  * which Android posts as a conversation, headed by the sender's face and stacked with the conversation's other
+  * messages, and a browser titles "Sender · Conversation". A plain "conversationId", "senderName" or "isGroup" is the
+  * app's own data, unread.
   *
   * A push with neither title nor body, or with `"dataOnly": "true"`, is no notification but a data push
   * (`PushMessage.isData`), never shown: its keys go to the app's `BackgroundApp.onPush`, or `Push.data`. */

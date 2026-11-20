@@ -1,9 +1,11 @@
 package everyui.push
 
-/** The conversation a message belongs to, which Android shows as one: a push's "conversationId" (the app's own stable
-  * id for it, which makes the push a conversation's message), "conversationTitle", "conversationPicture" (an http(s)
-  * URL: the conversation's picture, a group's), "senderName", "senderPicture" (an http(s) URL: the sender's face) and
-  * "isGroup" ("true": several people), or a `Notice`'s `conversation`.
+/** The conversation a message belongs to, which Android shows as one: a push's "noticeConversation" (the app's own
+  * stable id for it, which makes the push a conversation's message), "noticeConversationTitle",
+  * "noticeConversationPicture" (an http(s) URL: the conversation's picture, a group's), "noticeSenderName",
+  * "noticeSenderPicture" (an http(s) URL: the sender's face) and "noticeIsGroup" ("true": several people), or a
+  * `Notice`'s `conversation`. The keys take the "notice" prefix of "noticeIcon" so that an app's own data is never
+  * read as one: a plain "conversationId" (Voidcraft's, on approvals and quick replies) stays the push's data.
   *
   * Android posts it as a conversation (MessagingStyle, with a long-lived sharing shortcut for it and the sender as a
   * person), which Android 11 and later file under Conversations, headed by the sender's face rather than the app's
@@ -28,30 +30,32 @@ case class PushConversation(id: String, title: String = "", picture: Option[Stri
     if (named.nonEmpty) named else fallback
   }
 
-  /** `senderPicture` where it is one to fetch. */
+  /** `noticeSenderPicture` where it is one to fetch. */
   def fetchedSender: Option[String] = senderPicture.filter(PushMessage.fetchable).map(_.trim)
 
   /** `picture` where it is one to fetch. */
   def fetchedPicture: Option[String] = picture.filter(PushMessage.fetchable).map(_.trim)
 
   /** The keys and values it is sent with. */
-  def fields: Map[String, String] = Map("conversationId" -> id, "conversationTitle" -> title,
-    "conversationPicture" -> picture.getOrElse(""), "senderName" -> senderName,
-    "senderPicture" -> senderPicture.getOrElse(""), "isGroup" -> (if (isGroup) "true" else ""))
+  def fields: Map[String, String] = Map("noticeConversation" -> id, "noticeConversationTitle" -> title,
+    "noticeConversationPicture" -> picture.getOrElse(""), "noticeSenderName" -> senderName,
+    "noticeSenderPicture" -> senderPicture.getOrElse(""), "noticeIsGroup" -> (if (isGroup) "true" else ""))
     .filter((_, v) => v.nonEmpty)
 }
 
 object PushConversation {
   /** The keys a conversation is sent with. */
   val keys: Set[String] =
-    Set("conversationId", "conversationTitle", "conversationPicture", "senderName", "senderPicture", "isGroup")
+    Set("noticeConversation", "noticeConversationTitle", "noticeConversationPicture", "noticeSenderName",
+      "noticeSenderPicture", "noticeIsGroup")
 
-  /** The conversation a push's keys name: one where "conversationId" is not blank, its other keys trimmed. */
+  /** The conversation a push's keys name: one where "noticeConversation" is not blank, its other keys trimmed. */
   def of(data: Map[String, String]): Option[PushConversation] = {
     val text = (k: String) => data.getOrElse(k, "").trim
     val some = (k: String) => Some(text(k)).filter(_.nonEmpty)
-    some("conversationId").map(id => PushConversation(id, text("conversationTitle"), some("conversationPicture"),
-      text("senderName"), some("senderPicture"), text("isGroup") == "true"))
+    some("noticeConversation").map(id => PushConversation(id, text("noticeConversationTitle"),
+      some("noticeConversationPicture"), text("noticeSenderName"), some("noticeSenderPicture"),
+      text("noticeIsGroup") == "true"))
   }
 
   /** The id of the Android shortcut of the conversation `id`. */

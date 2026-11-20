@@ -10,9 +10,9 @@ import org.scalatest.wordspec.AnyWordSpec
   * takes it away and rebuilt from what the notification keeps; the shortcuts that make room for another; and the
   * picture of a person in it. */
 class ConversationSpec extends AnyWordSpec with Matchers {
-  private val team = Map("title" -> "Ann", "body" -> "Lunch?", "conversationId" -> "team",
-    "conversationTitle" -> "Team chat", "conversationPicture" -> "https://x.io/team.png", "senderName" -> "Ann",
-    "senderPicture" -> "https://x.io/ann.png", "isGroup" -> "true")
+  private val team = Map("title" -> "Ann", "body" -> "Lunch?", "noticeConversation" -> "team",
+    "noticeConversationTitle" -> "Team chat", "noticeConversationPicture" -> "https://x.io/team.png",
+    "noticeSenderName" -> "Ann", "noticeSenderPicture" -> "https://x.io/ann.png", "noticeIsGroup" -> "true")
   private val blue = new Color(0x1e, 0x88, 0xe5, 255)
 
   private def line(text: String, time: Long): ConversationLine = ConversationLine("Ann", "", text, time)
@@ -24,21 +24,33 @@ class ConversationSpec extends AnyWordSpec with Matchers {
         Some("https://x.io/ann.png"), isGroup = true))
       m.data shouldBe Map("room" -> "7")
     }
-    "be none without a conversationId, its other keys then read as nothing" in {
-      val m = PushMessage.of(team - "conversationId")
+    "be none without a noticeConversation, its other keys then read as nothing" in {
+      val m = PushMessage.of(team - "noticeConversation")
       m.conversation shouldBe None
       m.data shouldBe Map.empty
-      PushMessage.of(team + ("conversationId" -> "  ")).conversation shouldBe None
+      PushMessage.of(team + ("noticeConversation" -> "  ")).conversation shouldBe None
+    }
+    "not be made by the plain names an app sends in its data, which stay its data" in {
+      // Voidcraft's approvals and quick replies carry a conversationId, to open the conversation on a tap
+      val old = Map("conversationId" -> "c42", "conversationTitle" -> "Team chat",
+        "conversationPicture" -> "https://x.io/t.png", "senderName" -> "Ann", "senderPicture" -> "https://x.io/ann.png",
+        "isGroup" -> "true")
+      val m = PushMessage.of(Map("title" -> "Approve?", "body" -> "Deploy 42") ++ old)
+      m.conversation shouldBe None
+      m.data shouldBe old
+      m.fields shouldBe Map("title" -> "Approve?", "body" -> "Deploy 42") ++ old
+      PushMessage.of(team ++ old).data shouldBe old
+      PushMessage.of(team ++ old).conversation.map(_.id) shouldBe Some("team")
     }
     "trim its keys, and be one person's unless isGroup is true" in {
-      PushMessage.of(Map("title" -> "Bob", "conversationId" -> " bob ", "senderName" -> " Bob ", "isGroup" -> "yes"))
-        .conversation shouldBe Some(PushConversation("bob", senderName = "Bob"))
+      PushMessage.of(Map("title" -> "Bob", "noticeConversation" -> " bob ", "noticeSenderName" -> " Bob ",
+        "noticeIsGroup" -> "yes")).conversation shouldBe Some(PushConversation("bob", senderName = "Bob"))
     }
     "be written back as it was sent" in {
       val m = PushMessage.of(team)
       m.fields shouldBe team
       PushMessage.of(m.fields) shouldBe m
-      PushMessage.of(Map("title" -> "Hi")).fields.keySet should not contain "conversationId"
+      PushMessage.of(Map("title" -> "Hi")).fields.keySet should not contain "noticeConversation"
     }
     "be titled with its sender and the conversation where a platform has no conversations" in {
       val c = PushConversation("team", "Team chat", senderName = "Ann")
@@ -65,10 +77,10 @@ class ConversationSpec extends AnyWordSpec with Matchers {
   "A conversation's line" should {
     "be its sender, their picture and its body, else its title" in {
       ConversationLine.of(PushMessage.of(team), 5L) shouldBe ConversationLine("Ann", "https://x.io/ann.png", "Lunch?", 5L)
-      ConversationLine.of(PushMessage.of(Map("title" -> "Bob", "conversationId" -> "bob")), 6L) shouldBe
+      ConversationLine.of(PushMessage.of(Map("title" -> "Bob", "noticeConversation" -> "bob")), 6L) shouldBe
         ConversationLine("Bob", "", "Bob", 6L)
       ConversationLine.of(PushMessage.of(Map("title" -> "**Bob**", "body" -> "*hi*", "format" -> "markdown",
-        "conversationId" -> "bob")), 7L) shouldBe ConversationLine("Bob", "", "hi", 7L)
+        "noticeConversation" -> "bob")), 7L) shouldBe ConversationLine("Bob", "", "hi", 7L)
       ConversationLine.reply("On my way", 8L) shouldBe ConversationLine("", "", "On my way", 8L, me = true)
     }
     "be kept as text and read back, whatever it says" in {
