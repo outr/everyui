@@ -167,9 +167,17 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     size.width.attach(_ => clip())
     size.height.attach(_ => clip())
     if (!horizontal) content.position.top := -offset()
-    furthest.attach(most => if (offset() > most) offset @= most)
+    furthest.attach { most =>
+      if (offset() > most) offset @= most
+      told()
+    }
     // anything else setting the offset takes over from a glide
-    offset.attach(at => if (glideRun.nonEmpty && at != glideAt) stopGlide())
+    offset.attach { at =>
+      if (glideRun.nonEmpty && at != glideAt) stopGlide()
+      told()
+    }
+    if (horizontal) fromRight.attach(_ => told())
+    told()
     // the wheel moves it along its length, back along a rail from the right: a rail only by a sideways turn (or Shift
     // with the wheel), so a wheel turned down over it goes on to scroll what it is in, as a browser's does
     event.pointer.wheel.attach { e =>
@@ -268,6 +276,11 @@ class ScrollContainer(val horizontal: Boolean = false, val followsDirection: Boo
     glideRun = None
     flick.stop()
   }
+
+  // how far it has scrolled from its top or its left on the screen, and how far it can, told to the platform where this
+  // moves the content (`RenderNode.setScrolled`): a finger's drag along it on Android is left to the scroll it is in
+  // where it cannot go the way the drag would take it (a table's rows as tall as they are, in a chat's message)
+  private def told(): Unit = node.setScrolled(if (fromRight()) furthest() - offset() else offset(), furthest())
 
   /** Where `reveal` puts what it brings into view, as a share of the room the viewport has around it: 0 at the start,
     * 0.5 in the middle (as a television's focus is followed), 1 at the end. None scrolls the least that shows it.

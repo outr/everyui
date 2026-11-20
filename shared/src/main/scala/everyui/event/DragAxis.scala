@@ -37,4 +37,10 @@ object DragAxis {
     val other = math.abs(if (vertical) dx else dy)
     if (along <= slop && other <= slop) 0 else if (along > other) 1 else -1
   }
+
+  /** Whether a scroll `at` along, of `furthest`, can still go `toward` (1 on, -1 back): a scroll in a scroll keeps a
+    * drag along it only while it can, and leaves it to the scroll it is in at its end, or where it has nothing to
+    * scroll (a table's rows as tall as they are, in a chat's message). */
+  def goes(at: Double, furthest: Double, toward: Int): Boolean =
+    if (toward > 0) at < furthest - 0.5 else if (toward < 0) at > 0.5 else false
 }

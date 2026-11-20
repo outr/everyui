@@ -40,7 +40,9 @@ import reactify.*
   * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
   * (`Link.handle`), logging `chat file plan.md`. Last, Helper's reply to another session and a message come
   * from one say so over their words (`ChatEntry.Message.direction`). In `queue=1` where the message is sent from is a
-  * chip after the files (`Composer.extraChips`), `place=1` to start with one. Logs `chat ok` once built. */
+  * chip after the files (`Composer.extraChips`), `place=1` to start with one. `tables=1` adds six messages after the
+  * opening's, each with a table, narrow and wide in turn and a link in each, for drags and taps begun on a table. Logs
+  * `chat ok` once built. */
 object ChatDemo {
   private def you: Participant = Participant("u-you", "You")
   private def sam: Participant = Participant("u-sam", "Sam", Some(Platform.resolvePath("/images/everyui-mark.png")))
@@ -266,6 +268,18 @@ object ChatDemo {
 
   private def railed: Boolean = Platform.launchArg("rails") == "1"
   private def inline: Boolean = Platform.launchArg("working") == "inline"
+  // `tables=1`: messages after the opening's, each holding a table, narrow (it fits) and wide (a long path in it
+  // scrolls it sideways), with a link in each, for touches that begin on a table's body
+  private def tables(start: Long): Vector[ChatEntry] = if (Platform.launchArg("tables") != "1") Vector.empty else
+    (0 until 6).toVector.map { i =>
+      val table = if (i % 2 == 0) "| Area | Status |\n|---|---|\n| Tests | 412 passed, 1 failed |\n| TODOs | 2 open |\n" +
+        "| Docs | [the plan](demo-file:plan.md) |\n| Build | green |\n"
+      else "| File | Change |\n|---|---|\n| `shared/src/main/scala/everyui/component/ScrollContainer.scala` | the drag " +
+        "settles once |\n| `android/src/main/scala/everyui/render/RenderNode.scala` | [the plan](demo-file:plan.md) |\n" +
+        "| `shared/src/main/scala/everyui/list/VirtualList.scala` | rows follow the finger |\n"
+      ChatEntry.message("tb" + i.toString, helper, self = false, "Table " + i.toString + ":\n\n" + table +
+        "\nThe end of table " + i.toString + ".", Some(start - 30000L + i * 1000L))
+    }
   private val notesBrief: String = "drafting the release notes · modelId: helper-large, systemPrompt: You are an expert " +
     "in release engineering who reads the whole history of a project before answering, weighs every open pull " +
     "request, and writes the notes for a release in the voice of the team, plainly, with the risks first and the " +
@@ -336,7 +350,7 @@ object ChatDemo {
         "and the rows it is drawn in are of different heights, as a real conversation's are." else ""), Some(time))
   }
 
-  private def opening(start: Long): Vector[ChatEntry] = Vector[ChatEntry](
+  private def opening(start: Long): Vector[ChatEntry] = (Vector[ChatEntry](
     ChatEntry.marker("topic", "Topic: Release planning", Some(start - 600000L)),
     ChatEntry.message("o1", sam, self = false, "Morning! Where are we with the release?", Some(start - 540000L)),
     ChatEntry.message("o2", sam, self = false, "I need the notes by noon.", Some(start - 530000L)),
@@ -374,8 +388,8 @@ object ChatDemo {
       Some(start - 50000L), direction = Some(MessageDirection.To("everyui", elsewhere))),
     ChatEntry.message("d2", helper, self = false, "Does 0.1.28 have the composer's chips yet? We'd like them for search.",
       Some(start - 45000L), direction = Some(MessageDirection.From("NaboTV", nabo))),
-    ChatEntry.message("d3", helper, self = false, "I'll answer NaboTV once the build is green.", Some(start - 40000L)))
-    .map(e => topic(e, 21))
+    ChatEntry.message("d3", helper, self = false, "I'll answer NaboTV once the build is green.", Some(start - 40000L))) ++
+    tables(start)).map(e => topic(e, 21))
 
   // a question for you, with Ignore under it, which sets it aside
   private def asks(m: ChatEntry.Message): ChatEntry.Message = {

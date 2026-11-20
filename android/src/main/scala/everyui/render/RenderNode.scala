@@ -1028,8 +1028,15 @@ class RenderNode(val view: View) {
     * went down on as a scroll's is (`takesDrags`): a row's button, a code block's rail, a link held every touch that
     * began on it, and a swipe that started there scrolled nothing. */
   def setTouchScrolls(on: Boolean): Unit = if (Hop.needed(this)) Hop(() => setTouchScrolls(on)) else takesDrags(if (on) 1 else 0)
-  /** Only a page is read for how far a list has scrolled: nothing to do here. */
-  def setScrolled(at: Double, furthest: Double): Unit = ()
+  /** How far a scroll that moves its content itself (a list, a ScrollContainer) has scrolled from its top or its left,
+    * and how far it can: kept by its group, so a drag along it that it cannot go is left to the scroll it is in
+    * (`NodeGroup.scrollUnder`). */
+  def setScrolled(at: Double, furthest: Double): Unit = if (Hop.needed(this)) Hop(() => setScrolled(at, furthest)) else view match {
+    case g: NodeGroup =>
+      g.scrolledAt = at
+      g.scrolledMost = furthest
+    case _ => ()
+  }
   /** Its words selectable: no text is selected with a pointer here (`Platform.selectsText`). */
   def setSelectable(on: Boolean): Unit = ()
   def selectText(): Unit = ()
@@ -1766,6 +1773,12 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
   override protected def getLeftFadingEdgeStrength(): Float = fades._1
   override protected def getRightFadingEdgeStrength(): Float = fades._2
   private[render] var takeDrag: (MotionEvent, Float, Float) => Unit = null
+  /** How far it has scrolled from its top or its left, and how far it can (`RenderNode.setScrolled`); `scrolledMost`
+    * below 0 while it has not said, when it is taken to go either way. */
+  private[render] var scrolledAt: Double = 0.0
+  private[render] var scrolledMost: Double = -1.0
+  /** Whether a drag along it can still scroll it `toward` (1 on, -1 back). */
+  private[render] def goes(toward: Int): Boolean = scrolledMost < 0.0 || everyui.event.DragAxis.goes(scrolledAt, scrolledMost, toward)
   // where the finger went down, as each touch passes on to what is under it
   private var downX = 0f
   private var downY = 0f
@@ -1781,8 +1794,9 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
     * the whole touch, as the shared scrolls settle their own drags (DragAxis, with the same slop, so both settle on
     * the same move): only one mostly along the scroll is taken, and one mostly across never is, so a page lets a rail
     * in it have a sideways swipe, and a slider across it its drag, and a rail lets the page have a swipe down. Nor is
-    * a drag taken from a scroll the same way in this one, under the finger: the innermost has it; nor from a page's web
-    * view that can still scroll its page the way the drag would take it (`scrollUnder`). */
+    * a drag taken from a scroll the same way in this one, under the finger, that can still go the way the drag would
+    * take it, nor from a page's web view that can (`scrollUnder`): the innermost that can has it, and one that cannot
+    * (a table's rows as tall as they are, in a chat's message) leaves it to this. */
   override def onInterceptTouchEvent(e: MotionEvent): Boolean = scrollsAlong != 0 && takeDrag != null && {
     val action = e.getActionMasked
     if (action == MotionEvent.ACTION_DOWN) {
@@ -1858,13 +1872,14 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
 }
 
 object NodeGroup {
-  /** Whether a scroll the way `along` goes (`NodeGroup.scrollsAlong`) lies inside `group` under the point `x`, `y` on
-    * the screen, where a finger went down: a list in a dialog's scroll, a panel that scrolls in a list's row; or a
-    * page's web view whose page can still scroll `toward` (1 on, -1 back) along it. A page that scrolls keeps the drags
-    * along it while it has further to go that way, and one at its end, or one that cannot scroll (a page sized to its
-    * box, `overflow: hidden`), leaves them to the scroll it is in: settled as the drag is, so a drag that brings a page
-    * to its end stays the page's, and the next one past it is the scroll's. What scrolls inside the page (a box of its
-    * own that overflows) is not seen from here, and a drag on it is the scroll's. */
+  /** Whether a scroll the way `along` goes (`NodeGroup.scrollsAlong`) that can still go `toward` (`NodeGroup.goes`)
+    * lies inside `group` under the point `x`, `y` on the screen, where a finger went down: a list in a dialog's scroll,
+    * a panel that scrolls in a list's row; or a page's web view whose page can still scroll `toward` (1 on, -1 back)
+    * along it. A page that scrolls keeps the drags along it while it has further to go that way, and one at its end, or
+    * one that cannot scroll (a page sized to its box, `overflow: hidden`), leaves them to the scroll it is in: settled
+    * as the drag is, so a drag that brings a page to its end stays the page's, and the next one past it is the scroll's.
+    * What scrolls inside the page (a box of its own that overflows) is not seen from here, and a drag on it is the
+    * scroll's. */
   private[render] def scrollUnder(group: ViewGroup, along: Int, x: Float, y: Float, toward: Int): Boolean =
     (0 until group.getChildCount).exists { i =>
       group.getChildAt(i) match {
@@ -1872,7 +1887,7 @@ object NodeGroup {
           toward != 0 && (if (along == 1) page.canScrollVertically(toward) else page.canScrollHorizontally(toward))
         case child: ViewGroup if child.getVisibility == View.VISIBLE && holds(child, x, y) =>
           (child match {
-            case g: NodeGroup => g.scrollsAlong == along && g.takeDrag != null
+            case g: NodeGroup => g.scrollsAlong == along && g.takeDrag != null && g.goes(toward)
             case _ => false
           }) || scrollUnder(child, along, x, y, toward)
         case _ => false

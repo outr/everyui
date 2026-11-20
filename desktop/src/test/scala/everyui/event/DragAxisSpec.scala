@@ -53,6 +53,16 @@ class DragAxisSpec extends FxSpec {
       size.height @= 100.0
     }
     rail.content.children += strip
+    // a scroll down with nothing to scroll (a table's rows as tall as they are), and what it holds
+    val fixed: ScrollContainer = new ScrollContainer {
+      size.width @= 300.0
+      size.height @= 100.0
+    }
+    val rows: Container = new Container {
+      size.width @= 300.0
+      size.height @= 100.0
+    }
+    fixed.content.children += rows
     val button: Button = new Button("Press", () => clicks += 1)
     button.size.width @= 280.0
     button.size.height @= 48.0
@@ -65,7 +75,7 @@ class DragAxisSpec extends FxSpec {
       size.height @= 400.0
       content.layout @= Some(VerticalLayout(8.0))
     }
-    page.content.children ++= List(rail, button, filler)
+    page.content.children ++= List(rail, fixed, button, filler)
     def middle(c: Component): (Double, Double) = (c.absoluteLeft + 150.0, c.absoluteTop + c.size.height() / 2.0)
   }
 
@@ -110,6 +120,18 @@ class DragAxisSpec extends FxSpec {
       a.move(0.0, 20.0)
       a.along shouldBe true
     }
+    "be left by a scroll in a scroll to the one it is in where it cannot go that way" in {
+      // a table's rows as tall as they are, in a chat's message: nothing to scroll, either way
+      DragAxis.goes(0.0, 0.0, 1) shouldBe false
+      DragAxis.goes(0.0, 0.0, -1) shouldBe false
+      // at its start it goes on and not back, at its end back and not on, between them both
+      (DragAxis.goes(0.0, 300.0, 1), DragAxis.goes(0.0, 300.0, -1)) shouldBe ((true, false))
+      (DragAxis.goes(300.0, 300.0, 1), DragAxis.goes(300.0, 300.0, -1)) shouldBe ((false, true))
+      (DragAxis.goes(120.0, 300.0, 1), DragAxis.goes(120.0, 300.0, -1)) shouldBe ((true, true))
+      // a part of a pixel from an end is at it
+      DragAxis.goes(299.8, 300.0, 1) shouldBe false
+      DragAxis.goes(0.0, 300.0, 0) shouldBe false
+    }
   }
 
   "A finger's drag on a scroll in a scroll" should {
@@ -118,6 +140,12 @@ class DragAxisSpec extends FxSpec {
       drag(p.strip, x, y, straight(-15.0, -200.0), still = Fling.stopped + 10.0)
       fx(p.page.offset()) shouldBe 200.0 +- 0.001
       fx(p.rail.offset()) shouldBe 0.0
+    }
+    "scroll the page where it goes down from a scroll down with nothing to scroll" in onScreen { p =>
+      val (x, y) = fx(p.middle(p.fixed))
+      drag(p.rows, x, y, straight(-10.0, -200.0), still = Fling.stopped + 10.0)
+      fx(p.page.offset()) shouldBe 200.0 +- 0.001
+      fx(p.fixed.offset()) shouldBe 0.0
     }
     "scroll the rail alone where it goes across" in onScreen { p =>
       val (x, y) = fx(p.middle(p.rail))

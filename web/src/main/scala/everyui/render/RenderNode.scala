@@ -886,8 +886,12 @@ class RenderNode(val el: html.Element) {
   def setTouchDrags(on: Boolean): Unit = el.style.setProperty("touch-action", if (on) "none" else "")
   /** A finger dragged up or down on it is the app's (a list that scrolls itself), while one dragged across, or two
     * pinching, are still the browser's: left to the browser, a vertical drag was taken for the page's own pan a few
-    * pixels in, and the app heard no more of it (pointercancel). */
-  def setTouchScrolls(on: Boolean): Unit = el.style.setProperty("touch-action", if (on) "pan-x pinch-zoom" else "")
+    * pixels in, and the app heard no more of it (pointercancel). So too where it begins on a scroll in it
+    * (`TouchScrolls`). */
+  def setTouchScrolls(on: Boolean): Unit = {
+    el.style.setProperty("touch-action", if (on) "pan-x pinch-zoom" else "")
+    if (on) TouchScrolls.keep(el)
+  }
   /** How far a list that scrolls itself has scrolled, and how far it can, in pixels, for a test or a tool to read off
     * the page where it has no `scrollTop` of its own: `data-everyui-scroll` and `data-everyui-scroll-max`. */
   def setScrolled(at: Double, furthest: Double): Unit = {
