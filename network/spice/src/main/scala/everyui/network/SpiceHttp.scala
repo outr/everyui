@@ -49,7 +49,12 @@ object SpiceHttp {
   def webSocket(client: HttpClient, url: String): WebSocket =
     client.implementation.instance(client).webSocket(URL.parse(url), Headers.empty)
 
-  def call(client: HttpClient, call: HttpCall): Task[HttpResult] = {
+  /** A request, what is made of it before it goes (its URL parsed, its content typed) made inside the task: a failure
+    * there fails the task, as one in sending does, for `attempt` and `Network.observe` to see, rather than throwing
+    * from the call. */
+  def call(client: HttpClient, call: HttpCall): Task[HttpResult] = Task.defer(send(client, call))
+
+  private def send(client: HttpClient, call: HttpCall): Task[HttpResult] = {
     var c = client.url(URL.parse(call.url)).method(HttpMethod(call.method)).withCredentials(call.credentials)
     if (call.timeout > 0.0) c = c.timeout((call.timeout * 1000.0).toLong.millis)
     // a multipart body's Content-Type is its own, naming its boundary

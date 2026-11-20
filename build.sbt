@@ -391,7 +391,7 @@ lazy val roku = (project in file("roku"))
 // example server used it too), so the backend is part of the system rather than
 // a dev-only prop — where API endpoints, WebSocket hot-reload or OpenAPI go
 // when the framework needs them. Consumed from ~/.ivy2/local.
-lazy val spiceVersion = "1.10.11"
+lazy val spiceVersion = "1.10.13"
 // the OkHttp spice-client-okhttp is built on, for the network's tests of it
 lazy val okhttpVersion = "5.5.1"
 

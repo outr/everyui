@@ -177,7 +177,10 @@ object DevTools {
     val flags = List("--remote-debugging-port=" + port, "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check", "--password-store=basic", "--no-sandbox", "--mute-audio",
       "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=1920,1080",
-      "--window-position=0,0") ++ (if (major >= 59) List("--headless=new", "--hide-scrollbars") else Nil) ++
+      "--window-position=0,0") ++
+      // an engine with no headless mode draws through its GPU process on Xvfb, which now and then stopped the page
+      // answering anything (Chromium 38: about one run in two hung on some demo for good); with it off none did in ten
+      (if (major >= 59) List("--headless=new", "--hide-scrollbars") else List("--disable-gpu")) ++
       agent.map("--user-agent=" + _).toList
     val builder = new ProcessBuilder(((binary :: flags) :+ "about:blank")*).redirectErrorStream(true)
       .redirectOutput(ProcessBuilder.Redirect.DISCARD)

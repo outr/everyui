@@ -6618,7 +6618,9 @@ start) and a gconf on their library path (and for 38 today's `libudev.so.1` as i
 (below 53: its user agent and version "3", `PalmSystem` with `--palm`) or 4, a first launch's language screen among
 its checks (eleven buttons laid out, centred and each drawn, read off a screenshot), and `OldChromeCheck <page dir>
 --chrome <binary> [--shots <dir>]` loads the demos (tv, chat, rows, widgets, icons) from their files, gives each the
-remote's keys and the pointer's clicks, and fails on a screen not drawn or an error left uncaught. Both drive the
+remote's keys and the pointer's clicks, and fails on a screen not drawn or an error left uncaught; then the net demo
+makes a request through Spice (`Network.http`) to a server of the check's own, which must be answered (a regex needing
+ES 2018, as Spice's URL parsing had before 1.10.13, fails every request in an ES 5.1 link). Both drive the
 browser over its own DevTools endpoint (`DevTools`), which an engine from 38 to today's speaks, so either runs in today's
 Chrome, headless, as well:
 
