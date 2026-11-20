@@ -776,16 +776,66 @@ class RenderNode(val el: html.Element) {
   }
 
   /** Clipping is the browser's overflow; a scrollable node already clips. */
-  def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") el.style.overflow = "hidden"
+  def setClip(width: Double, height: Double): Unit = if (el.style.overflowY != "auto") {
+    el.style.overflow = "hidden"
+    // (its own now: neither undone with the box's nor pinned)
+    boxClipped = false
+    pin(false)
+    stack(BoxClip.stacks(WebFeatures.overflowClips))
+  }
   /** Cut to its box by its container (`Container.clipsToBox`): `overflow: clip`, which unlike `hidden` makes no scroll
-    * box, so nothing in it is scrolled into sight within it as it takes the focus, and its own shadow is drawn whole. A
-    * clip of its own (`setClip`, a scroll's) is never undone; a browser without `clip` shows it whole, as before. */
+    * box, so nothing in it is scrolled into sight within it as it takes the focus, and its own shadow is drawn whole.
+    * Before Chromium 90 `overflow: hidden`, pinned: put back unscrolled whenever the browser shifts it (`BoxClip`), so
+    * a poster's corners are cut to a rounded card on an old TV too. A clip of its own (`setClip`, a scroll's) is never
+    * undone; one it was given only while hidden (`setLaidOutHidden`) is taken over. */
   def setBoxClip(on: Boolean, width: Double, height: Double): Unit =
     if (on) {
       val unset = el.style.overflow.isEmpty && el.style.overflowX.isEmpty && el.style.overflowY.isEmpty
-      if (unset) el.style.overflow = "clip"
+      if (unset || undrawnClip) {
+        el.style.overflow = WebFeatures.overflowClip
+        undrawnClip = false
+        boxClipped = true
+        pin(BoxClip.pinned(WebFeatures.overflowClip))
+        stack(BoxClip.stacks(WebFeatures.overflowClips))
+      }
     }
-    else if (el.style.overflow == "clip") el.style.overflow = ""
+    else if (boxClipped) {
+      boxClipped = false
+      pin(false)
+      stack(false)
+      // (hidden and laid out still: the clip stays, as that one's)
+      if (hiddenNow && laidOut) undrawnClip = true
+      else if (el.style.overflow == WebFeatures.overflowClip) el.style.overflow = ""
+    }
+  // whether it is cut to its box (`setBoxClip`), and what holds it unscrolled where that makes a scroll box: a passive
+  // listener on it alone, made only then (none where the engine has `overflow: clip`)
+  private var boxClipped = false
+  private var pinning: js.Function1[dom.Event, Unit] = null
+  private def pin(on: Boolean): Unit =
+    if (on && pinning == null) {
+      pinning = _ => if (el.style.overflowX == "hidden" && el.style.overflowY == "hidden" &&
+        BoxClip.shifted(el.scrollTop, scrolled(horizontal = true))) {
+        el.scrollTop = 0.0
+        setScrollLeft(0.0)
+      }
+      el.addEventListener("scroll", pinning, WebFeatures.listening(capture = false, passive = true))
+    }
+    else if (!on && pinning != null) {
+      el.removeEventListener("scroll", pinning, WebFeatures.listening(capture = false, passive = true))
+      pinning = null
+    }
+  // a stacking context of its own (`z-index: 0`, no layer) where it clips with `hidden` on an old engine, which cut
+  // nothing positioned in it to its rounded corners without one (Chromium 53: a poster square on its rounded card)
+  private var stacked = false
+  private def stack(on: Boolean): Unit =
+    if (on && !stacked && el.style.zIndex.isEmpty) {
+      el.style.zIndex = "0"
+      stacked = true
+    }
+    else if (!on && stacked) {
+      if (el.style.zIndex == "0") el.style.zIndex = ""
+      stacked = false
+    }
   def setTooltip(text: String): Unit = el.title = text
   // the hidden element holding its description, last among its own, where it has one
   private var described: Option[html.Element] = None

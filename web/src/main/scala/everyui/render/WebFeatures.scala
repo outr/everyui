@@ -44,8 +44,20 @@ object WebFeatures {
   /** The name the page knows `user-select` by: unprefixed from Chromium 54, `-webkit-` before it and in Safari. */
   lazy val userSelect: String = if (css("user-select", "none")) "user-select" else "-webkit-user-select"
 
-  /** `overflow: clip` (Chromium 90): elsewhere `hidden`, which clips alike and makes a scroll box no one scrolls. */
-  lazy val overflowClip: String = if (css("overflow", "clip")) "clip" else "hidden"
+  /** Whether the engine has `overflow: clip` (Chromium 90): asked of `CSS.supports`, or where an engine has none, set
+    * on an element and read back (`BoxClip.known`). */
+  lazy val overflowClips: Boolean = {
+    val asked = try Some(dom.window.asInstanceOf[js.Dynamic].CSS.supports("overflow", "clip").asInstanceOf[Boolean])
+      catch { case _: Throwable => None }
+    BoxClip.known(asked, {
+      val probe = dom.document.createElement("div").asInstanceOf[dom.html.Element]
+      probe.style.overflow = "clip"
+      probe.style.overflow
+    })
+  }
+
+  /** `overflow: clip` where the engine has it, else `hidden`, which clips alike but makes a scroll box (`BoxClip`). */
+  lazy val overflowClip: String = BoxClip.overflow(overflowClips)
 
   /** Words measured on one line: `max-content` (Chromium 46), `-webkit-max-content` before it. */
   lazy val maxContent: String = if (css("width", "max-content")) "max-content" else "-webkit-max-content"

@@ -2302,11 +2302,15 @@ avatar: EveryUI's own do this), and `Some(true)` cuts one that draws no box. A c
 scroll's, a list's) is never undone by it.
 
 The web cuts with `overflow: clip`, which makes no scroll box (nothing in the card is scrolled into sight within it as
-it takes the focus) and leaves the box's own shadow whole, its rounded corners included; a browser without `clip` draws
-it whole as before. The desktop, the Roku and the Apple TV cut to the box's rectangle, its corners square; on the
-desktop a box that casts a shadow is not cut, as JavaFX would cut the shadow with it. Android cuts to its outline.
-Each cuts at the box's own edge, never at the edges of what is inside it: a badge hanging out of a button in a plain
-column, inside a rail that draws a box, shows as far as the rail's edge.
+it takes the focus) and leaves the box's own shadow whole, its rounded corners included. A browser without `clip`
+(before Chromium 90: webOS 3 to 5, Tizen before 6) cuts with `overflow: hidden`, pinned: that makes a scroll box the
+browser may shift on its own (a focus put in it), so a passive listener on that box alone puts it back unscrolled as it
+does (none where `clip` is had), and makes it a stacking context of its own (`z-index: 0`, no layer), without which
+Chromium 53 cut nothing positioned in it to its rounded corners; a poster's corners are cut to its rounded card there
+too, as they are in a box cut by a component of its own (a `Backdrop`). The desktop, the Roku and the Apple TV cut to
+the box's rectangle, its corners square; on the desktop a box that casts a shadow is not cut, as JavaFX would cut the
+shadow with it. Android cuts to its outline. Each cuts at the box's own edge, never at the edges of what is inside it:
+a badge hanging out of a button in a plain column, inside a rail that draws a box, shows as far as the rail's edge.
 
 ```scala
 val card = new Container { backgroundColor @= Theme.raised(); radius @= 12.0 }   // cuts what spills out of it
@@ -3781,7 +3785,8 @@ frames, the first as NaboTV's FrameWatch writes it:
 Off, it costs a test of a flag a frame. `FrameLog.framesLine()` and `memoryLine()` are the lines at any moment, for an
 overlay or a report of the app's own. While it is on, a picture with more than twice the pixels it is drawn at is said
 (`ImageBudget`). `demo=railperf rails=8 n=30 posters=1 perf=1` is a TV's Home of 240 poster cards to read it over
-(`blur=30` a blurred picture behind it, `level=Reduced` at that level).
+(`blur=30` a blurred picture behind it, `level=Reduced` at that level, `posters=drawn` posters at the size they are
+drawn on a 1080p TV, 240 by 360, as an app asks its own, where `posters=1` stretches a logo to each card).
 
 ## Relative URLs and the origin
 
@@ -6632,8 +6637,10 @@ taken there while every newer browser keeps its own:
 - **No AbortController** (before 66): a request whose headers are all that is wanted has its body cancelled; a form
   sent past its time fails then, and its late answer is let go.
 - **No `queueMicrotask`** (before 71): a promise's reaction, which runs at the same point.
-- **No `overflow: clip`** (before 90): `hidden` for what is laid out while hidden; a boxed container's clip
-  (`clipsToBox`) is not drawn, its words shown whole as before.
+- **No `overflow: clip`** (before 90, asked of `CSS.supports`, else read back from a style): `hidden`, for what is laid
+  out while hidden and for a boxed container's clip (`clipsToBox`), pinned unscrolled by a passive scroll listener on
+  that box (`BoxClip`), so nothing in it is shifted as it takes the focus; a box cut with `hidden` is a stacking
+  context of its own (`z-index: 0`), so its rounded corners cut what is positioned in it (Chromium 53 cut nothing).
 - **No `Element.scrollTo`** (before 61): a smooth scroll goes there at once.
 - **Unprefixed `user-select`** (from 54): `-webkit-user-select` before it (and in Safari).
 - **No BroadcastChannel** (before 54): a sign-in opens no popup, the page itself going to the provider.

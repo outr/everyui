@@ -7,9 +7,10 @@ import everyui.render.Platform
   * title, a line about it, a synopsis and a progress bar above a rail of `n=<cards>` poster cards (20 when not given),
   * each ringed as the focus lands on it, the rail gliding to keep the focus in the middle; with `rails=<k>`, k such
   * rails one above the next, scrolling up and down under the hero, as a Home of many rails; with `posters=1`, a picture
-  * on each card (each its own to decode), with `blur=<px>` a picture behind it all blurred, and with `level=Reduced`
-  * (or `Minimal`) run at that level (`everyui.perf.Quality`). Each move is logged, and
-  * every frame of 50 ms or more, with how much of it was the app's own update:
+  * on each card (each its own to decode; `posters=drawn` one at the size drawn on a 1080p TV, as NaboTV asks its own),
+  * with `blur=<px>` a picture behind it all blurred, and with `level=Reduced` (or `Minimal`) run at that
+  * level (`everyui.perf.Quality`). Each move is logged, and every frame of 50 ms or more, with how much of it was the
+  * app's own update:
   *
   *   [ui] railperf focus 3
   *   [ui] railperf frame 312ms (update 4ms)

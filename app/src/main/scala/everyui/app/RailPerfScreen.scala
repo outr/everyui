@@ -19,9 +19,14 @@ class RailPerfScreen extends UIScreen {
   private val count: Int = Platform.launchArg("n").toIntOption.getOrElse(20)
   private val railCount: Int = math.max(1, Platform.launchArg("rails").toIntOption.getOrElse(1))
   private val videoUrl: String = Platform.launchArg("video")
-  // a picture on each card (`posters=1`), each its own address so each is its own to decode, and one behind it all
-  // blurred (`blur=<px>`), as a television's Home has
-  private val posters: Boolean = Platform.launchArg("posters") == "1"
+  // a picture on each card (`posters=1`: the logo, stretched to it; `posters=drawn`: a poster 240 by 360, the card's
+  // size at a 1080p TV's ratio of 2, as NaboTV asks its posters at the size drawn), each its own address so each is its
+  // own to decode, and one behind it all blurred (`blur=<px>`), as a television's Home has
+  private val posterSource: String = Platform.launchArg("posters") match {
+    case "1" => "/images/logo.png"
+    case "drawn" => "/images/poster.jpg"
+    case _ => ""
+  }
   private val blurPx: Double = Platform.launchArg("blur").toDoubleOption.getOrElse(0.0)
   /** The card the focus is on, which the hero tells of. */
   private val chosen: Var[Int] = Var(0)
@@ -90,11 +95,11 @@ class RailPerfScreen extends UIScreen {
     radius @= 10.0
     backgroundColor @= Color.fromHex(if (i % 2 == 0) "#2a3d5c" else "#4a2a4c")
     focusable @= true
-    if (posters) children += new ImageView {
+    if (posterSource.nonEmpty) children += new ImageView {
       sizedByPicture @= false
       size.width @= 120.0
       size.height @= 180.0
-      everyui.image.Image("/images/logo.png?card=" + i.toString).map(loaded => image @= loaded).startUnit()
+      everyui.image.Image(posterSource + "?card=" + i.toString).map(loaded => image @= loaded).startUnit()
     }
     children += new TextView {
       content @= (i + 1).toString

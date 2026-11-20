@@ -25,8 +25,13 @@ import scala.concurrent.duration.*
   *
   *   OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]
   *
-  * The demos are tv, chat, rows, widgets, icons and net unless named. An engine older than 59 opens a window on
-  * `$DISPLAY`: run it under `xvfb-run`.
+  * `corners` is railperf's rounded cards with posters at the size drawn, in a browser drawing as a TV does (its GPU on,
+  * where it has no headless mode): each poster cut to its card's rounded corner, read off a picture of the page (before
+  * Chromium 90, `overflow: hidden` pinned, `BoxClip`), a box so cut not shifted as the focus goes into it, and the
+  * frames of a few moves said (a report, not a check).
+  *
+  * The demos are tv, chat, rows, widgets, icons, net and corners unless named. An engine older than 59 opens a window
+  * on `$DISPLAY`: run it under `xvfb-run`.
   */
 object OldChromeCheck extends RapidApp {
   private val usage = "usage: OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]"
@@ -42,7 +47,7 @@ object OldChromeCheck extends RapidApp {
       case Nil => Nil
     }
     val demos = named(args.drop(1)) match {
-      case Nil => List("tv", "chat", "rows", "widgets", "icons", "net")
+      case Nil => List("tv", "chat", "rows", "widgets", "icons", "net", "corners")
       case some => some
     }
     val page = Paths.get(args.headOption.getOrElse(sys.error(usage))).toAbsolutePath.resolve("index.html").toUri.toString
@@ -52,6 +57,83 @@ object OldChromeCheck extends RapidApp {
       println((if (ok) "[old chrome] ok " else "[old chrome] FAILED ") + what)
       System.out.flush()
       if (!ok) failed :+= what
+    }
+    // A rail of rounded cards, each a poster at the size drawn (railperf, `posters=drawn`), in a browser drawing as a
+    // TV does (its GPU on, where it has no headless mode): a card's poster cut to its rounded corner (a pixel just
+    // inside its box at the corner is the page behind, where the edge's middle is the poster), a box cut so shifted by
+    // nothing the browser does as the focus goes into it, and the frames of a few moves said, a report, not a check.
+    def corners(browser: DevTools): Task[Unit] = {
+      val before = browser.lines.size
+      def since: List[String] = browser.lines.toArray.drop(before).map(_.toString).toList
+      def key(code: Int, name: String): Task[Unit] = for {
+        _ <- browser.send("Input.dispatchKeyEvent", obj("type" -> str("rawKeyDown"),
+          "windowsVirtualKeyCode" -> num(code), "key" -> str(name)))
+        _ <- browser.send("Input.dispatchKeyEvent", obj("type" -> str("keyUp"),
+          "windowsVirtualKeyCode" -> num(code), "key" -> str(name)))
+        _ <- Task.sleep(700.millis)
+      } yield ()
+      // the second card of the first rail (the first has the focus ring), its box on the page
+      val card = "var all = document.querySelectorAll('#app img'), card = null; for (var i = 0; i < all.length; i++) " +
+        "if (/card=1$/.test(all[i].getAttribute('src') || '') && all[i].complete) card = all[i].parentNode; "
+      browser.onLine { line =>
+        println(line)
+        System.out.flush()
+      }
+      for {
+        _ <- browser.addScript("Error.stackTraceLimit = 50")
+        _ <- browser.size(1920, 1080)
+        _ <- browser.navigate(page + "?demo=railperf&rails=3&n=12&posters=drawn")
+        _ <- Task.sleep(4.seconds)
+        box <- browser.value(card + "if (!card) return null; var r = card.getBoundingClientRect(); " +
+          "return [r.left, r.top, r.width, r.height, innerWidth, getComputedStyle(card).overflow]")
+        shot <- browser.picture()
+        _ <- shots.map(d => browser.screenshot(d.resolve("corners.png"))).getOrElse(Task.unit)
+        _ = {
+          val found = box.isArr
+          check("corners: a card with its poster drawn", found)
+          if (found) {
+            val b = box.asVector
+            val (left, top, width, across) = (b(0).asDouble, b(1).asDouble, b(2).asDouble, b(4).asDouble)
+            // the picture's pixels to a CSS pixel as it was taken (an engine with no headless mode takes its window's)
+            val k = shot.getWidth / across
+            def green(x: Double, y: Double): Int = (shot.getRGB((x * k).toInt, (y * k).toInt) >> 8) & 0xff
+            // 2.5 CSS pixels in from both edges is well outside a corner rounded 20 across (the card's 10 at scale 2)
+            val corner = green(left + 2.5, top + 2.5)
+            val edge = green(left + width / 2.0, top + 3.0)
+            check("corners: the poster cut to the card's rounded corner (" + b(5).asString + "; green " + corner +
+              " at the corner, the page's, " + edge + " on the edge, the poster's)", corner < 45 && edge > 60)
+          }
+        }
+        // something to focus out of the card's box, as a row of a panel lower in it is (still in the rails' view, so
+        // they do not move): the browser scrolls a box that can scroll (`hidden`) to show it, which the box puts back;
+        // one cut by `clip` it cannot scroll at all
+        _ <- browser.value(card + "var d = document.createElement('div'); d.id = 'everyui-check-low'; " +
+          "d.tabIndex = -1; d.style.cssText = 'position:absolute;left:0;top:200px;width:10px;height:10px'; " +
+          "card.appendChild(d); " +
+          "window.__cardAt = card.firstChild.getBoundingClientRect().top; d.focus(); " +
+          "window.__shifted = card.scrollTop; return 0")
+        _ <- Task.sleep(500.millis)
+        held <- browser.value(card + "var low = document.getElementById('everyui-check-low'); " +
+          "var at = card.firstChild.getBoundingClientRect().top; card.removeChild(low); " +
+          "return [window.__shifted, card.scrollTop, card.scrollLeft, at - window.__cardAt]")
+        _ = {
+          val h = held.asVector.map(_.asDouble)
+          val (shifted, scrollTop, scrollLeft, moved) = (h(0), h(1), h(2), h(3))
+          check("corners: a cut box shifted by nothing as the focus goes into it (the browser moved it " + shifted +
+            ", put back to " + scrollTop + ", " + scrollLeft + "; its poster moved " + moved + ")",
+            scrollTop == 0.0 && scrollLeft == 0.0 && moved == 0.0)
+        }
+        frames = since.size
+        _ <- key(40, "ArrowDown")
+        _ <- List.fill(3)(key(39, "ArrowRight")).foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
+        _ <- key(38, "ArrowUp")
+        slow = since.drop(frames).filter(_.contains("railperf frame")).map(_.replaceAll(".*railperf frame ", ""))
+        _ = println("[old chrome] railperf with posters at the size drawn, 5 moves: " + slow.size +
+          " frames of 50 ms or more" + (if (slow.isEmpty) "" else " (" + slow.mkString(", ") + ")") +
+          ", a report rather than a check")
+        errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
+        _ = check("corners: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
+      } yield ()
     }
     DevTools.around(chrome) { browser =>
       println("[old chrome] Chrome " + browser.major + ": " + chrome)
@@ -126,9 +208,11 @@ object OldChromeCheck extends RapidApp {
         // (an error's whole stack, for the console)
         _ <- browser.addScript("Error.stackTraceLimit = 50")
         _ <- browser.size(1920, 1080)
-        _ <- demos.map(d => if (d == "net") net() else demo(d)).foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
+        _ <- demos.filterNot(_ == "corners").map(d => if (d == "net") net() else demo(d))
+          .foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
       } yield ()
-    }.map { _ =>
+    }.flatMap(_ => if (demos.contains("corners")) DevTools.around(chrome, gpu = true)(corners) else Task.unit)
+    .map { _ =>
       println(if (failed.isEmpty) "[old chrome] all passed" else "[old chrome] failed: " + failed.mkString("; "))
       if (failed.nonEmpty) sys.exit(1)
     }

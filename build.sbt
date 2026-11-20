@@ -556,9 +556,9 @@ lazy val desktop = (project in file("desktop"))
       .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // and the player's: the MIME types codecs are asked as (CodecMime), what a TV says it shows (WebOSDisplay), an HLS
     // playlist's renditions (HlsRenditions) and WebVTT subtitles (HlsVtt), SubRip as WebVTT (SubRipVtt), the seeks that
-    // land a place (ResumeSeek), and the surface's pixel ratio (SurfaceRatio)
+    // land a place (ResumeSeek), and the surface's pixel ratio (SurfaceRatio), and how a box is cut to itself (BoxClip)
     Test / unmanagedSources ++= Seq("CodecMime.scala", "WebOSDisplay.scala", "HlsRendition.scala", "HlsRenditions.scala",
-      "HlsVtt.scala", "SubRipVtt.scala", "ResumeSeek.scala", "SurfaceRatio.scala").map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
+      "HlsVtt.scala", "SubRipVtt.scala", "ResumeSeek.scala", "SurfaceRatio.scala", "BoxClip.scala").map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // and how Android starts another app for a link (IntentPlan), when a track choice reopens a file (TrackReopen) and
     // the player's sockets closed at once (MediaSockets), plain Scala as well
     Test / unmanagedSources ++= Seq("IntentPlan.scala", "TrackReopen.scala", "MediaSockets.scala")

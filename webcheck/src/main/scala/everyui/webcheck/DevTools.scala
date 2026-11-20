@@ -172,9 +172,10 @@ object DevTools {
   }
 
   /** `f` with `binary` started (its user agent `agent`, where one is given), its page's console and runtime on, and the
-    * browser closed after, however `f` ends. */
-  def around[A](binary: String, agent: Option[String] = None)(f: DevTools => Task[A]): Task[A] =
-    Task(start(binary, agent)).flatMap(tools => Task.defer(f(tools)).guarantee(Task(tools.close())))
+    * browser closed after, however `f` ends. An engine with no headless mode draws without its GPU process unless
+    * `gpu`, as a TV draws (Chromium 38 without it draws a picture's rounded clip square). */
+  def around[A](binary: String, agent: Option[String] = None, gpu: Boolean = false)(f: DevTools => Task[A]): Task[A] =
+    Task(start(binary, agent, gpu)).flatMap(tools => Task.defer(f(tools)).guarantee(Task(tools.close())))
 
   /** `f` with a browser already running driven where it is (a TV's: `http://<tv>:9998` on webOS 3, its inspector on),
     * its first page's console (replayed from the page's start, so nothing is lost by coming late) and runtime on, and
@@ -200,7 +201,7 @@ object DevTools {
     }
   }
 
-  private def start(binary: String, agent: Option[String]): DevTools = {
+  private def start(binary: String, agent: Option[String], gpu: Boolean): DevTools = {
     val major = majorOf(binary)
     val port = { val s = new ServerSocket(0); try s.getLocalPort finally s.close() }
     val profile = Files.createTempDirectory("everyui-chrome-")
@@ -209,8 +210,10 @@ object DevTools {
       "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=1920,1080",
       "--window-position=0,0") ++
       // an engine with no headless mode draws through its GPU process on Xvfb, which now and then stopped the page
-      // answering anything (Chromium 38: about one run in two hung on some demo for good); with it off none did in ten
-      (if (major >= 59) List("--headless=new", "--hide-scrollbars") else List("--disable-gpu")) ++
+      // answering anything (Chromium 38: about one run in two hung on some demo for good); with it off none did in
+      // ten. On (`gpu`) for a page or two only, where a picture of what a TV draws needs it
+      (if (major >= 59) List("--headless=new", "--hide-scrollbars")
+       else if (gpu) List("--ignore-gpu-blacklist") else List("--disable-gpu")) ++
       agent.map("--user-agent=" + _).toList
     val builder = new ProcessBuilder(((binary :: flags) :+ "about:blank")*).redirectErrorStream(true)
       .redirectOutput(ProcessBuilder.Redirect.DISCARD)
