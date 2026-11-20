@@ -782,8 +782,9 @@ object Component {
     * `disposeSliceMs` a turn (`Platform.later`), then run `done`. A screen of thousands of components taken apart in
     * one turn could outlast a Roku's watchdog (Execution timeout), which stopped it part of the way through and left
     * the rest bound to the theme for good. One that fails is logged and the rest are taken apart all the same. `what`
-    * names it on the console: `[dispose] <what> taken apart: <n> components in <ms> ms over <turns> turns` as it
-    * finishes, and a line as it starts when it will take more than a turn.
+    * names it on the console as it finishes: `[dispose] <what> taken apart: <n> components in <ms> ms`, the time its
+    * slices took, and where it took more than a turn, `over <turns> turns, <ms> ms from start to end`, the turns between
+    * them (whatever ran meanwhile) with them; and a line as it starts when it will take more than a turn.
     * {{{
     *   Component.disposeGradually(List(page), () => Platform.collect(), "SettingsPage")
     * }}} */
@@ -819,7 +820,7 @@ object Component {
       i += 1
     }
     val named = if (what.nonEmpty) what else roots.headOption.map(_.kind).getOrElse("nothing")
-    disposeSlice(order, count, done, Disposal(named, count, everyui.render.Platform.ticks(), 0))
+    disposeSlice(order, count, done, Disposal(named, count, everyui.render.Platform.ticks(), 0, 0.0))
   }
 
   // the last `left` of `all` taken apart, from the end, for a slice of a turn; the rest on the next
@@ -835,16 +836,19 @@ object Component {
         case t: Throwable => everyui.render.Platform.log("[dispose] " + c.kind + " failed to be taken apart: " + t.toString)
       }
     }
+    // (the first slice from the walk over them before it)
+    val worked = run.busy + everyui.render.Platform.ticks() - (if (turn == 1) run.started else started)
     val rest = at
     if (rest > 0) {
       if (turn == 1) everyui.render.Platform.log("[dispose] " + run.what + " being taken apart: " + run.count.toString +
         " components, a slice a turn")
-      val next = run.copy(turns = turn)
+      val next = run.copy(turns = turn, busy = worked)
       everyui.render.Platform.later(() => disposeSlice(all, rest, done, next))
     }
     else {
       everyui.render.Platform.log("[dispose] " + run.what + " taken apart: " + run.count.toString + " components in " +
-        math.round(everyui.render.Platform.ticks() - run.started).toString + " ms over " + turn.toString + " turns")
+        math.round(worked).toString + " ms" + (if (turn == 1) "" else " over " + turn.toString + " turns, " +
+        math.round(everyui.render.Platform.ticks() - run.started).toString + " ms from start to end"))
       // and, once the focus has moved on from any of them (it looks where they were, on a turn of its own), each forgets
       // where it was: one kept by something (the focus last on it) held, through its last containers, all it was in
       everyui.render.Platform.later(() => {

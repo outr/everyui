@@ -170,7 +170,10 @@ the board as it is taken apart, so whatever made it disposes of it with the boar
 rows.foreach(_.dispose()))`. A dialog is taken apart once it has closed (`Modal`), its panel too unless it was put up
 with `keep = true` to be put up again. A screen made for one showing (`oneShowing`) is taken apart by its manager once
 nothing can go back to it. Taking a large tree apart runs a slice a turn (`Component.disposeGradually(roots, done)`),
-so a screen of thousands of components never outlasts a Roku's watchdog; disposing twice does nothing.
+so a screen of thousands of components never outlasts a Roku's watchdog; disposing twice does nothing. A container is
+taken apart before what it holds, so nothing is measured, laid out or sized again as its children go. Its console line
+(`[dispose] dialog Container taken apart: 24 components in 52 ms over 5 turns, 1208 ms from start to end`) gives the
+time its slices took first; the rest is whatever ran between them, a screen opening meanwhile.
 
 ### Moving a component to another container
 

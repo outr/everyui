@@ -97,9 +97,12 @@ class ContainerFeature(val component: Component) extends Plain[Vector[Component]
       // measuring a rail of cards again for each card added to it took a Roku seconds. What comes back from a container
       // as wide (a kept view put back) has its sizes too, but for what was read out of the page meanwhile: putting back
       // a workspace's views read every word in them again
-      ContainerFeature.measureAdded(added, from)
-      component.measured.refresh()
-      component.asContainer.foreach(_.layoutFor("children"))
+      // (nothing, for a container taken apart: it is not measured or laid out again)
+      if (!component.takenApart) {
+        ContainerFeature.measureAdded(added, from)
+        component.measured.refresh()
+        component.asContainer.foreach(_.layoutFor("children"))
+      }
       if (removed.nonEmpty) everyui.focus.Focus.offScreen()
       // the focus in what was put here or moved along, given the platform's focus again: a field's node taken off the
       // page loses the browser's, though the focus layer's stays on it

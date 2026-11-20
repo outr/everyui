@@ -12,10 +12,13 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
   override def dispose(): Unit = if (!takenApart) {
     watchedBy = Nil
     val held = children()
+    // itself first: its children then leave a container already taken apart and bound to nothing, which is not
+    // measured, laid out or sized again for them (ContainerFeature). Taken apart after them, the going of each shrank
+    // it and laid out every container it was in, all the way up
+    super.dispose()
     children.clear()
     // (not one another container has put in itself, which a list bound to what it reads went on naming)
     held.foreach(c => if (ContainerFeature.unplaced(c, this)) c.dispose())
-    super.dispose()
   }
 
   // whether `layout` has been made: most containers never have one, and a look at which one need not make it
@@ -362,7 +365,7 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
       watchChild(c)
       if (reachFollowed) countReach(c.containerWatches.head)
     }
-    if (reachFollowed) {
+    if (reachFollowed && !takenApart) {
       if (removed.nonEmpty) recountReach() else setReach()
     }
   }
