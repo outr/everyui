@@ -19,6 +19,8 @@ import reactify.*
   * source is first ready, as a viewer does mid-film, and `switchseek=<seconds>` seeks to where it is that long after
   * (as Media3 does recovering an audio renderer that could not follow a switch, which reloads a file in place);
   * `switchpaused=1` pauses as it switches and plays again 5 s later.
+  * `panel=<seconds>` puts a menu up over the playing picture that long in (`steal=1`: the play button under it takes
+  * the focus back), logging `player panel up` and `player panel dismissed` as Back closes it.
   * `rounds=<n>` enters and leaves a player screen n times instead ([[PlayerRounds]]).
   * `cycle=<seconds>` instead lets the player go mid-playback, as a screen left then does, a tenth of that to the whole
   * of it after it was opened (as it opens, as it buffers, as it plays, in turn), and opens the first source in a new
@@ -172,6 +174,15 @@ object PlayerDemo {
     events.maxWidth := ui.size.width() - 48.0
     events.position.top := said.position.top() + said.size.height() + 6.0
     ui.children ++= (video :: bar) ++ List[Component](said, events)
+    // a panel over the playing picture (`panel=<seconds>` in): a television's menu, which Back closes; with `steal=1` the
+    // play button under it takes the focus back as it opens, as a player that refocuses itself does
+    val panel = number("panel", -1.0)
+    if (panel >= 0.0) Platform.after(panel, () => {
+      everyui.menu.Menu.show(List(everyui.menu.MenuItem("Close", () => Platform.log("player panel chosen"))), "Episode",
+        dismissed = () => Platform.log("player panel dismissed"))
+      Platform.log("player panel up")
+      if (Platform.launchArg("steal") == "1") everyui.focus.Focus.focused @= Some(play)
+    })
 
     // the script's steps, each a second or two after the one before, and the next source at each end
     val steps: List[(Double, String, () => Unit)] = List(

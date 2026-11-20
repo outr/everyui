@@ -173,6 +173,8 @@ import everyui.render.Platform
   *              on a Roku or an Apple TV (app/full: FullDemos)
   *   prejoin    a meeting's "ready to join?" page (the camera's picture, the microphone's level, their switches) that
   *              joins `livekit=` with `token=`, handing its tracks to the call; a browser only (app/full: PreJoinDemo)
+  *   bell       a phone's chat: a bell whose long inbox goes up as a sheet to a finger, toasts kept clear of the header
+  *              and the composer (`place=top`, `open=inbox`, `toast=undo`); not on a Roku or an Apple TV (app/full: BellDemo)
   *   platform   the platform's services: saving a file, the clipboard, passkeys (`rp=`), push notifications (`vapid=`),
   *              the location; not on a Roku or an Apple TV (app/full: FullDemos)
   *   zoom       a project map on a canvas that pans and zooms (ZoomCanvas): semantic zoom over 2,578 boxes, and a

@@ -2,9 +2,9 @@ package everyui.menu
 
 import everyui.component.*
 import everyui.component.types.{FontWeight, Semantics}
-import everyui.event.{FocusMoves, Key, KeyEvent, Pointer}
+import everyui.event.{FocusMoves, Key, KeyEvent, Pointer, PointerDrag}
 import everyui.focus.Focus
-import everyui.i18n.Direction
+import everyui.i18n.{Direction, Words}
 import everyui.kit.Mirror
 import everyui.layout.VerticalLayout
 import everyui.render.Platform
@@ -22,6 +22,10 @@ import reactify.*
   * to it, and over the menu a submenu opened from, another entry switches submenus and a plain one closes it; a click
   * outside every menu closes them all. An entry that `keepOpen`s (a box ticked, `MenuItem.toggle`) does its work and
   * leaves every menu open, its tick following the app. `dismissed` hears the menus closed with nothing chosen.
+  *
+  * A finger's menu too tall for its place (`Menu.touch`, leaving less than `Menu.tapRoom` to tap outside it) goes up
+  * as a sheet from the foot of the screen instead, over a dimmed screen that closes it tapped, with a grip at its top
+  * dragged down to close it (a Close button to a screen reader); the rest is a menu's as ever.
   *
   * {{{
   *   Menu.context(fileRow) {
@@ -52,7 +56,14 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     font.weight @= FontWeight.SemiBold
     color := Theme.muted()
   })
-  private val top: Val[Double] = own(Val(heading.map(_.size.height() + points * 1.6).getOrElse(inset)))
+  /** Whether it is up as a sheet from the foot of the screen (`Menu.touch`): a finger's menu too tall for its place. */
+  def isSheet: Boolean = sheet()
+  private val sheet: Var[Boolean] = own(Var(false))
+  // how far down a drag on its grip has drawn the sheet
+  private val pulled: Var[Double] = own(Var(0.0))
+  private val grip: Double = 28.0
+  private val top: Val[Double] = own(Val(heading.map(_.size.height() + points * 1.6).getOrElse(inset) +
+    (if (sheet()) grip else 0.0)))
   private val scroll = new ScrollContainer {
     content.children += column
   }
@@ -60,15 +71,18 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
   // the submenu this opened, while it is up
   private var opened: Option[Menu] = None
 
-  across := math.min(math.max(Menu.minWidth(), rows.map(_.natural()).foldLeft(0.0)(math.max) + inset * 2.0), Menu.widest)
+  across := (if (sheet()) math.min(ui.size.width(), Menu.sheetWidest()) else
+    math.min(math.max(Menu.minWidth(), rows.map(_.natural()).foldLeft(0.0)(math.max) + inset * 2.0), Menu.widest))
   heading.foreach { h =>
     Mirror.place(h, () => size.width(), () => points * 1.2)
-    h.position.top @= points
+    h.position.top := points + (if (sheet()) grip else 0.0)
   }
   scroll.position.left @= inset
   scroll.position.top := top()
   scroll.size.width := across() - inset * 2.0
-  scroll.size.height := math.min(column.size.height(), ui.size.height() - 16.0 - top() - inset)
+  // as a sheet, kept `Menu.tapRoom` short of the head of the screen, to be tapped to close it
+  scroll.size.height := math.min(column.size.height(),
+    ui.size.height() - (if (sheet()) Menu.tapRoom() else 16.0) - top() - inset)
   size.width := across()
   size.height := top() + scroll.size.height() + inset
   backgroundColor := Theme.raised()
@@ -206,11 +220,53 @@ class Menu(items: List[MenuItem], title: String = "", private val under: Option[
     * is up with `over` (a submenu), `dim` and `centre`d for a menu in the middle of the screen. A menu opened while another is on top takes its place; one
     * opened from a dialog goes over it, and the dialog is there again once it closes. */
   private[menu] def up(over: Boolean = false, dim: Boolean = false, centre: Boolean = false,
-                       dismissed: () => Unit = () => ()): Unit = {
+                       dismissed: () => Unit = () => (), room: () => Double = () => ui.size.height() - 16.0): Unit = {
     val first: Component = choosable.find(_.item.active).orElse(choosable.headOption).getOrElse(this)
     val after = () => if (under.isEmpty && !settled) dismissed()
     if (over || !Modal.top.forall(_.kind == "Menu")) Modal.over(this, first, after, dim = dim, centre = centre)
     else Modal.show(this, first, after, dim = dim, centre = centre)
+    // a finger's menu too tall for its place, now or once its entries are measured, goes up as a sheet
+    if (Menu.touch) {
+      val tall = () => if (!sheet() && top() + column.size.height() + inset > room() - Menu.tapRoom()) asSheet()
+      follow(column.size.height, (_: Double) => tall())
+      tall()
+    }
+  }
+
+  /** Up as a sheet from the foot of the screen, over a dimmed screen, as wide as the screen (up to
+    * `Menu.sheetWidest`) and at least `Menu.tapRoom` short of its head: a grip at its top, dragged down to close it
+    * (or activated, by a screen reader), and the dimmed screen above it tapped to close it. */
+  private def asSheet(): Unit = {
+    sheet @= true
+    position.left := (ui.size.width() - size.width()) / 2.0
+    position.top := ui.size.height() - size.height() + pulled()
+    // the dialog's sheet under it, which closes the menu tapped, dimmed
+    parent().foreach(_.backgroundColor := Theme.backdrop())
+    val bar = new Container
+    bar.size.width @= 36.0
+    bar.size.height @= 4.0
+    bar.radius @= 2.0
+    bar.backgroundColor := Theme.muted()
+    val handle = new Container
+    handle.size.width := size.width()
+    handle.size.height @= grip
+    handle.semantics @= Semantics.button(Words.close)
+    handle.children += bar
+    bar.position.left := (handle.size.width() - 36.0) / 2.0
+    bar.position.top @= 10.0
+    handle.event.click.attach(_ => Modal.remove(this))
+    // dragged down: closed once further than a quarter of it (or 64), else back up
+    val from: Var[Option[Double]] = handle.own(Var(None))
+    new PointerDrag(handle, (_, y) => {
+      val now = y + handle.absoluteTop
+      if (from().isEmpty) from @= Some(now)
+      pulled @= math.max(0.0, now - from().getOrElse(now))
+    }, () => {
+      from @= None
+      if (pulled() >= math.max(64.0, size.height() / 4.0)) Modal.remove(this)
+      else pulled @= 0.0
+    })
+    children += handle
   }
 
   override def kind: String = "Menu"
@@ -225,6 +281,19 @@ object Menu {
   def widest: Double = math.max(Menu.minWidth(), ui.size.width() - 16.0)
   /** How long the pointer rests on an entry with a submenu before it opens, in seconds. */
   val hoverDelay: Var[Double] = Var(0.3)
+  /** How much of the head of the screen a menu up as a sheet leaves uncovered, at the least, to be tapped to close it:
+    * a finger's width. */
+  val tapRoom: Var[Double] = Var(48.0)
+  /** The widest a menu up as a sheet is drawn (on a tablet), in the middle of the foot of the screen. */
+  val sheetWidest: Var[Double] = Var(640.0)
+
+  /** Whether a menu put up now is a finger's, which goes up as a sheet from the foot of the screen where it is too tall
+    * for its place, leaving less than `tapRoom` to tap outside it: what was used just now was a finger (a tap on a
+    * touch laptop as on a phone), or, with no pointer used just now, the screen is touched and has no fine pointer (a
+    * phone's menu opened by the app). Never where a remote moves the focus; a mouse's and the keys' menus drop as
+    * ever. */
+  def touch: Boolean = !Platform.remoteNavigation() &&
+    (if (Pointer.recent) Pointer.finger else Platform.touchSupport() && !Platform.pointerSupport())
 
   /** A menu in the middle of the screen under `title`, over a dimmed screen: what a remote's menu is. */
   def show(items: List[MenuItem], title: String = "", dismissed: () => Unit = () => ()): Menu = {
@@ -256,15 +325,16 @@ object Menu {
     val menu = new Menu(items)
     val left = anchor.absoluteLeft
     val top = anchor.absoluteTop
+    val after = top + anchor.size.height() + 4.0
     // lined up with the anchor's start: its right edge in a right-to-left language
     menu.position.left := math.max(8.0, math.min(if (Direction.rtl()) left + anchor.size.width() - menu.size.width() else left,
       ui.size.width() - menu.size.width() - 8.0))
     menu.position.top := {
-      val under = top + anchor.size.height() + 4.0
-      if (under + menu.size.height() <= ui.size.height() - 8.0) under
+      if (after + menu.size.height() <= ui.size.height() - 8.0) after
       else math.max(8.0, top - menu.size.height() - 4.0)
     }
-    menu.up(dismissed = dismissed)
+    // too tall for the room under it or over it, a finger's goes up as a sheet
+    menu.up(dismissed = dismissed, room = () => math.max(ui.size.height() - 8.0 - after, top - 12.0))
     back.foreach(b => Modal.returnTo(menu, Some(b)))
     menu
   }

@@ -596,7 +596,18 @@ object Focus {
   }
 
   // A key for the focus layer: to the focused component, then the screen's hooks, then Enter, the arrows, Tab and Back.
+  // Back or Escape while a dialog is up and the focus is not in it (left on what the dialog covers: a player under it
+  // that took the focus back, a field it was dropped from) is the dialog's at once: neither what the focus is on (a
+  // field that keeps Back, a list that moves the focus on it) nor the screen's hooks hear it first, so the dialog on
+  // top closes, as it does with the focus in it.
   private def focusKey(key: Key, event: KeyEvent, pressed: Boolean): Boolean = {
+    val back = key == Key.Back || key == Key.Escape
+    if (back && pressed) moveOn(true)
+    if (back && scope().exists(s => !focused().exists(c => within(c, s)))) pressed && goBack(key)
+    else focusedKey(key, event, pressed)
+  }
+
+  private def focusedKey(key: Key, event: KeyEvent, pressed: Boolean): Boolean = {
     if (key == Key.Enter && !pressed) enterHeld = false
     // a key never goes to something no longer on the screen: from there no arrow leads anywhere, and it answers nothing
     if (pressed) moveOn(true)

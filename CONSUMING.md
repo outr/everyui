@@ -1144,6 +1144,30 @@ MenuItem.sub("Send to workspace", List(
   MenuItem.separator) ++ workspaces.map(w => MenuItem(w.name, () => send(w, archive()))))
 ```
 
+On a touch screen a tall menu is a sheet. A menu a finger opens (`Menu.touch`: the press that opened it was a finger's,
+a tap on a touch laptop as on a phone; or, with no pointer used just then, the screen is touched and has no fine
+pointer) that would not fit its place with `Menu.tapRoom` (48) to spare goes up as a sheet from the foot of the
+screen, over a dimmed screen: as wide as the screen (up to `Menu.sheetWidest`, 640, in the middle on a tablet), never
+higher than `Menu.tapRoom` from the head of the screen, so there is always somewhere to tap outside it, and its
+entries scroll within it. A grip at its top drags it down to close it (further than a quarter of it, or 64; less goes
+back up), a tap on the dimmed screen above closes it, and a screen reader activates the grip, a Close button, to close
+it. Everything else is a menu's: the same entries, keys, submenus, `dismissed`, and the focus given back. A mouse's
+and the keys' menus drop as ever, however tall, and a menu that fits drops for a finger too. `menu.isSheet` says
+which it is. Nothing in the API changes; `Menu.below`, `Menu.at` and `Menu.show` all do it.
+
+Back closes the menu on top, sheet or dropdown, before anything under it (a dialog it was opened over, then the
+screen), with nothing for the app to do: on Android it is the system's Back, by the gesture or the button, as a key
+or, where the app has opted in to predictive back (`android:enableOnBackInvokedCallback="true"`), through the
+callback EveryUI registers. A menu is a dialog (`Modal`), and Back goes to the newest `Focus.onBack` handler, which is
+the menu's while it is up. That holds for any dialog (a `Modal`, a `Menu`) on every platform, a television's remote
+over a playing video as much as a phone: with the focus outside the dialog on top (left on what it covers, a player
+that took it back), Back and Escape go straight to the back handlers, so neither what has the focus (a field that
+keeps Back) nor a screen's `Focus.onKey` hook hears them first. What can still take Back before a dialog: a keymap
+command on a `Back` chord, a `Focus.onBack` registered after the dialog opened (a part of the dialog's own, as a date
+picker's), and, with the focus inside the dialog, a component there that keeps it or a hook that answers it. An
+overlay that is not a `Modal` (a panel an app adds over its player) is closed by the app's own `Focus.onBack`, which
+hears Back only where nothing registered after it takes it first.
+
 `Modal.show` and `Modal.over` take `dim = false` (leave what is under the dialog as it is) and `centre = false` (the
 caller places the panel), which is how menus sit where they were opened. A panel is taken apart a turn after it closes,
 as one made for its showing; `keep = true` leaves it whole, to be put up again.
