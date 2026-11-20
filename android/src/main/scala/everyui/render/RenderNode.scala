@@ -799,6 +799,10 @@ class RenderNode(val view: View) {
   private[render] def listen(): Unit = if (!listening) {
     listening = true
     view.setOnTouchListener((_, e) => touch(e))
+    view match {
+      case g: NodeGroup => g.hearer = this
+      case _ => ()
+    }
     hearHover()
   }
 
@@ -938,7 +942,31 @@ class RenderNode(val view: View) {
       fire(PointerKind.Up, e)
       toRoot(PointerKind.Up, e)
     }
-    true
+    // a press it only watches is left to what holds it that takes presses (`ownsPress`), as a parent hears what a child
+    // hears on the web: Android gives a whole touch to the one view that takes its start, so a picker's row whose words
+    // were cut short (its tip, which hears a press to hide itself) held the tap, and the list never chose the row
+    !(action == MotionEvent.ACTION_DOWN && !ownsPress && ownedAbove)
+  }
+
+  /** Whether a touch that lands on it is its own (`PressOwner.owns`). */
+  private[render] def ownsPress: Boolean = PressOwner.owns(pointer.keySet, keepsDrag || touchHook.nonEmpty || (view match {
+    case g: NodeGroup => g.scrollsAlong != 0
+    case _ => false
+  }))
+
+  // whether a view around it, short of the root (which hears every touch's moves and lift as it is: `toRoot`), hears the
+  // pointer and takes presses
+  private def ownedAbove: Boolean = {
+    var at = view.getParent
+    var found = false
+    while (!found && at != null) {
+      at match {
+        case g: NodeGroup => found = g.hearer != null && !(g.hearer eq RenderNode.rootNode) && g.hearer.ownsPress
+        case _ => ()
+      }
+      at = at.getParent
+    }
+    found
   }
 
   /** The shared ScrollContainer shifts the content; the node only clips, and takes a finger's drag along it from what
@@ -1754,6 +1782,8 @@ object RenderNode {
 final class NodeGroup(context: Context) extends ViewGroup(context) {
   setClipChildren(false)
   setClipToPadding(false)
+  /** Its node, once it hears the pointer (`RenderNode.listen`). */
+  private[render] var hearer: RenderNode = null
 
   override def onMeasure(widthSpec: Int, heightSpec: Int): Unit = {
     var i = 0

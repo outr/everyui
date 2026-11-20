@@ -2,6 +2,7 @@ package everyui.render
 
 import android.view.{View, ViewGroup}
 import android.widget.EditText
+import everyui.event.PointerKind
 
 /** Whether a touch let go on a view came up on something else in it that answers a click (`mark`ed) or takes typing:
   * a press belongs to what it went down on, so a finger or a mouse that went down on a dialog's sheet, around the
@@ -9,6 +10,13 @@ import android.widget.EditText
   * went down in the dialog is the dialog's from the start, and never reaches the sheet.) */
 private[render] object PressOwner {
   private val clickers = java.util.Collections.newSetFromMap(new java.util.WeakHashMap[View, java.lang.Boolean]())
+
+  /** Whether a node that hears the pointer kinds `heard` takes a touch that lands on it as its own: it answers a click
+    * or a long press, follows the pointer as it moves or to its lift, or `drags` (a scroll, a slider, a pinch). One that
+    * only watches a press go down (a tip hiding itself) leaves the touch to what holds it that takes one, as the web
+    * hands a press on to what is round it. */
+  def owns(heard: collection.Set[PointerKind], drags: Boolean): Boolean = drags ||
+    heard.exists(k => k == PointerKind.Click || k == PointerKind.Menu || k == PointerKind.Up || k == PointerKind.Move)
 
   /** `view` answers clicks. */
   def mark(view: View): Unit = clickers.add(view)

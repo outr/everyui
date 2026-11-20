@@ -23,6 +23,9 @@ import reactify.*
   * icon toggle at the field's end, a picture before each row's words with a spinning ring round those at work, more rows
   * than show, and a menu on a held row), to try taps on its rows with a phone's keyboard up. `badge=1` marks the
   * pictures of those not at work with a small "?" that has a tip and no press of its own, hanging out of the picture.
+  * `badge=vc` draws the rows as Voidcraft's switcher does (its picture, ring and waiting badge, and "2 waiting on you"
+  * in the words, which cut short on a phone give the row a tip); `badge=words` the same without the badges, and
+  * `words=0` the badges without those words.
   * Logs `picker chose <model>` when one is chosen, and `picker menu <row>` when a row is held. */
 object PickerDemo {
   // (name, provider's key, provider's name)
@@ -169,16 +172,87 @@ object PickerDemo {
       List(dot)
     }
 
+  // `badge=vc`: Voidcraft's own badge (WaitingBadges.badge), as it is: a round disc in the warning tone, a ring of the
+  // surface, a bold "?" (or the count) in a TextView, shown while the count is above 0, a tip, a "status" role and no
+  // press of its own, over the top corner of the row's picture (-3, -3) in a holder that does not clip
+  private def waiting(size: Double, count: Val[Int], tip: Val[String], ring: Double = 1.5): Container = {
+    val label = TextView("?", size * 0.68, Theme.wordsOn(Theme.warning()))
+    label.font.weight @= everyui.component.types.FontWeight.Bold
+    label.content := (count() match { case n if n > 99 => "99+"; case n if n > 1 => n.toString; case _ => "?" })
+    val dot = new Container
+    dot.size.height @= size
+    dot.size.width := math.max(size, label.size.width() + size * 0.5)
+    dot.radius @= size / 2.0
+    dot.backgroundColor := Theme.warning()
+    dot.borderWidth @= ring
+    dot.borderColor := Theme.surface()
+    label.position.left := (dot.size.width() - label.size.width()) / 2.0
+    label.position.top := (size - label.size.height()) / 2.0
+    dot.children += label
+    dot.visible := count() > 0
+    dot.tooltip := tip()
+    dot.semantics := everyui.component.types.Semantics("status", label = tip())
+    dot
+  }
+
+  // `badge=vc` or `badge=words`: the rows as Voidcraft's switcher has them, with and without its badges
+  private def voidcraft: Boolean = Set("vc", "words")(Platform.launchArg("badge"))
+
+  // how many questions wait in each workspace under `voidcraft`: those not at work by turns, and All workspaces
+  private def asking(space: (String, Int, Boolean)): Int =
+    if (!voidcraft) 0
+    else if (space._1 == "All workspaces") 3
+    else if (space._3 || space._2 == 0) 0
+    else spaces.indexOf(space) % 3 match { case 0 => 0; case 1 => 1; case _ => 2 }
+
+  // the start of a row as Voidcraft's switcher has it (Sidebar.choiceLeading): a workspace's picture (a letter on its
+  // colour), the ring of one at work, and the badge of one with questions waiting
+  private def vcLeading(points: Double)(item: Val[Option[(String, Int, Boolean)]]): Component = {
+    val face = points + 8.0
+    val icon = new Container
+    icon.size.width @= face
+    icon.size.height @= face
+    item.attachAndFire(c => icon.children.replaceMaking(c.toVector.flatMap[Component] { space =>
+      val mark: Component = if (space._1 == "All workspaces" || space._1 == "New workspace") {
+        val glyph = new MaterialIconView(if (space._1 == "New workspace") MaterialIcon.Add else MaterialIcon.Workspaces, face * 0.8)
+        glyph.color := Theme.muted()
+        glyph.position.left @= face * 0.1
+        glyph.position.top @= face * 0.1
+        glyph
+      } else new everyui.menu.MenuPictureView(everyui.menu.MenuPicture.letter(space._1.take(1),
+        everyui.chat.Participant.colourOf(space._1)), face, MaterialIcon.Workspaces, Theme.muted())
+      val ring = Option.when(space._3) {
+        val ring = new Spinner(face + 6.0, () => Theme.accent())
+        ring.position.left @= -3.0
+        ring.position.top @= -3.0
+        ring: Component
+      }
+      val question = Option.when(asking(space) > 0 && Platform.launchArg("badge") == "vc") {
+        val b = waiting(math.max(14.0, face * 0.62), Val(asking(space)), Val(s"${asking(space)} questions waiting on you: ${space._1}"))
+        b.position.left @= -3.0
+        b.position.top @= -3.0
+        b: Component
+      }
+      Vector(mark) ++ ring ++ question
+    }))
+    icon.clipsToBox @= Some(false)
+    icon
+  }
+
   /** A workspace switcher: no segments, an icon toggle at the field's end, a picture before each row's words (a
     * spinning ring round those at work) and a menu on a held row. */
   private def switch(chose: Var[String]): Unit = {
     val points = if (ui.size.width() < 900.0) 18.0 else 14.0
+    // under `voidcraft`, as Voidcraft words them: how many wait on you (not with `words=0`) and work
+    def detail(s: (String, Int, Boolean)): String = (List(if (s._2 == 0) "" else s"${s._2} conversations") ++
+      Option.when(asking(s) > 0 && Platform.launchArg("words") != "0")(s"${asking(s)} waiting on you") ++
+      Option.when(voidcraft && s._3)("1 working")).filter(_.nonEmpty).mkString(" · ")
     val picker = new FilterPicker[(String, Int, Boolean)](q =>
       Task.pure((if (byName()) spaces.sortBy(_._1) else spaces).filter(_._1.toLowerCase.contains(q.trim.toLowerCase))),
-      _._1, _._1, s => if (s._2 == 0) "" else s"${s._2} conversations", placeholder = "Switch workspace",
+      _._1, _._1, detail, placeholder = "Switch workspace",
       toggles = List(PickerToggle("sortByName", "", byName, "Sort by name", icon = MaterialIcon.SortByAlpha)),
       row = Some(words => new HighlightRow[(String, Int, Boolean)](_._1, s => Match.spans(words(), s._1).getOrElse(Nil),
-        s => if (s._2 == 0) "" else s"${s._2} conversations", points, leading = Some { item =>
+        detail, points, leading = if (voidcraft) Some(vcLeading(points)) else Some { item =>
           val face = points + 8.0
           val icon = new Container
           icon.size.width @= face

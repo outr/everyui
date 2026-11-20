@@ -7,7 +7,7 @@ import everyui.menu.{Menu, MenuItem}
 import everyui.tooltip.Tooltip
 import everyui.tree.{Tree, TreeModel, TreeRow}
 import everyui.{FxSpec, ui}
-import javafx.scene.input.{KeyCode, KeyEvent}
+import javafx.scene.input.{KeyCode, KeyEvent, MouseButton, MouseEvent}
 import reactify.*
 
 /** A row's tip (`Decoration.tooltip`): shown by `Tooltip` after its delay as the pointer rests on the row, as the cursor
@@ -292,6 +292,21 @@ class RowTipSpec extends FxSpec {
         key(KeyCode.DOWN)
         Thread.sleep(150L)
         fx(Tooltip.shownFor) shouldBe None
+      }
+    }
+    "leave a press and a click on its row to the list, which chooses the row, as on a row without one" in {
+      // (on Android the row's press, heard to hide its tip, held the whole touch, and the list never heard the tap)
+      val list = fx(made(20))
+      onScreen(list) {
+        for (i <- List(4, 7, 5)) {
+          val r = rowOf(list, i)
+          fx(r.tip().nonEmpty) shouldBe (i != 5)
+          val x = fx(r.absoluteLeft + 40.0)
+          val y = fx(r.absoluteTop + 5.0)
+          List(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED).foreach(kind => fx(javafx.event.Event.fireEvent(r.node.fx,
+            new MouseEvent(kind, x, y, x, y, MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true, null))))
+          fx(list.selection.keys()) shouldBe Set(i.toString)
+        }
       }
     }
   }
