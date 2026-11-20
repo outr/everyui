@@ -8,7 +8,7 @@ import android.os.{Build, Bundle, Handler, Looper}
 import everyui.Permission
 import everyui.activity.ServiceRuntime
 import everyui.background.Background
-import everyui.push.{Push, PushAction, PushAnswer, PushButton, PushChannel, PushFormat, PushMessage,
+import everyui.push.{LargeIcon, Push, PushAction, PushAnswer, PushButton, PushChannel, PushFormat, PushMessage,
   PushToken, ReplyOutcome}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import scala.jdk.CollectionConverters.*
@@ -26,8 +26,9 @@ import scala.jdk.CollectionConverters.*
   * nor body, or with "dataOnly" "true", is a data push (`PushMessage.isData`), never posted: `Push.data` hears it in
   * front, the app's `BackgroundApp.onPush` otherwise, in a process started for it where the app was closed. Android
   * 13 and later ask the person before an app posts one (POST_NOTIFICATIONS, which the manifest declares). A posted
-  * one has the small icon its "noticeIcon" names (`NoticeIcon`), the colour of its "noticeColor" and the picture of
-  * its "noticePicture" (`NoticePicture`), where it names them. */
+  * one has the small icon its "noticeIcon" names (`NoticeIcon`), the colour of its "noticeColor", and as its large icon
+  * the picture of its "noticePicture" (`NoticePicture`), else its icon white on a circle of its colour (`LargeIcon`),
+  * where it names them; a group's summary that names no icon looks as the latest of its group. */
 object PushAccess {
   /** A notification's button that runs in the background, as `BackgroundReceiver` hears it. */
   val actionIntent = "everyui.push.ACTION"
@@ -43,6 +44,10 @@ object PushAccess {
   private lazy val main = new Handler(Looper.getMainLooper)
   // the channels a push asked another importance of, said once each
   private val differing = new java.util.concurrent.ConcurrentHashMap[String, String]
+  // the latest child posted of each group, by group, whose look a summary naming none takes (`kindOf`)
+  private val latest = new java.util.concurrent.ConcurrentHashMap[String, PushMessage]
+  private val lookIcon = "everyui.push.noticeIcon"
+  private val lookColor = "everyui.push.noticeColor"
 
   private lazy val present: Boolean = try Firebase.present() catch { case _: LinkageError => false }
 
@@ -121,9 +126,10 @@ object PushAccess {
     if (message.fetchedPicture.forall(u => NoticePicture.ready(context, u))) post(context, message, at, replies)
     else NoticePicture.later("push: notification not posted", () => post(context, message, at, replies))
 
-  private def post(context: Context, message: PushMessage, at: Option[(String, Int)],
+  private def post(context: Context, sent: PushMessage, at: Option[(String, Int)],
                    replies: Vector[String]): Unit = {
     val notify = manager(context)
+    val message = kindOf(notify, sent)
     val channel = message.channel.getOrElse(PushChannel.default)
     open(notify, channel)
     val id = (message.title + message.body + message.path.getOrElse("") + System.nanoTime().toString).hashCode
@@ -143,9 +149,12 @@ object PushAccess {
       // in place of the one shown with its tag, sounding again only where it says so
       .setOnlyAlertOnce(at.nonEmpty || (message.shownTag.nonEmpty && !message.renotify))
       .setContentIntent(PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
-    message.noticeColor.foreach(c =>
-      builder.setColor((c.alphaInt << 24) | (c.redInt << 16) | (c.greenInt << 8) | c.blueInt))
-    message.fetchedPicture.flatMap(u => NoticePicture.of(context, u)).foreach(b => builder.setLargeIcon(b))
+    message.noticeColor.foreach(c => builder.setColor(NoticeIcon.argb(c)))
+    // its picture, else its icon on a circle of its colour: Android 16 heads each notification with the app's icon,
+    // so the large icon is where its kind shows in the shade
+    NoticeIcon.large(context, LargeIcon.of(message)).foreach(b => builder.setLargeIcon(b))
+    // its look kept on it, for a summary of its group posted after it (`kindOf`)
+    if (!message.summary && message.noticeIcon.nonEmpty) builder.addExtras(look(message))
     message.group.foreach(g => builder.setGroup(g))
     if (message.summary && message.group.nonEmpty) {
       builder.setGroupSummary(true)
@@ -198,6 +207,42 @@ object PushAccess {
       if (shownAs._1.nonEmpty) notify.notify(shownAs._1, shownAs._2, notification) else notify.notify(shownAs._2, notification)
     }
     catch { case t: SecurityException => android.util.Log.w("everyui", "notification not posted: " + t.getMessage) }
+  }
+
+  /** `message` as it is shown: a summary naming no icon of its own looks as the latest of its group does
+    * (`PushMessage.lookingAs`), the last posted in this process or, where none was, the newest Android still shows;
+    * a child of a group noted as its latest. */
+  private def kindOf(notify: NotificationManager, message: PushMessage): PushMessage = message.group match {
+    case Some(g) if message.summary && message.noticeIcon.isEmpty =>
+      Option(latest.get(g)).orElse(shownLatest(notify, g)).map(message.lookingAs).getOrElse(message)
+    case Some(g) if !message.summary && message.noticeIcon.nonEmpty =>
+      latest.put(g, message)
+      message
+    case _ => message
+  }
+
+  /** The newest of `group` Android shows, as its look was kept on it (`look`). */
+  private def shownLatest(notify: NotificationManager, group: String): Option[PushMessage] = try {
+    notify.getActiveNotifications.toList
+      .filter { s =>
+        val n = s.getNotification
+        n.getGroup == group && (n.flags & Notification.FLAG_GROUP_SUMMARY) == 0 && n.extras.containsKey(lookIcon)
+      }
+      .sortBy(s => -s.getPostTime).headOption.map(_.getNotification)
+      .map(n => PushMessage.of(Map("noticeIcon" -> n.extras.getString(lookIcon, ""),
+        "noticeColor" -> n.extras.getString(lookColor, ""))))
+  }
+  catch { case t: Throwable =>
+    Platform.logError("push: the latest of " + group + " not read", t)
+    None
+  }
+
+  /** The extras that keep a child's look on its notification. */
+  private def look(message: PushMessage): Bundle = {
+    val extras = new Bundle
+    extras.putString(lookIcon, message.noticeIcon.getOrElse(""))
+    extras.putString(lookColor, message.noticeColor.map(PushMessage.hex).getOrElse(""))
+    extras
   }
 
   /** A copy button's text put on the clipboard (`PushCopy`), and its notification taken away where it says so

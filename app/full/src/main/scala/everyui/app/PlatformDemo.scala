@@ -8,7 +8,8 @@ import everyui.clipboard.Clipboard
 import everyui.file.{Files, SaveResult}
 import everyui.passkey.{PasskeyResult, Passkeys}
 import everyui.push.{Notice, Push, PushAnswer}
-import everyui.{Permission, PlatformKind, PlatformKinds}
+import everyui.{Color, Permission, PlatformKind, PlatformKinds}
+import everyui.font.MaterialIcon
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
 import everyui.ui
@@ -210,7 +211,8 @@ class PlatformDemo {
   /** A notice tagged "demo", so each replaces the last; a click on it is said. */
   private def notice(onlyWhenHidden: Boolean): Unit = {
     val time = Platform.localDateTime(System.currentTimeMillis())
-    Platform.showNotice(Notice("A notice from EveryUI", "Shown at " + time, tag = "demo", onlyWhenHidden = onlyWhenHidden),
+    Platform.showNotice(Notice("A notice from EveryUI", "Shown at " + time, tag = "demo", onlyWhenHidden = onlyWhenHidden,
+      noticeIcon = Some(MaterialIcon.Notifications), noticeColor = Some(Color.fromHex("#00897B"))),
       () => tell(noticed, "notice clicked", "Clicked the notice shown at " + time))
     tell(noticed, "notice shown", "Asked to show one at " + time + (if (onlyWhenHidden) ", if the app is out of sight" else ""))
   }

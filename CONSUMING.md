@@ -4430,17 +4430,35 @@ So the person tells mail from a conversation from an error at a glance, a push n
   fetches it over http or https only (`PushMessage.fetchable`; `fetchedPicture`), within 5 seconds of the push's ten,
   up to 2 MB, decoded at the sampling nearest the large icon's size (64 dp) and cut to it from the middle. Late, too
   large, not a picture or not there, the notification is shown without it, never held back or dropped.
+- Where it has no picture, `noticeIcon` is its large icon too: the same glyph, white, centred on a circle of
+  `noticeColor` (grey where it names none; `LargeIcon`), drawn at the large icon's 64 dp for the screen's density and
+  kept by name, colour and size. A picture still wins (a person's face); with no `noticeIcon` there is no large icon,
+  as before. This is where the kind shows in the shade on Android 16: its notification redesign heads every
+  notification of an app with the app's own icon (whatever the small icon; only system apps without a launcher keep
+  theirs), the small icon showing only in the status bar, and the large icon at the end of a lone notification and
+  at the head of each in an open stack. Android 12 to 15 head a notification with its small icon on a circle of its
+  colour, and in an open stack show a child's large icon in place of its small icon where both its small icon and
+  its colour are its summary's; so the small icon is a PNG's bytes, which Android tells the same as another's. A
+  closed stack on Android 16 shows the app's icon over its newest lines, which nothing an app sets changes short of
+  a conversation (MessagingStyle with a sharing shortcut and a person, whose face heads it), which EveryUI does not
+  post.
+- A group's summary (`groupSummary`) that names no `noticeIcon` takes the icon of the latest of its group, and its
+  colour where it names none (`PushMessage.lookingAs`): the last posted in the app's process, else the newest Android
+  still shows. So a server that groups by kind (`"group": "app:mail"`) need not name the icon on the summary.
 
 They are the push's own keys, not its `data`, and written back as sent (`PushMessage.fields`); a push made in code
 names none. A plain `icon`, `color` or `largeIcon` is the app's own data, unread. The app's own notices and ongoing
-ones name an icon in code: `Notice(..., noticeIcon = Some(MaterialIcon.Mail))`,
-`OngoingNotice(..., noticeIcon = Some(MaterialIcon.Sync))`.
+ones name an icon and a colour in code:
+`Notice(..., noticeIcon = Some(MaterialIcon.Mail), noticeColor = Some(Color.fromHex("#1E88E5")))`,
+`OngoingNotice(..., noticeIcon = Some(MaterialIcon.Sync), noticeColor = ...)`, drawn as a push's are.
 
 - **Android**: as above, for a push the app posts (a data message). A notification message the system shows itself
   has the icon and colour of its own `notification` keys (`icon`, a drawable's name, and `color`), not these.
 - **Web**: a browser's notification has no small icon or tint of the app's choosing, so `noticeIcon` and
   `noticeColor` change nothing there; `noticePicture` is the notification's `icon` where the push names no `icon` of
-  its own (the service worker sets no other). All three reach the window as `PushMessage`'s fields.
+  its own (the service worker sets no other). All three reach the window as `PushMessage`'s fields. The worker draws
+  no glyph circle: it has no Material Icons face of its own to draw with, and a browser shows the site's icon where
+  there is none.
 - **Apple, desktop, Roku, Apple TV**: no push; the fields are read as anywhere.
 
 ### Data pushes (`dataOnly`, `BackgroundApp.onPush`, `Push.data`)

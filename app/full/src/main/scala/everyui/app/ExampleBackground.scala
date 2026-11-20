@@ -3,6 +3,7 @@ package everyui.app
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.background.{BackgroundApp, RestartReason, Work, WorkResult}
+import everyui.Color
 import everyui.font.MaterialIcon
 import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice, Push, PushAction, ReplyOutcome}
 import everyui.render.Platform
@@ -116,7 +117,8 @@ object ExampleBackground extends BackgroundApp {
       (if (paused) "Paused at " else "Running since ") + now(), channel,
       Vector(toggle, NoticeAction("Open", NoticeTap.OpenApp("/background/opened"))),
       tap = Some(NoticeTap.OpenApp("/background")),
-      noticeIcon = Some(if (paused) MaterialIcon.Pause else MaterialIcon.Sync)))
+      noticeIcon = Some(if (paused) MaterialIcon.Pause else MaterialIcon.Sync),
+      noticeColor = Some(Color.fromHex(if (paused) "#F57C00" else "#1E88E5"))))
   }
 
   /** The status notice taken away, and not shown again after a restart. */

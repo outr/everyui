@@ -4,7 +4,7 @@ import android.app.{ActivityManager, Notification, NotificationManager, PendingI
 import android.content.Intent
 import android.os.Build
 import everyui.Permission
-import everyui.push.Notice
+import everyui.push.{LargeIcon, Notice}
 import reactify.*
 
 import scala.collection.mutable
@@ -56,7 +56,7 @@ object Notices {
         .getOrElse(new Intent(Intent.ACTION_MAIN).setPackage(context.getPackageName))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
         .putExtra("everyui.notice", key)
-      val notification = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_DEFAULT)
+      val builder = NoticeChannels.builder(context, channel, NotificationManager.IMPORTANCE_DEFAULT)
         .setSmallIcon(NoticeIcon.small(context, notice.noticeIcon))
         .setContentTitle(notice.title)
         .setContentText(notice.body)
@@ -64,7 +64,9 @@ object Notices {
         .setAutoCancel(true)
         .setContentIntent(PendingIntent.getActivity(context, key.hashCode, launch,
           PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
-        .build()
+      notice.noticeColor.foreach(c => builder.setColor(NoticeIcon.argb(c)))
+      NoticeIcon.large(context, LargeIcon.of(notice)).foreach(b => builder.setLargeIcon(b))
+      val notification = builder.build()
       try notify.notify(key, 0, notification)
       catch { case t: SecurityException => Platform.log("notification not posted: " + t.getMessage) }
     }

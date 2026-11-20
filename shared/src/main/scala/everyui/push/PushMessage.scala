@@ -38,7 +38,10 @@ import everyui.font.MaterialIcon
   * `colorOf`) is the colour Android tints it with, none where it is no such colour; `noticePicture` is a picture's URL
   * shown large beside its words (`"noticePicture": "https://..."`), fetched on Android only over http or https
   * (`fetchable`) and shown without it where it does not come in time, and on the web the notification's icon where
-  * the push does not name one under "icon". A plain "icon", "color" or "largeIcon" is the app's own data, unread.
+  * the push does not name one under "icon". Where it has no picture, its icon is drawn large instead, white on a
+  * circle of its colour (`LargeIcon`), where Android 16 shows its kind in the shade. A group's summary that names no
+  * icon looks as the latest of its group (`lookingAs`). A plain "icon", "color" or "largeIcon" is the app's own data,
+  * unread.
   *
   * A push with neither title nor body, or with `"dataOnly": "true"`, is no notification but a data push
   * (`PushMessage.isData`), never shown: its keys go to the app's `BackgroundApp.onPush`, or `Push.data`. */
@@ -58,6 +61,13 @@ case class PushMessage(title: String, body: String, path: Option[String], tag: O
   /** The tag it is shown under: its own, or for a group's summary the group's, so that a summary takes the place of
     * the group's last and a close of the group (`{"close": group}`) takes it away. */
   def shownTag: Option[String] = tag.orElse(if (summary) group else None)
+
+  /** How it looks beside `child`, the latest of its group: a group's summary that names no icon of its own has its
+    * child's icon, and its colour where it names none, so the stack shows its kind (Android draws a summary as it
+    * draws the others); anything else looks as it is. */
+  def lookingAs(child: PushMessage): PushMessage =
+    if (!summary || noticeIcon.nonEmpty) this
+    else copy(noticeIcon = child.noticeIcon, noticeColor = noticeColor.orElse(child.noticeColor))
 
   /** Its title as it is shown: plain words where it is Markdown (`PushText.plain`), as it is where not. */
   def shownTitle: String = shown(title)

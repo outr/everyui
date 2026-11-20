@@ -20,10 +20,10 @@ import reactify.*
   * are on; a reminder and an approval pushed in three seconds (Push.deliver), whose Done, Approve and Deny run in
   * ExampleBackground with the app closed (Approve once the device is unlocked) and are heard by Push.acted with it
   * running; an agent's answer in Markdown, styled; kinds of push told apart by their icon, colour and picture
-  * (noticeIcon, noticeColor, noticePicture); and mail for three accounts (Push.deliver), each message stacked
-  * under its account's summary on its account's channel, with a Reply typed into it; three channels declared up
-  * front (Push.channels) at low, default and high importance, three more made by pushes asking each
-  * (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
+  * (noticeIcon, noticeColor, noticePicture), alone and stacked by kind; and mail for three accounts (Push.deliver),
+  * each message stacked under its account's summary on its account's channel, with a Reply typed into it; three
+  * channels declared up front (Push.channels) at low, default and high importance, three more made by pushes asking
+  * each (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
   * three seconds, whose Copy puts it on the clipboard with the app closed, and the clipboard read; data pushes
   * (Push.deliver), heard by Push.data in front and by ExampleBackground.onPush otherwise, one slow, one handing a
   * long sync to expedited work, and one delivered from work with the app killed. Under each, what
@@ -93,7 +93,8 @@ class BackgroundScreen extends UIScreen {
         new Button("An approval", () => push(approval)),
         new Button("Mail for three accounts", () => mail()),
         new Button("An answer in Markdown", () => push(answer)),
-        new Button("Kinds at a glance", () => kinds())),
+        new Button("Kinds at a glance", () => kinds()),
+        new Button("Kinds, stacked", () => stacked())),
       section("A one-time code, in 3 s", coded)(
         new Button("A code arrived", () => push(code(dismisses = false))),
         new Button("Copy closes it", () => push(code(dismisses = true))),
@@ -244,6 +245,27 @@ class BackgroundScreen extends UIScreen {
     pushes.zipWithIndex.foreach { (p, i) =>
       val data = (p ++ Map("path" -> "/background", "tag" -> ("kind-" + i.toString))).filter((_, v) => v.nonEmpty)
       Platform.after(3.0 + i * 1.0, () => Push.deliver(data))
+    }
+  }
+
+  /** Mail, a conversation and an error, from three seconds on, two of each stacked under its kind's group
+    * ("example:mail" and so on, as an app groups its kinds), each child with its icon and colour and each summary
+    * with neither, so it takes its latest child's; then an event alone, in no group. In the shade each shows its kind's
+    * icon on a circle of its colour (its large icon), at the head of each child of an open stack on Android 16. */
+  private def stacked(): Unit = {
+    val kinds = Vector(("mail", "#1E88E5", "Mail"), ("forum", "#43A047", "Team chat"), ("error", "#D32F2F", "Deploys"))
+    val pushes = kinds.flatMap { (icon, color, name) =>
+      val group = "example:" + icon
+      val children = (1 to 2).toVector.map(n => Map("title" -> (name + " " + n.toString),
+        "body" -> (if (icon == "error") "voidcraft#4" + n.toString + ": 2 tests" else "Message " + n.toString),
+        "noticeIcon" -> icon, "noticeColor" -> color, "group" -> group, "tag" -> (group + ":" + n.toString)))
+      children :+ Map("title" -> name, "body" -> "2 new", "group" -> group, "groupSummary" -> "true",
+        "lines" -> children.map(c => "\"" + c("title") + "\"").reverse.mkString("[", ",", "]"))
+    } :+ Map("title" -> "Standup", "body" -> "In 10 minutes", "noticeIcon" -> "event", "noticeColor" -> "#8E24AA",
+      "tag" -> "example:event")
+    pushed @= "Three kinds stacked by group, and an event alone, from 3 s on: leave the app"
+    pushes.zipWithIndex.foreach { (p, i) =>
+      Platform.after(3.0 + i * 0.5, () => Push.deliver(p ++ Map("path" -> "/background")))
     }
   }
 

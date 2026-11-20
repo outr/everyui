@@ -6,14 +6,15 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
 import everyui.activity.ServiceRuntime
-import everyui.push.{NoticeTap, OngoingNotice}
+import everyui.push.{LargeIcon, NoticeTap, OngoingNotice}
 
 /** Ongoing notices (`everyui.push.Ongoing`) on Android: posted from the application's context, so a `BackgroundApp`'s
   * handler with no activity shows, updates and clears them too. Each is ongoing (not swiped away before Android 14),
   * alerts once (an update makes no sound), and is on the app's own channel. A tap that runs an action is an explicit
   * broadcast to `BackgroundReceiver`; one that opens the app is the app's launch with the path, as a widget's is, so
   * no receiver starts an activity (Android 12 forbids it from a notice). The small icon is the Material icon the notice
-  * names (`NoticeIcon`), else the drawable `everyui_notice` where the app's resources have one, the app's icon otherwise.
+  * names (`NoticeIcon`), else the drawable `everyui_notice` where the app's resources have one, the app's icon otherwise;
+  * the Material icon is its large icon too, white on a circle of its `noticeColor`.
   * Not on a television, which shows no notices of this kind; Android 13 and later need the person's leave
   * (POST_NOTIFICATIONS). */
 object OngoingNotices {
@@ -59,6 +60,8 @@ object OngoingNotices {
         .setCategory(Notification.CATEGORY_STATUS)
         .setDeleteIntent(broadcast(context, BackgroundAccess.dismissedIntent, notice.key, "", Map.empty,
           code(notice.key, -1)))
+      notice.noticeColor.foreach(c => builder.setColor(NoticeIcon.argb(c)))
+      NoticeIcon.large(context, LargeIcon.of(notice)).foreach(b => builder.setLargeIcon(b))
       if (notice.body.nonEmpty)
         builder.setContentText(notice.body).setStyle(new Notification.BigTextStyle().bigText(notice.body))
       notice.tap.foreach(t => builder.setContentIntent(pending(context, notice.key, t, code(notice.key, 0))))
