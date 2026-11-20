@@ -356,7 +356,10 @@ it logs is the rate the app holds, not how often it idles.
 On Android a component's motion runs only while its view is in the window, not hidden (`visible`) and in sight (some
 of it inside every box that clips it and the window, as the web's IntersectionObserver reads it; what covers it is not
 looked at): a spinner taken off the screen and never disposed of stops, one scrolled out of its box stops, and either
-turns again as it comes back. Android runs no app's animation on its RenderThread, so a motion is stepped on the main
+turns again as it comes back. In sight is read from everywhere the motion takes its view over its cycle, not where it
+is at the moment, and the web reads it from the box the element is in where its motion moves it: a motion that takes
+its own node off the screen to bring it back elsewhere (a leaf falling past the edge and in again at the top) runs on.
+Android runs no app's animation on its RenderThread, so a motion is stepped on the main
 thread about 30 times a second, whatever the display's rate (an animator stepped at 120 Hz drew 120 whole frames a
 second for one busy glyph), and from Android 15 its view asks for a low frame rate. A turn or a breath reads the same.
 A turning motion (a spinner, a ring) tells accessibility its bounds changed, so `uiautomator dump` finds no idle state

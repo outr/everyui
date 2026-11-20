@@ -308,12 +308,21 @@ class RenderNode(val el: html.Element) {
     * animation of an element hidden by its own `display: none`, or one it does not paint as it is out of the view, on
     * the page's thread, a style recalculation each frame for as long as it lasts (a transcript's spinner for older
     * messages, hidden until they load, did so for the transcript's life, and the spinners of running tool calls
-    * scrolled below the window, each frame), where one hidden by a box it is in costs nothing. As the desktop's and
-    * Android's Motion stop theirs. */
+    * scrolled below the window, each frame), where one hidden by a box it is in costs nothing. A motion that moves the
+    * element itself is paused by whether the box it is in is in the view, not the element: one that takes it out of
+    * the view to bring it back elsewhere goes on. As the desktop's and Android's Motion stop theirs. */
   def setMotion(tracks: List[everyui.motion.Track]): Unit = {
     import everyui.motion.Track
     turning(turnedStill, tracks.exists(t => t.property == Track.Rotation || t.property == Track.Scale))
     animations.foreach(_.cancel())
+    // watched afresh, as what to watch may change with the motion
+    movesItself = tracks.exists(_.property != Track.Opacity)
+    if (viewWatch != null) {
+      viewWatch.disconnect()
+      viewWatch = null
+      watchedNow = null
+      inView = true
+    }
     // where the page has no `translate`, `rotate` and `scale` of their own (Chromium 104), a track of one moves the
     // `transform`, before the node's own: one such track at a time, the last
     val own = Option.when(!WebFeatures.transformProperties)(el.style.transform)
@@ -340,24 +349,46 @@ class RenderNode(val el: html.Element) {
   // whether it is in the browser's view, as the observer watching it while it is shown with a motion last said
   private var inView = true
   private var viewWatch: js.Dynamic = null
+  // what the observer watches (`watched`), and whether the motion moves the element itself (a place, a turn, a scale)
+  private var watchedNow: js.Dynamic = null
+  private var movesItself = false
+
+  // the element, or, where its motion moves it, the box it is in, which its motion does not move: an element watched
+  // itself was paused as its own motion took it out of the view (a leaf falling past the edge, to come in again at the
+  // other) and stood there, out of it, for good; an element not yet in a box is watched itself until it is
+  private def watched: js.Dynamic = {
+    val box = el.parentNode.asInstanceOf[js.Dynamic]
+    if (movesItself && box != null && box.nodeType.asInstanceOf[Int] == 1) box else el.asInstanceOf[js.Dynamic]
+  }
 
   // its animations run while it is shown and in the browser's view, and are paused otherwise; only what is running is
   // paused, and only what was paused goes on: a finished one played again would start over
   private def pace(): Unit = {
     val watching = animations.nonEmpty && !hiddenNow
     if (watching && viewWatch == null && WebFeatures.has("IntersectionObserver")) {
-      val heard: js.Function1[js.Array[js.Dynamic], Unit] = entries => entries.lastOption.foreach { e =>
-        // (`isIntersecting` from Chromium 58; before it, any of it in view)
-        inView = if (js.isUndefined(e.isIntersecting)) e.intersectionRatio.asInstanceOf[Double] > 0.0
-          else e.isIntersecting.asInstanceOf[Boolean]
-        pace()
+      val heard: js.Function1[js.Array[js.Dynamic], Unit] = entries => {
+        val target = watched
+        if (!(target eq watchedNow)) {
+          // put in a box since it was first watched: the box watched instead, which says next
+          viewWatch.unobserve(watchedNow)
+          watchedNow = target
+          viewWatch.observe(target)
+        }
+        else entries.filter(_.target eq watchedNow).lastOption.foreach { e =>
+          // (`isIntersecting` from Chromium 58; before it, any of it in view)
+          inView = if (js.isUndefined(e.isIntersecting)) e.intersectionRatio.asInstanceOf[Double] > 0.0
+            else e.isIntersecting.asInstanceOf[Boolean]
+          pace()
+        }
       }
       viewWatch = js.Dynamic.newInstance(js.Dynamic.global.IntersectionObserver)(heard)
-      viewWatch.observe(el)
+      watchedNow = watched
+      viewWatch.observe(watchedNow)
     }
     else if (!watching && viewWatch != null) {
       viewWatch.disconnect()
       viewWatch = null
+      watchedNow = null
       inView = true
     }
     val run = !hiddenNow && inView

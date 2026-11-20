@@ -29,8 +29,13 @@ import android.view.{Choreographer, View, ViewGroup, ViewTreeObserver}
   *
   * A box shown or hidden (`RenderNode.setVisible`) looks again at the motions in a window (`Motion.visibilityChanged`),
   * which are few; and a running or waiting motion looks again at whether it is in sight before a frame is drawn after
-  * something moved or was laid out (`Motion.moved`), not on the frames its own steps draw. */
-final class Motion(view: View, make: () => List[ValueAnimator], still: () => Unit) extends View.OnAttachStateChangeListener {
+  * something moved or was laid out (`Motion.moved`), not on the frames its own steps draw.
+  *
+  * `reach` carries a box in the view (its own, or one in it) to where it may be in its parent over the whole cycle,
+  * from the view's own place (`getLeft`, `getTop`): every place its motion takes it, and every turn and scale. */
+final class Motion(view: View, make: () => List[ValueAnimator], still: () => Unit,
+                   private val reach: RectF => Unit)
+    extends View.OnAttachStateChangeListener {
   private var animators: List[ValueAnimator] = Nil
   private var moving = false
   // when the animators began, by the Choreographer's clock (-1 until the first step)
@@ -50,7 +55,7 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
   private var watching: ViewTreeObserver = null
 
   view.addOnAttachStateChangeListener(this)
-  if (view.isAttachedToWindow) Motion.inWindow.add(this)
+  if (view.isAttachedToWindow) Motion.inWindow.put(view, this)
 
   /** Whether the animators run now. */
   def running: Boolean = animators.nonEmpty
@@ -81,7 +86,12 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
 
   /** Whether some of the view is inside every box it is in that clips (to its outline, its bounds or its children's),
     * and inside the window: its box carried up through each view's transform and place, as the web's
-    * IntersectionObserver finds an element in the view. What covers it is not looked at. */
+    * IntersectionObserver finds an element in the view. What covers it is not looked at.
+    *
+    * A view a motion is set on is carried by its motion's reach (`reach`: everywhere its cycle takes it), not by where
+    * the motion holds it now: a leaf falling behind a screen, which its motion takes out past the edge and back in at
+    * the other, was stopped as it went out, at the first layout after, and nothing it did brought it back (NaboTV's
+    * seasonal effects on Android TV: none came in again after the first few seconds). */
   private def inSight: Boolean = {
     val box = Motion.box
     box.set(0f, 0f, view.getWidth.toFloat, view.getHeight.toFloat)
@@ -96,7 +106,9 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
       v.getParent match {
         case p: View =>
           if (clips) seen = box.intersect(0f, 0f, v.getWidth.toFloat, v.getHeight.toFloat)
-          if (!v.getMatrix.isIdentity) v.getMatrix.mapRect(box)
+          val carried = Motion.inWindow.get(v)
+          if (carried != null && carried.moving) carried.reach(box)
+          else if (!v.getMatrix.isIdentity) v.getMatrix.mapRect(box)
           box.offset((v.getLeft - p.getScrollX).toFloat, (v.getTop - p.getScrollY).toFloat)
           v = p
         case _ =>
@@ -109,11 +121,11 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
   }
 
   override def onViewAttachedToWindow(v: View): Unit = {
-    Motion.inWindow.add(this)
+    Motion.inWindow.put(view, this)
     refresh()
   }
   override def onViewDetachedFromWindow(v: View): Unit = {
-    Motion.inWindow.remove(this)
+    Motion.inWindow.remove(view)
     watch(false)
     stop()
   }
@@ -178,10 +190,9 @@ object Motion {
   var running: Int = 0
   /** The motions running, for the idle audit to say what each is for and where its view is now. */
   val live: java.util.Set[Motion] = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Motion, java.lang.Boolean])
-  /** The motions whose views are in a window, which a box shown or hidden may start or stop: a view out of one is
-    * looked at again as it comes back. */
-  private val inWindow: java.util.Set[Motion] =
-    java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[Motion, java.lang.Boolean])
+  /** The motions whose views are in a window, by view, which a box shown or hidden may start or stop, and whose reach a
+    * motion in one of their views reads: a view out of one is looked at again as it comes back. */
+  private val inWindow = new java.util.IdentityHashMap[View, Motion]
   // bumped as anything moves or is laid out: a motion looks again at whether it is in sight before the next frame
   private var generation = 0L
   private val box = new RectF
@@ -211,7 +222,7 @@ object Motion {
 
   /** A view was shown or hidden: each motion in a window looks again at whether it can be seen. */
   def visibilityChanged(): Unit = if (!inWindow.isEmpty) {
-    val all = inWindow.toArray(new Array[Motion](0))
+    val all = inWindow.values.toArray(new Array[Motion](0))
     all.foreach(_.refresh())
   }
 }

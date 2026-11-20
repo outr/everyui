@@ -49,6 +49,8 @@ import everyui.render.Platform
   *   spinner    a button swapped for a spinner while its work runs (AsyncPress), the work just past spinAfter
   *              (`work=<seconds>`, `probe=1`)
   *   ambient    endless motions over a still screen, to measure their cost (`motions=5`, `scrolled=1`, `back=<s>`)
+  *   leaves     28 leaves falling over the screen and round again past its edge, as NaboTV's seasonal effects (`short=1`
+  *              for 4 to 6 s cycles, `still=1` or `ticks=<s>` for a clock that stops; LeavesDemo)
   *   icons      a few icons the app names, and every icon (MaterialIcon.all) on "Show all icons": on the web the rest of
   *              the face is fetched only then (`all=1` shows them at once; IconsDemo)
   *   markdown   Markdown drawn by EveryUI: every kind of block, and the same document streamed in (`stream=1`, `at=`)
@@ -282,6 +284,7 @@ import everyui.render.Platform
   else if (demo == "textcut") TextCutDemo.run()
   else if (demo == "spinner") SpinnerDemo.run()
   else if (demo == "ambient") AmbientDemo.run()
+  else if (demo == "leaves") LeavesDemo.run()
   else if (demo == "icons") IconsDemo.run()
   else if (demo == "textmeasure") TextMeasureDemo.run()
   else if (demo == "webview") WebViewDemo.run()

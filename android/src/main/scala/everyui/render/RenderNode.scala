@@ -558,8 +558,17 @@ class RenderNode(val view: View) {
   /** The motion's animators, run only while the view is in a window and shown (Motion): made on first use. */
   private var motion: Motion = null
   private def moves: Motion = {
-    if (motion == null) motion = new Motion(view, () => animators(), () => still())
+    if (motion == null) motion = new Motion(view, () => animators(), () => still(), box => reach(box))
     motion
+  }
+
+  /** Where the motion may take `box` (in the view) over its cycle, in the parent from the view's own place
+    * (MotionReach): from where the node is placed, turned and scaled of its own. */
+  private def reach(box: android.graphics.RectF): Unit = {
+    val at = Array(box.left.toDouble, box.top.toDouble, box.right.toDouble, box.bottom.toDouble)
+    val by = ownScale / EmbedView.scaleOf(view)
+    MotionReach(at, tracks, left, restY, view.getPivotX.toDouble, view.getPivotY.toDouble, rotation != 0.0, by, by)
+    box.set(at(0).toFloat, at(1).toFloat, at(2).toFloat, at(3).toFloat)
   }
 
   /** Each track an animator of the view's own properties, repeating: a position moves the translation the node is
