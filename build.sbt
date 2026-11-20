@@ -558,8 +558,10 @@ lazy val desktop = (project in file("desktop"))
     // playlist's renditions (HlsRenditions), SubRip as WebVTT (SubRipVtt) and a resume's seeks (ResumeSeek)
     Test / unmanagedSources ++= Seq("CodecMime.scala", "WebOSDisplay.scala", "HlsRendition.scala", "HlsRenditions.scala",
       "SubRipVtt.scala", "ResumeSeek.scala").map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
-    // and how Android starts another app for a link (IntentPlan), plain Scala as well
-    Test / unmanagedSources += (file("android") / "src" / "main" / "scala" / "everyui" / "render" / "IntentPlan.scala").getAbsoluteFile,
+    // and how Android starts another app for a link (IntentPlan), when a track choice reopens a file (TrackReopen) and
+    // the player's sockets closed at once (MediaSockets), plain Scala as well
+    Test / unmanagedSources ++= Seq("IntentPlan.scala", "TrackReopen.scala", "MediaSockets.scala")
+      .map(n => (file("android") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here
     Test / unmanagedSources += (file("sbt-support") / "src" / "main" / "scala" / "everyui" / "sbt" / "WebPushText.scala").getAbsoluteFile,
     // the memory cases (MemorySpec), the same the web's memory check measures

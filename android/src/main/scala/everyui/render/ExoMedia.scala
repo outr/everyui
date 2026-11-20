@@ -2,7 +2,8 @@ package everyui.render
 
 import android.net.Uri
 import android.view.{SurfaceView, TextureView, View}
-import androidx.media3.common.{AudioAttributes, C, MediaItem, PlaybackParameters, Player, TrackSelectionOverride, Tracks, VideoSize}
+import androidx.media3.common.{AudioAttributes, C, MediaItem, PlaybackParameters, Player, TrackSelectionOverride,
+  TrackSelectionParameters, Tracks, VideoSize}
 import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, ExoPlayer}
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -135,7 +136,12 @@ class ExoMedia(frame: Option[VideoFrame]) {
           .retryOnConnectionFailure(true)
         // a media server behind Let's Encrypt, on Android too old to trust it (LegacyTrust)
         LegacyTrust.joined.foreach { case (factory, manager) => builder.sslSocketFactory(factory, manager) }
+        // its connections, kept to be closed outright when the file is reopened (TrackReopen)
+        val held = new MediaSockets
+        builder.socketFactory(held)
         val client = builder.build()
+        sockets = Some(held)
+        media = Some(client)
         val http = new androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(client)
         if (sending.nonEmpty) {
           val map = new java.util.HashMap[String, String]()
@@ -202,11 +208,13 @@ class ExoMedia(frame: Option[VideoFrame]) {
           override def onRenderedFirstFrame(): Unit = framed = true
           // sound there is but none of it playable here, neither decoded nor passed through (DTS on a device with no
           // decoder for it and an output that does not take it): nothing for the centre mix to reach
-          override def onTracksChanged(tracks: Tracks): Unit =
+          override def onTracksChanged(tracks: Tracks): Unit = {
+            if (!tracks.isEmpty) known = tracks
             if (tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.isTypeSupported(C.TRACK_TYPE_AUDIO) && reachable) {
               Platform.log("media: centre mix: no sound here to reach, none of it playable")
               mixed(false, false, false)
             }
+          }
           override def onIsPlayingChanged(on: Boolean): Unit = {
             if (on) rolled = true
             session.foreach(_.state(on))
@@ -506,7 +514,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
   }
   private def tracksNow(): List[MediaTrack] = player.toList.flatMap { p =>
     try {
-      val groups = p.getCurrentTracks.getGroups
+      val groups = current(p).getGroups
       (0 until groups.size()).toList.flatMap { g =>
         val group = groups.get(g)
         val kind = group.getType match {
@@ -540,7 +548,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
       textChosen = true
       textChoice = id
     }
-    player.foreach(p => select(p, kind, id))
+    player.foreach(p => select(p, kind, id, reopens = true))
   }
   private var textChosen = false
   private var textChoice = ""
@@ -557,29 +565,76 @@ class ExoMedia(frame: Option[VideoFrame]) {
     case other => selectTrack(MediaTrack.Text, everyui.component.TextChoice.asTrack(other).getOrElse(""))
   }
 
-  private def select(p: ExoPlayer, kind: String, id: String): Unit = {
+  private def select(p: ExoPlayer, kind: String, id: String, reopens: Boolean = false): Unit = {
     try {
       val which = if (kind == MediaTrack.Text) C.TRACK_TYPE_TEXT else C.TRACK_TYPE_AUDIO
-      val from = p.getTrackSelectionParameters.buildUpon().clearOverridesOfType(which)
+      val from = params(p).buildUpon().clearOverridesOfType(which)
       val chosen = id.split(':')
+      // the group of the track turned on (the stream's own choice of sound being the file's), which says whether the
+      // choice reopens the file (TrackReopen)
+      var enabling: Option[String] = if (id.isEmpty && kind != MediaTrack.Text) Some("") else None
       if (id.isEmpty) {
         // no text track at all is a choice the selector has a word for; sound falls back to what the stream says
         from.setTrackTypeDisabled(which, kind == MediaTrack.Text)
       }
       else if (chosen.length == 2) {
         for (g <- chosen(0).toIntOption; t <- chosen(1).toIntOption) {
-          val groups = p.getCurrentTracks.getGroups
+          val groups = current(p).getGroups
           // an id of another source's may name a group of another kind here
           if (g >= 0 && g < groups.size() && groups.get(g).getType == which) {
             from.setTrackTypeDisabled(which, false)
             from.addOverride(new TrackSelectionOverride(groups.get(g).getMediaTrackGroup, t))
+            enabling = Some(groups.get(g).getMediaTrackGroup.id)
           }
         }
       }
-      p.setTrackSelectionParameters(from.build())
+      val next = from.build()
+      if (reopens && reopening.isEmpty && next != p.getTrackSelectionParameters && !p.getCurrentTracks.isEmpty &&
+        TrackReopen.needed(source, p.getCurrentManifest != null, enabling)) reopen(p, next, kind)
+      else put(p, next)
     }
     catch { case t: Throwable => Platform.logError("media: track " + kind + " " + id, t) }
   }
+
+  /** What the selector is to be told, a reopen's waiting choices first. */
+  private def params(p: ExoPlayer): TrackSelectionParameters = reopening.getOrElse(p.getTrackSelectionParameters)
+
+  /** Tells the selector, or, while the file is being reopened, the reopen, which tells it as it opens. */
+  private def put(p: ExoPlayer, next: TrackSelectionParameters): Unit =
+    if (reopening.nonEmpty) reopening = Some(next) else p.setTrackSelectionParameters(next)
+
+  /** The tracks, or while the file is reopened (and has none yet) those it had: the ids given out stay good. */
+  private def current(p: ExoPlayer): Tracks = {
+    val now = p.getCurrentTracks
+    if (now.isEmpty) known else now
+  }
+  private var known: Tracks = Tracks.EMPTY
+
+  /** The choice of a track as a fresh open at the same place ([[TrackReopen]]): the player stopped, every connection
+    * it held closed and none kept for reuse, and after a moment the file asked for again, the choice made before it
+    * starts. The player is the same one, so its play or pause, its other choices, the picture's view and the session
+    * go on as they were; a stopped player keeps its place, so it opens where it was, or where a seek since put it. */
+  private def reopen(p: ExoPlayer, next: TrackSelectionParameters, kind: String): Unit = {
+    val at = p.getCurrentPosition
+    reopening = Some(next)
+    p.stop()
+    val closed = sockets.map(_.closeAll()).getOrElse(0)
+    media.foreach(_.connectionPool.evictAll())
+    Platform.log("media: " + source + " reopened at " + at.toString + "ms for the " + kind + " track chosen (" +
+      closed.toString + " connection" + (if (closed == 1) "" else "s") + " closed first)")
+    val now = source
+    Platform.after(TrackReopen.settleSeconds, () => if (player.exists(_ eq p) && source == now) {
+      reopening.foreach(p.setTrackSelectionParameters)
+      reopening = None
+      // what was held before is gone: the stall watch measures the reopened file from here
+      reached = 0L
+      grew = Platform.ticks()
+      p.prepare()
+    })
+  }
+  private var reopening: Option[TrackSelectionParameters] = None
+  private var sockets: Option[MediaSockets] = None
+  private var media: Option[okhttp3.OkHttpClient] = None
 
   /** What to hear and read this in, where the file carries a choice.
     *
@@ -602,7 +657,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
     * language, still are). */
   private def prefer(p: ExoPlayer): Unit =
     try {
-      val from = p.getTrackSelectionParameters.buildUpon()
+      val from = params(p).buildUpon()
       if (hear.isEmpty) from.setPreferredAudioLanguages() else from.setPreferredAudioLanguage(hear)
       val device = if (read.isEmpty && !textChosen) CaptionAccess.device() else None
       val language = if (read.nonEmpty) Some(read) else device.filter(_.on).flatMap(_.language)
@@ -612,7 +667,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
       }
       from.setIgnoredTextSelectionFlags(if (device.exists(_.off)) C.SELECTION_FLAG_DEFAULT else 0)
       if (device.nonEmpty) from.clearOverridesOfType(C.TRACK_TYPE_TEXT).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-      p.setTrackSelectionParameters(from.build())
+      put(p, from.build())
     }
     catch { case t: Throwable => Platform.logError("media: languages", t) }
 
@@ -797,6 +852,13 @@ class ExoMedia(frame: Option[VideoFrame]) {
       p.release()
     }
     player = None
+    // its connections with it, rather than when its loading thread gets round to them: a server answering the next
+    // source (the same file reopened) may be waiting for them to go
+    sockets.foreach(_.closeAll())
+    sockets = None
+    media = None
+    reopening = None
+    known = Tracks.EMPTY
     heard = Nil
     // the session outlives one source for the next (a queue's tracks), and goes with the last
     if (source.isEmpty) announce()

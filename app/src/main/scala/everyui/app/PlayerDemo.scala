@@ -15,6 +15,10 @@ import reactify.*
   * each source in turn. `now=1` tells the system what plays (`nowPlaying`). `start=<seconds>` opens each source that
   * far in (`open(url, start)`, a resume), `text=<language>` asks for its subtitles in that language (`languages`), and
   * `seek=<seconds>` with `after=<seconds>` seeks there that long after each opening (a viewer's seek as it opens).
+  * `switch=<seconds>` chooses the second sound track (with `switchto=text` the first subtitle) that long after each
+  * source is first ready, as a viewer does mid-film, and `switchseek=<seconds>` seeks to where it is that long after
+  * (as Media3 does recovering an audio renderer that could not follow a switch, which reloads a file in place);
+  * `switchpaused=1` pauses as it switches and plays again 5 s later.
   * `rounds=<n>` enters and leaves a player screen n times instead ([[PlayerRounds]]).
   * `cycle=<seconds>` instead lets the player go mid-playback, as a screen left then does, a tenth of that to the whole
   * of it after it was opened (as it opens, as it buffers, as it plays, in turn), and opens the first source in a new
@@ -94,6 +98,8 @@ object PlayerDemo {
     val start = number("start", 0.0)
     val seekTo = number("seek", -1.0)
     val seekAfter = number("after", 0.5)
+    val switchAfter = number("switch", -1.0)
+    val switched = Var(-1)
     val at = Var(0)
     val heard = Var(List.empty[String])
     val video = new VideoView
@@ -193,6 +199,38 @@ object PlayerDemo {
         val d = video.diagnostics
         Platform.log("player diagnostics " + d.audio + " | " + d.video + " | " + d.audioTracks)
         if (scripted) walk(steps, at())
+        val i = at()
+        if (switchAfter >= 0.0 && switched() != i) {
+          switched @= i
+          Platform.after(switchAfter, () => if (at() == i) {
+            // paused as it switches, and played again 5 s after
+            if (Platform.launchArg("switchpaused") == "1") {
+              video.playing @= false
+              Platform.after(5.0, () => {
+                Platform.log("player step play again at " + tenths(video.playhead()))
+                video.playing @= true
+              })
+            }
+            if (Platform.launchArg("switchto") == "text") {
+              Platform.log("player step switch to the first subtitle at " + tenths(video.playhead()))
+              video.textTrack @= video.textTracks.headOption.map(_.id)
+            }
+            else {
+              Platform.log("player step switch to the second sound track at " + tenths(video.playhead()))
+              video.audioTrack @= video.audioTracks.drop(1).headOption.map(_.id)
+            }
+            val again = number("switchseek", -1.0)
+            if (again >= 0.0) Platform.after(again, () => if (at() == i) {
+              Platform.log("player step seek to where it is at " + tenths(video.playhead()))
+              video.seek(math.max(0.0, video.playhead() - 0.05))
+            })
+            List(3.0, 10.0).foreach(later => Platform.after(later, () => {
+              val d = video.diagnostics
+              Platform.log("player switched diagnostics at " + tenths(video.playhead()) + " " + d.audio + " | " +
+                d.audioTracks)
+            }))
+          })
+        }
       }
       if (e == "ended") {
         if (at() + 1 < sources.size) Platform.after(1.0, () => open(at() + 1))

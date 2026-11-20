@@ -5425,6 +5425,16 @@ video.captions @= TextChoice.TextFromDevice
 ways: **None is `TextFromDevice`** (the device decides, which may well show captions), `Some("")` is `TextOff`, and
 `Some(id)` is `TextTrack(id)`. So `textTrack @= None` does not turn captions off: say `TextOff`.
 
+**A file played whole over the network, on Android.** Choosing a sound track (`audioTrack`) or one of the file's own
+text tracks while a file is played whole over http(s) (an MKV direct-played from Plex; not HLS or DASH) reopens it
+rather than switching in place: the player stops, every connection it held is closed, and half a second later
+(`TrackReopen.settleSeconds`) the file is asked for again with the track chosen, from where it stood, still playing or
+paused, the other choices kept (`media: <address> reopened at <ms> for the audio track chosen`). Switched in place,
+Media3 may load the file again from where it is (a passthrough device's audio output that cannot follow the switch is
+recovered that way), and a server still holding the first response can leave the new request unanswered until the
+stall watch gives up; a fresh open plays. Turning text off, and a sidecar subtitle, switch in place as before, and so
+does a file on the device. Expect a second or so of buffering at the switch.
+
 - **Roku.** Captions are drawn by the device's caption mode, which a channel's `globalCaptionMode` writes and which
   outlives the channel. As Roku's closed-caption guidance and its certification (4.8) have it, the app's choice is
   that setting: `TextTrack` writes it On (and picks the track), `TextOff` writes it Off, and neither is put back
