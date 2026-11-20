@@ -51,7 +51,17 @@ object Theme {
   /** The edge of a control that its edge says is there (a field, a select, an outlined button): the palette's border
     * taken toward its text, as little as gives 3:1 against the grounds a control sits on (WCAG 1.4.11). A card's edge,
     * which says nothing a reader needs, keeps the lighter `border`. */
-  def edge(): Color = edgeOf(palette())
+  def edge(): Color = {
+    val p = palette()
+    // worked out once for each palette: a search of blends, each against three grounds, for every control that reads it
+    if (!(edgeFor eq p)) {
+      edgeNow = edgeOf(p)
+      edgeFor = p
+    }
+    edgeNow
+  }
+  private var edgeFor: Palette = null
+  private var edgeNow: Color = Color.Clear
 
   /** `edge` for palette `p`. */
   def edgeOf(p: Palette): Color = {

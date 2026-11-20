@@ -60,14 +60,34 @@ object TextFit {
   // loading, or never asked for, is ready.
   private def waitsFor(face: (String, String, String), fonts: js.Dynamic, text: String,
                        tried: js.Array[js.Dynamic]): List[js.Dynamic] = {
-    // (each by `forEach`: Chromium 53's set iterates its entries, each a pair)
-    val all = js.Array[js.Dynamic]()
-    fonts.forEach((f: js.Dynamic) => { all.push(f); () })
-    val own = all.toList
-      .filter(f => named(f.family.asInstanceOf[String]) == face._1 && f.style.asInstanceOf[String] == face._2)
-    FaceWait.waiting(own, face._3, text, tried.toList)(_.weight.asInstanceOf[String], _.status.asInstanceOf[String],
-      _.unicodeRange.asInstanceOf[String]).toList
+    val key = face._1 + "|" + face._2
+    if (settled.contains(key)) Nil
+    else {
+      watch(fonts)
+      // (each by `forEach`: Chromium 53's set iterates its entries, each a pair)
+      val all = js.Array[js.Dynamic]()
+      fonts.forEach((f: js.Dynamic) => { all.push(f); () })
+      val own = all.toList
+        .filter(f => named(f.family.asInstanceOf[String]) == face._1 && f.style.asInstanceOf[String] == face._2)
+      if (own.forall(f => FaceWait.done(f.status.asInstanceOf[String]))) settled(key) = true
+      FaceWait.waiting(own, face._3, text, tried.toList)(_.weight.asInstanceOf[String], _.status.asInstanceOf[String],
+        _.unicodeRange.asInstanceOf[String]).toList
+    }
   }
+
+  // The families and slants (`family|style`) every face of which the page has loaded (or given up on): words in them
+  // wait for nothing, and are let be without going through every face on the page again, as each read of each word
+  // did. Forgotten as a face is added (`added`) or any starts to load.
+  private var settled = js.Dictionary.empty[Boolean]
+  private var watching = false
+  private def watch(fonts: js.Dynamic): Unit = if (!watching) {
+    watching = true
+    if (!js.isUndefined(fonts.addEventListener))
+      fonts.addEventListener("loading", (_: js.Any) => settled = js.Dictionary.empty[Boolean])
+  }
+
+  /** A face added to the page: the families settled are looked at again. */
+  def added(): Unit = settled = js.Dictionary.empty[Boolean]
 
   // a family as it is named, whether quoted (Firefox quotes a FontFace's own) or not
   private def named(family: String): String =

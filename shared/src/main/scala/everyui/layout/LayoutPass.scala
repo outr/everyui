@@ -30,7 +30,7 @@ object LayoutPass {
   def request(container: Container): Unit =
     if (Platform.onDrawingThread()) ask(container) else Platform.later(() => ask(container))
 
-  private def ask(container: Container): Unit = if (!container.placing && container.layout().nonEmpty) {
+  private def ask(container: Container): Unit = if (!container.placing && container.laidBy.nonEmpty) {
     if (!container.layoutPending) {
       container.layoutPending = true
       pending = container :: pending

@@ -750,7 +750,7 @@ object Focus {
       val parent = child.parent().get
       parent match {
         case c: Container =>
-          found = c.layout() match {
+          found = c.laidBy match {
             case Some(layout) =>
               var next = layout.neighbour(c, c.children(), child, direction)
               var entered: Option[Component] = None
@@ -874,7 +874,7 @@ object Focus {
       val c = pending.head
       pending = c.childComponents.toList ++ pending.tail
       c match {
-        case box: Container if box.layout().isEmpty =>
+        case box: Container if box.laidBy.isEmpty =>
           val parts = box.children().filter(child => hasCandidate(child))
           def states(c: Component): Boolean = c match {
             case b: Container => List(Key.ArrowUp, Key.ArrowDown, Key.ArrowLeft, Key.ArrowRight)

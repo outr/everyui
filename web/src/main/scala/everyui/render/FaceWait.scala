@@ -14,10 +14,13 @@ object FaceWait {
                 (weightOf: F => String, status: F => String, range: F => String): Seq[F] = {
     val drawn = matched(weight(wanted), faces.map(f => weight(weightOf(f))).distinct)
     faces.filter { f =>
-      drawn.contains(weight(weightOf(f))) && !tried.contains(f) && (status(f) == "loading" ||
-        status(f) == "unloaded") && (range(f).equalsIgnoreCase("U+0-10FFFF") || holds(range(f), text))
+      drawn.contains(weight(weightOf(f))) && !tried.contains(f) && !done(status(f)) &&
+        (range(f).equalsIgnoreCase("U+0-10FFFF") || holds(range(f), text))
     }
   }
+
+  /** Whether a face whose status is `status` is done with: loaded, or given up on, and waited for no more. */
+  def done(status: String): Boolean = status != "loading" && status != "unloaded"
 
   /** The weight of `weights` a browser draws `wanted` in (CSS Fonts' matching): `wanted` itself; for 400 to 500 the
     * heavier up to 500, then the lighter, nearest first, then the heavier past 500; below 400 the lighter, then the

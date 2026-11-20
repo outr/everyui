@@ -33,7 +33,8 @@ class Container(node: RenderNode = Nodes.container()) extends Component(node) {
     v.attach(laidOutBy)
     v
   }
-  private def laidBy: Option[Layout] = if (layoutMade) layout() else None
+  /** Its layout, without making `layout` where it has none. */
+  private[everyui] def laidBy: Option[Layout] = if (layoutMade) layout() else None
   /** Space between the edges and the children, on every side. */
   lazy val padding: Var[Double] = own(Plain[Double](0.0))
   /** Whether the layout bound the width to the children (a row or a column given no width). It stays set once the app

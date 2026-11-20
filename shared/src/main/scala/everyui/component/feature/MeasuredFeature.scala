@@ -72,7 +72,9 @@ class MeasuredFeature(private[feature] val component: Component) extends Reactio
     }
   } else {
     if (!component.node.onPage) stale = true
-    peeked = false
+    // (a size read out of the page and not yet set is still the one read, until the batch reads it again: forgotten
+    // here, what was worked out from it went back to the size last set, a glyph's 0 as its button was put on the
+    // screen, and on to the size read again, laying the button out twice over)
     MeasuredFeature.enqueue(this)
   }
 

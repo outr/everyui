@@ -107,14 +107,24 @@ class RenderNode(val el: html.Element) {
     * the browser's `line-height: normal`, so text is the same height on every
     * backend. */
   def setFont(family: String, weight: Int, size: Double): Unit = {
-    if (family.nonEmpty) el.style.fontFamily = RenderNode.families(family)
-    guessFont =
-      weight.toString + " " + size.toString + "px " + (if (family.nonEmpty) RenderNode.families(family) else "")
+    // (the family and the weight written only as they change: words given a size after the defaults wrote both again)
+    val faces = if (family.nonEmpty) RenderNode.families(family) else ""
+    if (family.nonEmpty && faces != familyWritten) {
+      el.style.fontFamily = faces
+      familyWritten = faces
+    }
+    guessFont = weight.toString + " " + size.toString + "px " + faces
     guessDefault = family.isEmpty
-    el.style.fontWeight = weight.toString
+    if (weight != weightWritten) {
+      el.style.fontWeight = weight.toString
+      weightWritten = weight
+    }
     el.style.fontSize = size.toString + "px"
     el.style.lineHeight = Faces(family, weight).lineHeight(size).toString + "px"
   }
+  // the family and the weight `setFont` last wrote
+  private var familyWritten = ""
+  private var weightWritten = -1
 
   /** The laid-out size in pixels (text is measured with its real font), shown or not: a component keeps its size out
     * of sight, as it does on every other backend. */
@@ -1137,6 +1147,18 @@ class RenderNode(val el: html.Element) {
   def setSemanticState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
                        expanded: Option[Boolean], selected: Option[Boolean], sort: String,
                        current: Boolean, description: String): Unit = {
+    // (a node never given any of these has none to take away: a button's own, none of them, went through them all)
+    if (stateWritten || range.nonEmpty || checked.nonEmpty || expanded.nonEmpty || selected.nonEmpty || sort.nonEmpty ||
+      current || description.nonEmpty) {
+      stateWritten = true
+      writeState(range, checked, expanded, selected, sort, current, description)
+    }
+  }
+  // whether any of the states above has been written
+  private var stateWritten = false
+  private def writeState(range: Option[everyui.component.types.SemanticRange], checked: Option[Boolean],
+                         expanded: Option[Boolean], selected: Option[Boolean], sort: String, current: Boolean,
+                         description: String): Unit = {
     def attribute(name: String, value: Option[String]): Unit = value match {
       case Some(v) => el.setAttribute(name, v)
       case None => el.removeAttribute(name)
@@ -1926,9 +1948,22 @@ object RenderNode {
       everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
   /** A CSS font-family for `family`: it, then the fallback faces (`Faces.fallbackFaces`), for what it has nothing to
     * draw with, then the system's colour emoji faces (`emojiFaces`), so an emoji anywhere draws in colour. */
-  def families(family: String): String =
-    ("'" + family + "'" :: everyui.font.Faces.fallbackFaces().toList.map(f => "'" + f.family + "'")).mkString(", ") +
-      ", " + emojiFaces
+  def families(family: String): String = {
+    // (each family's list made once, while the fallback and emoji faces stay as they were: every text node's font
+    // wrote it)
+    val fallbacks = Faces.fallbackFaces()
+    val emoji = Faces.colorEmojiFaces()
+    if (!(fallbacks eq familiesAfter) || !(emoji eq familiesEmoji)) {
+      familiesMade.clear()
+      familiesAfter = fallbacks
+      familiesEmoji = emoji
+    }
+    familiesMade.getOrElseUpdate(family,
+      ("'" + family + "'" :: fallbacks.toList.map(f => "'" + f.family + "'")).mkString(", ") + ", " + emojiFaces)
+  }
+  private val familiesMade = scala.collection.mutable.HashMap.empty[String, String]
+  private var familiesAfter: Vector[Face] = null
+  private var familiesEmoji: Vector[Face] = null
 
   /** The systems' colour emoji faces, by name: macOS's and iOS's, Windows', Android's and Linux's, then any the app
     * registered for where a system has none (`Faces.colorEmoji`). An app that wants its own drawn before the system's
@@ -3201,6 +3236,7 @@ object Platform {
     val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, "url(" + fontAddress(face.file) + ")", options)
     dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
     registered.push(font)
+    TextFit.added()
     // fetched from now, not when the first screen waits on it: an app registers its faces as it starts, and whatever
     // it does before its first screen (asking its server for something) no longer holds the download back
     font.load()
@@ -3219,6 +3255,7 @@ object Platform {
       val font = js.Dynamic.newInstance(js.Dynamic.global.FontFace)(face.family, source, options)
       dom.document.asInstanceOf[js.Dynamic].fonts.add(font)
       registered.push(font)
+      TextFit.added()
       font.load().`catch`((_: js.Any) => log(face.family + " could not be loaded from fonts/" + face.file))
     }
     colour

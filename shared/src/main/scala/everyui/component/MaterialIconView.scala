@@ -1,6 +1,6 @@
 package everyui.component
 
-import everyui.component.types.BusyMotion
+import everyui.component.types.{BusyMotion, Plain}
 import everyui.font.MaterialIcon
 import everyui.motion.{Keyframe, ReduceMotion, Track}
 import everyui.render.Nodes
@@ -12,17 +12,20 @@ import reactify.{Val, Var}
   * slowly down and back; `busyMotion` chooses either. Where less motion is asked for (`ReduceMotion`) it stands still
   * at half strength instead. */
 class MaterialIconView(initial: MaterialIcon = MaterialIcon.Empty, points: Double = 24.0) extends TextView(Nodes.icon(initial.glyph, points)) {
-  val icon: Var[MaterialIcon] = own(Var(initial))
+  val icon: Var[MaterialIcon] = own(Plain[MaterialIcon](initial))
   /** At work: the glyph breathes until it is set back. */
-  val busy: Var[Boolean] = own(Var(false))
+  val busy: Var[Boolean] = own(Plain[Boolean](false))
   /** How it moves while busy: by its glyph (`Auto`, the default), or always turning or breathing. */
-  val busyMotion: Var[BusyMotion] = own(Var(BusyMotion.Auto))
+  lazy val busyMotion: Var[BusyMotion] = {
+    val v = own(Plain[BusyMotion](BusyMotion.Auto))
+    v.attach(_ => if (busy()) breathe())
+    v
+  }
   // the glyph's own motion, and how strong it is drawn, while it is not busy
   private var rest: Option[(List[Track], Double)] = None
   // the text view's font starts as the default family at 16px: the glyph needs its own face, at its own size
   font.family @= "Material Icons"
   font.size @= points
-  icon.attach(i => content @= i.glyph)
   private def breathe(): Unit = {
     if (busy()) {
       if (rest.isEmpty) rest = Some((motion(), opacity()))
@@ -52,9 +55,12 @@ class MaterialIconView(initial: MaterialIcon = MaterialIcon.Empty, points: Doubl
     if (b) moving
     breathe()
   }
-  // another glyph, or another way of moving, while it is busy: moved the new way
-  busyMotion.attach(_ => if (busy()) breathe())
-  icon.attach(_ => if (busy() && busyMotion() == BusyMotion.Auto) breathe())
+  // another glyph: drawn, and while it is busy, moved as it moves (another way of moving is heard by `busyMotion`, made
+  // only once something sets it or it is first busy)
+  icon.attach { i =>
+    content @= i.glyph
+    if (busy() && busyMotion() == BusyMotion.Auto) breathe()
+  }
   /** How strong a busy glyph is drawn where it may not move: half, unless something else marks it (a button tints it
     * in the accent). */
   protected def stillStrength: Double = MaterialIconView.still

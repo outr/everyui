@@ -126,7 +126,7 @@ object Overlaps {
     found
   }
 
-  private def laysApart(container: Container): Boolean = container.layout() match {
+  private def laysApart(container: Container): Boolean = container.laidBy match {
     case Some(_: PlacedLayout) => false
     case Some(_) => true
     case None => false

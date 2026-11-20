@@ -162,6 +162,8 @@ import everyui.render.Platform
   *              timed, taken apart after Back; `auto=<opens>` opens and closes it by itself (PageOpenDemo)
   *   dialogclose a menu of about 25 components over a title closed as a player opens in its place, the close and its
   *              frames timed; `open=0` closes it alone, `auto=<closes>` runs it by itself (DialogCloseDemo)
+  *   buttoncost `n=` controls of a `kind=` (button, glyph, icon, toggle, highlight, text; all in turn by default) made
+  *              and shown `reps=` times, each round timed (ButtonCostDemo)
   *   httpperf   `n=` requests to `url=` one after another and then all at once, each timed (`method=POST`, `body=`;
   *              `httplog=1` or `rokuperf=1` for where a Roku's time went) (HttpPerfDemo)
   *   hops       words and a column of chips changed every 150 ms from rapid's threads (`Task.sleep`), taken to the thread
@@ -280,6 +282,7 @@ import everyui.render.Platform
   else if (demo == "httpperf") HttpPerfDemo.run()
   else if (demo == "pageopen") PageOpenDemo.run()
   else if (demo == "dialogclose") DialogCloseDemo.run()
+  else if (demo == "buttoncost") ButtonCostDemo.run()
   else if (demo == "rtlwrap") RtlWrapDemo.run()
   else if (demo == "captions") CaptionsDemo.run()
   else if (demo == "trickplay") TrickPlayDemo.run()
