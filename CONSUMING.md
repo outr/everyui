@@ -6719,6 +6719,10 @@ and `trunc`, `TextDecoder`, `atob`, WebSocket, `localStorage`, `document.fonts` 
 `unicode-range`. Scala.js's ES 5.1 output brings its own for the rest of the language (`Object.is`, its classes, its
 strings' `startsWith` and `includes`), so neither `Object.assign` nor `Array.prototype.includes` is needed.
 
+Nor has it BigInt (67): nothing EveryUI links names it but behind a `typeof`. fabric's JSON parser named it for each
+value it read until 1.30.5 (`instanceof BigInt`), so every answer holding an object failed on webOS 3 with
+`ReferenceError: BigInt is not defined`: an app for webOS 3 takes fabric 1.30.5 or later, as EveryUI does.
+
 The layout is EveryUI's own: every box is placed and sized by its layouts, absolutely, so the page's CSS asks for
 none of what an older engine lacks there: no flexbox `gap` (84) or grid, no `min()`, `max()` or `clamp()` (79), no
 `aspect-ratio` (88), `inset` (87), `place-*` or logical properties (`padding-inline` and the rest, 87; only a
@@ -6749,10 +6753,11 @@ start) and a gconf on their library path (and for 38 today's `libudev.so.1` as i
 its checks (eleven buttons laid out, centred and each drawn, read off a screenshot), and `OldChromeCheck <page dir>
 --chrome <binary> [--shots <dir>]` loads the demos (tv, chat, rows, widgets, icons) from their files, gives each the
 remote's keys and the pointer's clicks, and fails on a screen not drawn or an error left uncaught; then the net demo
-makes a request through Spice (`Network.http`) to a server of the check's own, which must be answered (a regex needing
-ES 2018, as Spice's URL parsing had before 1.10.13, fails every request in an ES 5.1 link). Both drive the
-browser over its own DevTools endpoint (`DevTools`), which an engine from 38 to today's speaks, so either runs in today's
-Chrome, headless, as well:
+makes a request through Spice (`Network.http`) to a server of the check's own, which must be answered with a JSON
+object, read with fabric and said back (a regex needing ES 2018, as Spice's URL parsing had before 1.10.13, fails
+every request in an ES 5.1 link; BigInt named outside a `typeof`, as fabric's parser did before 1.30.5, fails every
+object in Chromium 38). Both drive the browser over its own DevTools endpoint (`DevTools`), which an engine from 38
+to today's speaks, so either runs in today's Chrome, headless, as well:
 
 ```sh
 scala-cli --power package web --js-es-version es5_1 -o web/out-js/main.js -f

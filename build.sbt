@@ -343,7 +343,7 @@ lazy val networkJs = (project in file("network/js"))
       "com.outr" %% "spice-client" % spiceVersion,
       // spice-core_sjs1 as published locally lists its dependencies by their JVM names (reactify_3 is excluded
       // build-wide, and so in this module's POM): the Scala.js builds of them are named here
-      "org.typelevel" %% "fabric-io" % "1.30.4",
+      "org.typelevel" %% "fabric-io" % fabricVersion,
       "com.outr" %% "rapid-core" % "2.9.10",
       "com.outr" %% "scribe" % "3.19.1",
       "com.outr" %% "profig" % "3.7.1",
@@ -1001,7 +1001,7 @@ lazy val network = (project in file("network"))
 //   sbt monacoDesktop/run                the gallery on the desktop (JavaFX's web view)
 //   sbt monacoDesktop/test               the bridge protocol and controller specs, and Monaco loaded in a web view
 //   sbt monacoAndroid/packageApk         the gallery for Android, in monaco/android/out-apk/everyui-monaco.apk
-lazy val fabricVersion = "1.30.4"
+lazy val fabricVersion = "1.30.5"
 lazy val monacoSources = (file("monaco") / "src" / "main" / "scala").getAbsoluteFile
 lazy val monacoGallerySources = (file("monaco") / "gallery" / "src" / "main" / "scala").getAbsoluteFile
 /** The desktop's web guest (FxWebGuest): only where javafx-web is on the classpath. */

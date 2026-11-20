@@ -21,7 +21,9 @@ import scala.concurrent.duration.*
   * `net` is the net demo making a request through Spice's client (`Network.http`) to a server of the check's own, on
   * 127.0.0.1: answered, and heard by the server. An HTTP request is where a regex needing ECMAScript 2018 (a
   * look-behind, a named group, `\p{..}`, dotAll) in what a request runs through fails an ES 5.1 link, as Spice's
-  * URL parsing did before 1.10.13: every request on webOS 3 threw "Look-behind group is not supported".
+  * URL parsing did before 1.10.13: every request on webOS 3 threw "Look-behind group is not supported". The server
+  * answers a JSON object, which the demo reads with fabric and says back: fabric before 1.30.5 named the BigInt global
+  * to tell a parsed value's kind, a ReferenceError for every object on an engine without it (Chromium 38).
   *
   *   OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]
   *
@@ -182,12 +184,13 @@ object OldChromeCheck extends RapidApp {
         val before = browser.lines.size
         def since: List[String] = browser.lines.toArray.drop(before).map(_.toString).toList
         val asked = new AtomicInteger(0)
+        val answer = """{"a":1,"b":[true,null,"x"]}"""
         val server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress, 0), 0)
         server.createContext("/", exchange => {
           asked.incrementAndGet()
-          val body = "answered".getBytes(StandardCharsets.UTF_8)
+          val body = answer.getBytes(StandardCharsets.UTF_8)
           exchange.getResponseHeaders.add("Access-Control-Allow-Origin", "*")
-          exchange.getResponseHeaders.add("Content-Type", "text/plain")
+          exchange.getResponseHeaders.add("Content-Type", "application/json")
           exchange.sendResponseHeaders(200, body.length.toLong)
           exchange.getResponseBody.write(body)
           exchange.close()
@@ -204,6 +207,7 @@ object OldChromeCheck extends RapidApp {
           said = since.find(_.contains("net https ")).getOrElse("nothing said")
           errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
           _ = check("net: a request through Spice answered (" + said.trim + ")", said.contains("net https ok"))
+          _ = check("net: its JSON object read with fabric (" + said.trim + ")", said.contains("json " + answer))
           _ = check("net: the request heard by the server (" + asked.get + ")", asked.get > 0)
           _ = check("net: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
         } yield ()).guarantee(Task(server.stop(0)))

@@ -7,7 +7,7 @@ import everyui.network.{HttpCall, HttpFailure, HttpResult, Network}
 import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.ui
-import fabric.io.JsonParser
+import fabric.io.{JsonFormatter, JsonParser}
 import rapid.Task
 import reactify.*
 import spice.http.ConnectionStatus
@@ -89,13 +89,18 @@ object NetDemo {
         .flatMap(_ => refused("unreachable", HttpCall("GET", "http://127.0.0.1:9/")))
     val https =
       if (public == "0") Task.unit
-      else answered("https", HttpCall("GET", public), _.status == 200, r => r.status.toString + " " +
-        r.body.length.toString + " characters")
+      else answered("https", HttpCall("GET", public), _.status == 200, r => r.status.toString + " " + said(r))
     http.flatMap(_ => https).flatMap(_ => if (server.isEmpty) Task.unit else socket(server)).map { _ =>
       Platform.log("net done ok=" + passed.toString + " fail=" + failed.toString)
       show("done: " + passed.toString + " ok, " + failed.toString + " failed")
     }
   }
+
+  // an answer in JSON read with fabric, as an app reads one, and written back: an engine with no BigInt (Chromium 38,
+  // webOS 3) failed every object before fabric 1.30.5, which named BigInt to tell a value's kind
+  private def said(r: HttpResult): String =
+    if (r.contentType.exists(_.startsWith("application/json"))) "json " + JsonFormatter.Compact(JsonParser(r.body))
+    else r.body.length.toString + " characters"
 
   // a request that must be answered, and what of the answer says it was right
   private def answered(name: String, call: HttpCall, right: HttpResult => Boolean,
