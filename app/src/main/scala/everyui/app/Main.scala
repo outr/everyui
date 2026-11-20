@@ -44,6 +44,8 @@ import everyui.render.Platform
   *   kept       kept views put back: panels of tabs, paragraphs and a conversation switched between, each switch timed
   *              (`kept=<panels>`, `switches=`, `every=<ms>`, `narrow=1`, `perfCounters=1` for the counts; KeptDemo)
   *   busy       the app at work (AppBusy): idle, busy, a named progress, round and round (`title=1`: in the title too)
+  *   motionstop motions taken away mid-cycle, each node left as it has itself: a busy Sync glyph turned into a done
+  *              tick, a turn, a scale, a fade, a slide and a turn replaced by a fade (`stop=`, `again=`; MotionStopDemo)
   *   spinner    a button swapped for a spinner while its work runs (AsyncPress), the work just past spinAfter
   *              (`work=<seconds>`, `probe=1`)
   *   ambient    endless motions over a still screen, to measure their cost (`motions=5`, `scrolled=1`, `back=<s>`)
@@ -241,6 +243,7 @@ import everyui.render.Platform
   else if (demo == "bubbles") BubbleDemo.run()
   else if (demo == "parked") ParkedDemo.run()
   else if (demo == "busy") BusyDemo.run()
+  else if (demo == "motionstop") MotionStopDemo.run()
   else if (demo == "colors") ColorsDemo.run()
   else if (demo == "charts") ChartsDemo.run()
   else if (demo == "dates") DatesDemo.run()

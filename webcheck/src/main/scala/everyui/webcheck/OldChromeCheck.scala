@@ -30,8 +30,12 @@ import scala.concurrent.duration.*
   * Chromium 90, `overflow: hidden` pinned, `BoxClip`), a box so cut not shifted as the focus goes into it, and the
   * frames of a few moves said (a report, not a check).
   *
-  * The demos are tv, chat, rows, widgets, icons, net and corners unless named. An engine older than 59 opens a window
-  * on `$DISPLAY`: run it under `xvfb-run`.
+  * `motionstop` is the demo of motions taken away mid-cycle: each node read from the engine's computed style to be
+  * drawn as it has itself, not where its motion stood (a turn, a scale, a fade, a slide, a turn replaced by a fade, and a
+  * busy Sync glyph turned into a done tick).
+  *
+  * The demos are tv, chat, rows, widgets, icons, net, motionstop and corners unless named. An engine older than 59 opens
+  * a window on `$DISPLAY`: run it under `xvfb-run`.
   */
 object OldChromeCheck extends RapidApp {
   private val usage = "usage: OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]"
@@ -47,7 +51,7 @@ object OldChromeCheck extends RapidApp {
       case Nil => Nil
     }
     val demos = named(args.drop(1)) match {
-      case Nil => List("tv", "chat", "rows", "widgets", "icons", "net", "corners")
+      case Nil => List("tv", "chat", "rows", "widgets", "icons", "net", "motionstop", "corners")
       case some => some
     }
     val page = Paths.get(args.headOption.getOrElse(sys.error(usage))).toAbsolutePath.resolve("index.html").toUri.toString
@@ -204,11 +208,67 @@ object OldChromeCheck extends RapidApp {
           _ = check("net: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
         } yield ()).guarantee(Task(server.stop(0)))
       }
+      // the motionstop demo's motions taken away mid-cycle: each node drawn as it has itself, read from the engine's
+      // computed style (its transform's turn and scale, its translation, its opacity, and in an engine with them the
+      // `rotate`, `scale` and `translate` an animation moves)
+      def motionstop(): Task[Unit] = Task.defer {
+        val before = browser.lines.size
+        def since: List[String] = browser.lines.toArray.drop(before).map(_.toString).toList
+        def done(tries: Int): Task[Unit] =
+          if (tries == 0 || since.exists(_.contains("motionstop taken away"))) Task.unit
+          else Task.sleep(100.millis).flatMap(_ => done(tries - 1))
+        val look = "function look(name) { var e = document.querySelector('[aria-label=\"' + name + '\"]'); " +
+          "if (!e) return name + ' missing'; var s = getComputedStyle(e); var m = s.transform || s.webkitTransform; " +
+          "var a = 1, b = 0, x = 0, y = 0; if (m && m != 'none') { var v = m.slice(m.indexOf('(') + 1, -1).split(','); " +
+          "a = +v[0]; b = +v[1]; x = +v[4]; y = +v[5]; } " +
+          "return name + ' turn=' + Math.round(Math.atan2(b, a) * 1800 / Math.PI) / 10 + ' scale=' + " +
+          "Math.round(Math.sqrt(a * a + b * b) * 1000) / 1000 + ' x=' + x + ' y=' + y + ' opacity=' + " +
+          "Math.round(+s.opacity * 1000) / 1000 + ' rotate=' + (s.rotate || 'none') + ' scaled=' + (s.scale || 'none') + " +
+          "' translate=' + (s.translate || 'none'); } " +
+          "return ['motion-tick', 'motion-turn', 'motion-scale', 'motion-fade', 'motion-slide', 'motion-swap'].map(look).join('\\n')"
+        for {
+          _ <- browser.navigate(page + "?demo=motionstop")
+          _ <- done(100)
+          _ <- Task.sleep(400.millis)
+          read <- browser.value(look)
+          _ <- shots.map(d => browser.screenshot(d.resolve("motionstop.png"))).getOrElse(Task.unit)
+        } yield {
+          val drawn = read.asString.split("\n").toList.map { line =>
+            val words = line.split(" ").toList
+            words.head -> words.tail.flatMap(w => w.split("=", 2).toList match {
+              case k :: v :: Nil => Some(k -> v)
+              case _ => None
+            }).toMap
+          }.toMap
+          println("[old chrome] motionstop: " + read.asString.replace("\n", "; "))
+          def of(name: String, key: String): String = drawn.get(name).flatMap(_.get(key)).getOrElse("?")
+          def near(name: String, key: String, want: Double): Boolean =
+            of(name, key).toDoubleOption.exists(v => math.abs(v - want) < 0.01)
+          // nothing an animation moves left on the node itself
+          def unmoved(name: String): Boolean = List("rotate", "scaled", "translate").forall(k => of(name, k) == "none")
+          check("motionstop: taken away (" + since.exists(_.contains("motionstop taken away")) + ")",
+            since.exists(_.contains("motionstop taken away")))
+          check("motionstop: the done tick upright and whole", near("motion-tick", "turn", 0.0) &&
+            near("motion-tick", "opacity", 1.0) && unmoved("motion-tick"))
+          check("motionstop: the turn back to its own 18 degrees", near("motion-turn", "turn", 18.0) &&
+            near("motion-turn", "scale", 1.0) && unmoved("motion-turn"))
+          check("motionstop: the scale back to its own half", near("motion-scale", "scale", 0.5) &&
+            unmoved("motion-scale"))
+          check("motionstop: the fade back to its own 0.8", near("motion-fade", "opacity", 0.8))
+          check("motionstop: the slide back to where it is placed", near("motion-slide", "x", 0.0) &&
+            near("motion-slide", "y", 0.0) && unmoved("motion-slide"))
+          check("motionstop: the turn replaced by a fade at no tilt, fading", near("motion-swap", "turn", 0.0) &&
+            unmoved("motion-swap") && of("motion-swap", "opacity").toDoubleOption.exists(_ < 0.99))
+          val errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
+          check("motionstop: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
+        }
+      }
       for {
         // (an error's whole stack, for the console)
         _ <- browser.addScript("Error.stackTraceLimit = 50")
         _ <- browser.size(1920, 1080)
-        _ <- demos.filterNot(_ == "corners").map(d => if (d == "net") net() else demo(d))
+        _ <- demos.filterNot(_ == "corners")
+          .map(d => if (d == "net") net() else if (d == "motionstop") motionstop() else demo(d))
           .foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
       } yield ()
     }.flatMap(_ => if (demos.contains("corners")) DevTools.around(chrome, gpu = true)(corners) else Task.unit)

@@ -14,7 +14,9 @@ import android.view.{Choreographer, View, ViewGroup, ViewTreeObserver}
   * keeping the main thread busy under a screen with nothing moving on it and no frame drawn; and so did one inside a
   * box that was hidden, its own visibility untouched. Out of a window, hidden, or out of sight (scrolled out of the
   * box that clips it, or off the window), the animators are let go; back in one, shown and in sight, they are made
-  * again (`make`) from where the node is then.
+  * again (`make`) from where the node is then. Stopped, whether taken away, replaced or out of sight, what they moved
+  * goes back to the node's own (`still`): an animator let go leaves its property where it stood, and a busy Sync glyph
+  * turned into a done tick mid-turn was drawn at the turn's last angle (Voidcraft, on a phone).
   *
   * The animators are not started: one frame callback steps every running motion about 30 times a second
   * (`Motion.gapMillis`), whatever the display's rate, setting each animator's time. A started animator set its view's
@@ -27,7 +29,7 @@ import android.view.{Choreographer, View, ViewGroup, ViewTreeObserver}
   * A box shown or hidden (`RenderNode.setVisible`) looks again at the motions in a window (`Motion.visibilityChanged`),
   * which are few; and a running or waiting motion looks again at whether it is in sight before a frame is drawn after
   * something moved or was laid out (`Motion.moved`), not on the frames its own steps draw. */
-final class Motion(view: View, make: () => List[ValueAnimator]) extends View.OnAttachStateChangeListener {
+final class Motion(view: View, make: () => List[ValueAnimator], still: () => Unit) extends View.OnAttachStateChangeListener {
   private var animators: List[ValueAnimator] = Nil
   private var moving = false
   // when the animators began, by the Choreographer's clock (-1 until the first step)
@@ -150,6 +152,7 @@ final class Motion(view: View, make: () => List[ValueAnimator]) extends View.OnA
     animators = Nil
     if (android.os.Build.VERSION.SDK_INT >= 35) view.setRequestedFrameRate(rate)
     Motion.running -= 1
+    still()
     Motion.live.remove(this)
     IdleAudit.motion(false, owner)
   }

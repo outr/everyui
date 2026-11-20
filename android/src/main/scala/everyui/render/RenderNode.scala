@@ -87,6 +87,7 @@ class RenderNode(val view: View) {
   /** Drawn larger or smaller about its own centre, which is what a View pivots on unless told otherwise; a web view,
     * laid out larger and shrunk back from its top left (EmbedView.scaleOf), from there and as much smaller again. */
   def setScale(factor: Double): Unit = if (Hop.needed(this)) Hop(() => setScale(factor)) else {
+    ownScale = factor
     val by = factor / EmbedView.scaleOf(view)
     view.setScaleX(by.toFloat)
     view.setScaleY(by.toFloat)
@@ -557,7 +558,7 @@ class RenderNode(val view: View) {
   /** The motion's animators, run only while the view is in a window and shown (Motion): made on first use. */
   private var motion: Motion = null
   private def moves: Motion = {
-    if (motion == null) motion = new Motion(view, () => animators())
+    if (motion == null) motion = new Motion(view, () => animators(), () => still())
     motion
   }
 
@@ -572,9 +573,34 @@ class RenderNode(val view: View) {
 
   private def animate(): Unit = if (tracks.nonEmpty || motion != null) moves.set(tracks.nonEmpty)
 
+  // its own scale and opacity, which a motion's are drawn over (`setScale`, `setOpacity`)
+  private var ownScale: Double = 1.0
+  private var ownOpacity: Double = 1.0
+  // the properties the running animators move (`Track.property`), which go back to the node's own as they stop
+  private var moving: List[String] = Nil
+
+  /** What the stopped animators moved, back as the node has it: an animator let go leaves its properties where it
+    * stood (a busy Sync glyph turned into a done tick was drawn at the turn's last angle). */
+  private def still(): Unit = {
+    import everyui.motion.Track
+    moving.foreach {
+      case Track.Position =>
+        view.setTranslationX(left.toFloat)
+        view.setTranslationY(restY.toFloat)
+      case Track.Rotation => view.setRotation(math.toDegrees(rotation).toFloat)
+      case Track.Opacity => view.setAlpha(ownOpacity.toFloat)
+      case _ =>
+        val by = (ownScale / EmbedView.scaleOf(view)).toFloat
+        view.setScaleX(by)
+        view.setScaleY(by)
+    }
+    moving = Nil
+  }
+
   private def animators(): List[android.animation.ValueAnimator] = {
     import android.animation.{Keyframe, ObjectAnimator, PropertyValuesHolder, ValueAnimator}
     import everyui.motion.Track
+    moving = tracks.map(_.property)
     tracks.map { track =>
       def holder(name: String, value: everyui.motion.Keyframe => Double): PropertyValuesHolder =
         PropertyValuesHolder.ofKeyframe(name, track.keys.map(k => Keyframe.ofFloat(k.at.toFloat, value(k).toFloat))*)
@@ -972,7 +998,10 @@ class RenderNode(val view: View) {
   }
   /** Laid out while hidden: a hidden view is laid out here already (INVISIBLE), and measures where it is. */
   def setLaidOutHidden(on: Boolean): Unit = ()
-  def setOpacity(opacity: Double): Unit = if (Hop.needed(this)) Hop(() => setOpacity(opacity)) else view.setAlpha(opacity.toFloat)
+  def setOpacity(opacity: Double): Unit = if (Hop.needed(this)) Hop(() => setOpacity(opacity)) else {
+    ownOpacity = opacity
+    view.setAlpha(opacity.toFloat)
+  }
 
   def setClip(width: Double, height: Double): Unit = if (Hop.needed(this)) Hop(() => setClip(width, height)) else view match {
     case g: ViewGroup =>

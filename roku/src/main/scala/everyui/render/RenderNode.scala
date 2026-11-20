@@ -109,10 +109,16 @@ class RenderNode(val sg: SGNode) {
   /** Radians, clockwise, about the node's own centre — matching youi's
     * `ImageView.rotation`, which is in TURNS (0..1); the example converts. */
   def getRotation(): Double = uiGetRotation(sg)
-  def setRotation(radians: Double): Unit = if (drawn) uiSetRotation(sg, radians)
+  def setRotation(radians: Double): Unit = if (drawn) {
+    ownRotation = radians
+    uiSetRotation(sg, radians)
+  }
 
   /** Drawn larger or smaller about its own centre, the pivot the size keeps. */
-  def setScale(factor: Double): Unit = if (drawn) uiSetScale(sg, factor)
+  def setScale(factor: Double): Unit = if (drawn) {
+    ownScale = factor
+    uiSetScale(sg, factor)
+  }
 
   def setFontSize(size: Double): Unit = {
     wholeWidth = -1.0
@@ -421,7 +427,10 @@ class RenderNode(val sg: SGNode) {
   def setVisible(visible: Boolean): Unit = if (drawn) uiSetVisible(sg, visible)
   /** Laid out while hidden: a hidden label measures here as a shown one does. */
   def setLaidOutHidden(on: Boolean): Unit = ()
-  def setOpacity(opacity: Double): Unit = if (drawn) uiSetOpacity(sg, opacity)
+  def setOpacity(opacity: Double): Unit = if (drawn) {
+    ownOpacity = opacity
+    uiSetOpacity(sg, opacity)
+  }
   def setClip(width: Double, height: Double): Unit = if (drawn) {
     ownClip = true
     clipWidth = width
@@ -560,8 +569,30 @@ class RenderNode(val sg: SGNode) {
   // a position track runs from where the node is placed, so placing it again makes it again; no other track does
   private def movesPosition: Boolean = tracks.exists(t => t.property == everyui.motion.Track.Position)
 
-  private def animate(): Unit = {
+  // its own rotation, scale and opacity, which a motion's are drawn over (`setRotation`, `setScale`, `setOpacity`)
+  private var ownRotation: Double = 0.0
+  private var ownScale: Double = 1.0
+  private var ownOpacity: Double = 1.0
+  // the properties the motion's Animations move (`Track.property`)
+  private var animated: List[String] = Nil
+
+  /** The Animations taken away, and what they moved back as the node has it: an Animation paused or stopped leaves its
+    * field where it stood (a busy Sync glyph turned into a done tick was drawn at the turn's last angle). */
+  private def still(): Unit = {
     animations.foreach(a => uiStopMotion(a))
+    animations = Nil
+    if (drawn) animated.foreach { p =>
+      if (p == everyui.motion.Track.Position) uiSetTranslation(sg, px(left), px(top))
+      else if (p == everyui.motion.Track.Rotation) uiSetRotation(sg, ownRotation)
+      else if (p == everyui.motion.Track.Opacity) uiSetOpacity(sg, ownOpacity)
+      else uiSetScale(sg, ownScale)
+    }
+    animated = Nil
+  }
+
+  private def animate(): Unit = {
+    still()
+    animated = tracks.map(t => t.property)
     animations = tracks.map { t =>
       val position = t.property == everyui.motion.Track.Position
       val a = t.keys.map(k => if (position) px(left + k.a) else if (t.property == everyui.motion.Track.Rotation) -k.a else k.a)

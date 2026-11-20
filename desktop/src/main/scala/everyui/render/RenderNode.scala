@@ -81,6 +81,7 @@ class RenderNode(val fx: Node) {
 
   /** Drawn larger or smaller about its own centre, which is what JavaFX scales about. */
   def setScale(factor: Double): Unit = if (Hop.needed(this)) Hop(() => setScale(factor)) else {
+    ownScale = factor
     fx.setScaleX(factor)
     fx.setScaleY(factor)
   }
@@ -266,15 +267,37 @@ class RenderNode(val fx: Node) {
   private var motionTracks: List[everyui.motion.Track] = Nil
   /** The motion's timelines, run only while the node is in a shown window and visible (Motion): made on first use. */
   private var motion: Motion = null
+  // its own scale and opacity, which a motion's are drawn over (`setScale`, `setOpacity`)
+  private var ownScale: Double = 1.0
+  private var ownOpacity: Double = 1.0
+  // the properties the running timelines move (`Track.property`), which go back to the node's own as they stop
+  private var moving: List[String] = Nil
 
   /** What the motion is for, told when it is set (a Roku logs it for everyui_debug_motion); nothing here. */
   def setMotionOwner(owner: () => String): Unit = ()
   def setMotion(tracks: List[everyui.motion.Track]): Unit = if (Hop.needed(this)) Hop(() => setMotion(tracks)) else {
     motionTracks = tracks
     if (tracks.nonEmpty || motion != null) {
-      if (motion == null) motion = new Motion(fx, () => timelines())
+      if (motion == null) motion = new Motion(fx, () => timelines(), () => still())
       motion.set(tracks.nonEmpty)
     }
+  }
+
+  /** What the stopped timelines moved, back as the node has it: a timeline stopped leaves its properties where it
+    * stood (a busy Sync glyph turned into a done tick was drawn at the turn's last angle). */
+  private def still(): Unit = {
+    import everyui.motion.Track
+    moving.foreach {
+      case Track.Position =>
+        fx.setTranslateX(0.0)
+        fx.setTranslateY(0.0)
+      case Track.Rotation => fx.setRotate(math.toDegrees(rotation))
+      case Track.Opacity => fx.setOpacity(ownOpacity)
+      case _ =>
+        fx.setScaleX(ownScale)
+        fx.setScaleY(ownScale)
+    }
+    moving = Nil
   }
 
   /** Each track a timeline of the node's own properties, repeating: a position is its translation, on top of the
@@ -283,6 +306,7 @@ class RenderNode(val fx: Node) {
     import javafx.animation.{Animation, Interpolator, KeyFrame, KeyValue, Timeline}
     import javafx.util.Duration
     import everyui.motion.Track
+    moving = motionTracks.map(_.property)
     motionTracks.map { track =>
       val frames = track.keys.map { k =>
         val at = Duration.seconds(k.at * track.seconds)
@@ -513,7 +537,10 @@ class RenderNode(val fx: Node) {
   }
   /** Laid out while hidden: a hidden node is laid out here already, and measures where it is. */
   def setLaidOutHidden(on: Boolean): Unit = ()
-  def setOpacity(opacity: Double): Unit = if (Hop.needed(this)) Hop(() => setOpacity(opacity)) else fx.setOpacity(opacity)
+  def setOpacity(opacity: Double): Unit = if (Hop.needed(this)) Hop(() => setOpacity(opacity)) else {
+    ownOpacity = opacity
+    fx.setOpacity(opacity)
+  }
 
   /** What shows of it cut to `width` by `height`, with its corners rounded as its own are (`setRadius`), as the web's
     * overflow is: a header band or a picture in a rounded box does not show square corners inside it. */

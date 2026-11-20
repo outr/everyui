@@ -202,7 +202,8 @@ class Component(val node: RenderNode) {
   lazy val cached: Prop[Boolean] = own(new Prop[Boolean](false, c => node.setCached(c)))
 
   /** Properties moving on their own, run by the platform (see everyui.motion.Track): setting them replaces what was
-    * moving, and Nil stops it. */
+    * moving, and Nil stops it. What a motion taken away or replaced moved is drawn as the component has it again (its
+    * own `rotation`, `scale`, `opacity` and place), wherever in its cycle it stood, on every platform. */
   lazy val motion: Prop[List[Track]] = own(new Prop[List[Track]](Nil, t => {
     ownMotion = t.nonEmpty
     node.setMotionOwner(() => Component.lineage(this))

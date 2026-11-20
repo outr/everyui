@@ -15,9 +15,13 @@ import javafx.stage.Window
   * visibility or any box's it is in), the timelines are stopped; back in one and shown, they are made again (`make`)
   * from where the node is then. As Android's Motion does for its animators.
   *
+  * Stopped, whether taken away, replaced or out of sight, what they moved goes back to the node's own (`still`): a
+  * stopped timeline leaves its property where it stood, and a busy Sync glyph turned into a done tick mid-turn was drawn
+  * at the turn's last angle.
+  *
   * A box shown or hidden (`RenderNode.setVisible`) looks again at the motions in a shown window
   * (`Motion.visibilityChanged`), which are few: nothing each pulse. */
-final class Motion(node: Node, make: () => List[Timeline]) {
+final class Motion(node: Node, make: () => List[Timeline], still: () => Unit) {
   private var timelines: List[Timeline] = Nil
   private var moving = false
   // whether the node is in a window being shown, followed through its scene and the scene's window
@@ -56,6 +60,7 @@ final class Motion(node: Node, make: () => List[Timeline]) {
     timelines.foreach(_.stop())
     timelines = Nil
     Motion.running -= 1
+    still()
   }
 }
 
