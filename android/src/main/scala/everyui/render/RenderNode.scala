@@ -691,7 +691,6 @@ class RenderNode(val view: View) {
       // each run's tip (`TextRun.title`) the view's as the pointer is over it: a mouse's or a stylus's hover
       runTips = tips.result()
       if (runTips.nonEmpty) hearHover()
-      else if (android.os.Build.VERSION.SDK_INT >= 26) t.setTooltipText(if (ownTip.isEmpty) null else ownTip)
       if (textDirection == "auto") applyAlign()
       // as many lines as the runs are written as, where they are not wrapped (see setText)
       if (!wrapping) {
@@ -773,7 +772,7 @@ class RenderNode(val view: View) {
   private def hearHover(): Unit = if (!hoverHeard) {
     hoverHeard = true
     view.setOnHoverListener { (_, e) =>
-      if (runTips.nonEmpty) tipOver(e)
+      if (runTips.nonEmpty || ownTip.nonEmpty) tipOver(e)
       if (listening && e.getAction == MotionEvent.ACTION_HOVER_ENTER) fire(PointerKind.Enter, e)
       else if (listening && e.getAction == MotionEvent.ACTION_HOVER_EXIT) fire(PointerKind.Leave, e)
       false
@@ -785,15 +784,20 @@ class RenderNode(val view: View) {
   private var runTips: Vector[(Int, Int, String)] = Vector.empty
   private var ownTip: String = ""
 
-  // the view's tip made the one of the run the pointer is over, as it moves: Android has one tip a view, shown as the
-  // pointer rests on it (and kept up to date while it shows), and none for a span of its text
-  private def tipOver(e: MotionEvent): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) view match {
-    case t: TextView =>
-      val at = if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) -1 else t.getOffsetForPosition(e.getX, e.getY)
-      val tip = runTips.find(r => at >= r._1 && at < r._2).map(_._3).getOrElse(ownTip)
-      val now = t.getTooltipText
-      if ((if (now == null) "" else now.toString) != tip) t.setTooltipText(if (tip.isEmpty) null else tip)
-    case _ => ()
+  // The view's tip, there only while a pointer that hovers (a mouse, a stylus) is over it, and the one of the run it is
+  // over as it moves: Android has one tip a view, shown as the pointer rests on it (and kept up to date while it shows),
+  // and none for a span of its text. Never on the view otherwise: a view with a tip takes every touch that lands on
+  // it (View.onTouchEvent), so a badge's tip on a row's picture held the taps that were the row's, and the row was
+  // dead (Voidcraft's workspace switcher); a mouse's press ends its hover first, so a click goes through it too.
+  private def tipOver(e: MotionEvent): Unit = if (android.os.Build.VERSION.SDK_INT >= 26) {
+    val tip = if (e.getAction == MotionEvent.ACTION_HOVER_EXIT) "" else view match {
+      case t: TextView if runTips.nonEmpty =>
+        val at = t.getOffsetForPosition(e.getX, e.getY)
+        runTips.find(r => at >= r._1 && at < r._2).map(_._3).getOrElse(ownTip)
+      case _ => ownTip
+    }
+    val now = view.getTooltipText
+    if ((if (now == null) "" else now.toString) != tip) view.setTooltipText(if (tip.isEmpty) null else tip)
   }
 
   /** What hears every touch on the view before its pointer events are made of it: a pinch (Gestures). */
@@ -997,7 +1001,11 @@ class RenderNode(val view: View) {
   }
   def setTooltip(text: String): Unit = if (Hop.needed(this)) Hop(() => setTooltip(text)) else {
     ownTip = text
-    if (android.os.Build.VERSION.SDK_INT >= 26) view.setTooltipText(if (text.isEmpty) null else text)
+    // shown while a hovering pointer is over it (`tipOver`), never set on the view to wait there
+    if (text.nonEmpty) hearHover()
+    else if (android.os.Build.VERSION.SDK_INT >= 26) {
+      if (view.getTooltipText != null) view.setTooltipText(null)
+    }
   }
   // what TalkBack reads after the view's name, and whether accessibleFocus's delegate (which says it too) is on the view
   private var hint = ""

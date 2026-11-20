@@ -21,7 +21,8 @@ import reactify.*
   * case, Regex and Whole word and a file mask, which its search follows; `on=crw` turns those three on to begin with,
   * and `mask=` fills the mask. `switch=1` shows a workspace switcher shaped like Voidcraft's in its place (no segments, an
   * icon toggle at the field's end, a picture before each row's words with a spinning ring round those at work, more rows
-  * than show, and a menu on a held row), to try taps on its rows with a phone's keyboard up.
+  * than show, and a menu on a held row), to try taps on its rows with a phone's keyboard up. `badge=1` marks the
+  * pictures of those not at work with a small "?" that has a tip and no press of its own, hanging out of the picture.
   * Logs `picker chose <model>` when one is chosen, and `picker menu <row>` when a row is held. */
 object PickerDemo {
   // (name, provider's key, provider's name)
@@ -147,6 +148,27 @@ object PickerDemo {
     ("New workspace", 0, false)) ++ (1 to 14).map(i => (s"Project $i", i, i % 4 == 0))
   private val byName = Var(false)
 
+  // `badge=1`: a small "?" on the corner of the picture of a workspace not at work, with a tip and no press of its own,
+  // hanging out of a picture that lets it (`clipsToBox` off), as Voidcraft marks one: a tap on its row chooses the row
+  private def badged(space: (String, Int, Boolean), face: Double): List[Component] =
+    if (Platform.launchArg("badge") != "1" || space._3) Nil else {
+      val dot = new Container {
+        size.width @= 12.0
+        size.height @= 12.0
+        radius @= 6.0
+        backgroundColor := Theme.accent()
+        position.left @= face - 8.0
+        position.top @= -4.0
+        tooltip @= "Not set up yet"
+      }
+      val mark = new TextView
+      mark.content @= "?"
+      mark.font.size @= 9.0
+      mark.position.left @= 3.0
+      dot.children += mark
+      List(dot)
+    }
+
   /** A workspace switcher: no segments, an icon toggle at the field's end, a picture before each row's words (a
     * spinning ring round those at work) and a menu on a held row. */
   private def switch(chose: Var[String]): Unit = {
@@ -161,6 +183,7 @@ object PickerDemo {
           val icon = new Container
           icon.size.width @= face
           icon.size.height @= face
+          if (Platform.launchArg("badge") == "1") icon.clipsToBox @= Some(false)
           item.attachAndFire(s => icon.children.replaceMaking(s.toVector.flatMap[Component] { space =>
             val glyph = new MaterialIconView(MaterialIcon.Workspaces, face * 0.8)
             glyph.color := Theme.muted()
@@ -172,7 +195,7 @@ object PickerDemo {
               r.position.top @= -3.0
               List(r)
             } else Nil
-            glyph :: ring
+            glyph :: ring ++ badged(space, face)
           }))
           icon
         })))
