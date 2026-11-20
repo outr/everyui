@@ -5033,13 +5033,32 @@ exactly the string, inside the MIME type its container calls for (`everyui.rende
 
 Each is asked of Media Source (`isTypeSupported`, what a stream plays through) and of the element (`canPlayType`, which
 on a TV is the TV's own pipeline), either one's yes a yes; VC-1, MPEG-2, WMV and WMA are a no in a browser, and a codec
-not known at all is a yes (a wrong no costs a transcode nobody needed).
+not known at all is a yes (a wrong no costs a transcode nobody needed). Where the engine refuses the string written,
+its family's other forms are asked before it is a no (`CodecMime.forms`): VP9 profile 0 at 8 bits as `vp9` (and `vp9`
+as `vp09.00.10.08`), and Dolby Vision's sample entries swapped, `dvh1` as `dvhe` and `dva1` as `dvav` (and back), each
+the same stream carried another way. webOS 3.5's Chromium 38 (an OLED55E7P, 2017) answered, as `isTypeSupported` then
+`canPlayType`:
+
+| asked | answer |
+|---|---|
+| `video/webm; codecs="vp9"` | true, "probably" |
+| `video/webm; codecs="vp09.00.10.08"` | false, "" (so `vp9` is asked) |
+| `video/mp4; codecs="dvhe.05.06"`, `"dvhe.08.06"` | true, "probably" |
+| `video/mp4; codecs="dvh1.05.06"`, `"dvh1.08.06"` | false, "" (so `dvhe` is asked) |
+| `hvc1`/`hev1` at level 153 in MP4 | true, "maybe" |
+| `video/mp2t` with `avc1` | false, "probably" |
+| `application/vnd.apple.mpegurl` | false, "maybe" (its own player plays HLS) |
+| `video/x-matroska`, any codec | false, "" |
+| `audio/webm; codecs="opus"` | false, "probably" |
+| Opus or FLAC in MP4, `audio/flac`, `dtsc` | false, "" |
 
 HDR is asked by name, alone: `decodes("hdr10")`, `"hlg"`, `"hdr10plus"`, `"dolbyvision"` (or `"dovi"`), and Atmos as
 `"atmos"`; or as part of a codec string (a VP9 or AV1 string's transfer characteristics, 16 for PQ and 18 for HLG; a
-Dolby Vision sample entry). On the web the answer is what the host says it shows (`AppHost.display`), else the
-screen's `(dynamic-range: high)` where the engine knows that query, else a yes; Dolby Vision with no word from the host
-is the engine's answer for its codec string, and Atmos is E-AC-3's (its bed plays wherever E-AC-3 does). Android asks
+Dolby Vision sample entry). On the web a name asked alone is what the host says it shows (`AppHost.display`), else, for
+HDR10 and HLG, the screen's `(dynamic-range: high)` where the engine knows that query (it vouches for no HDR10+), else
+a no (webOS 3's Chromium 38 knows no such query: unknown was a yes, and an LG said yes to HDR10+); Dolby Vision with no
+word from the host is the engine's answer for its codec string; inside a codec string, HDR not said either way leaves
+the answer to the codec's. Atmos is E-AC-3's (its bed plays wherever E-AC-3 does). Android asks
 the display (`Display.HdrCapabilities`, Android 7 on: on a box, the television over HDMI) and needs a
 `video/dolby-vision` decoder for Dolby Vision. A Roku, the Apple TV and the desktop do not say: yes.
 
@@ -5048,7 +5067,9 @@ On an LG TV the host is the TV itself (`WebOSDisplay`): webOSTV.js's `webOS.devi
 it (`luna://com.webos.service.config/getConfigs`: `tv.model.supportHDR`, `tv.config.supportDolbyHDRContents`,
 `tv.hw.panelResolution` "UD" or "8K", `tv.config.supportDolbyTVATMOS` or a `tv.model.soundModeType` of "Dolby Atmos"),
 asked once as the app starts; HLG is read as HDR10 (LG names no flag of its own for it, and its HDR10 sets have taken
-HLG since 2017's). Until that answer is in (a moment after launch), HDR is the engine's.
+HLG since 2017's), and HDR10+ is a no wherever the TV says anything of HDR (LG has made no set that shows it). A 2017
+OLED on webOS 3.5 answers `getConfigs` with `returnValue` true beside `errorCode` -2 ("Partial configs found",
+`tv.model.soundModeType` missing): the configs it holds are taken. Until that answer is in (a moment after launch), HDR is the engine's.
 
 ```scala
 val direct = Platform.decodes(info.videoCodec, info.container) && Platform.decodes(info.audioCodec, info.container) &&
@@ -5076,24 +5097,46 @@ Roku, with labels and languages, whichever player plays:
 - The element itself (a file; an HLS stream a TV or Safari plays): its own `audioTracks` where the engine has them (a
   TV's runtime, Safari; Chromium keeps them behind a flag), and its `textTracks` of kind `subtitles` and `captions` (an
   HLS stream's WebVTT renditions, its CEA-608 captions, format "CC"; metadata left out), each id its place among them.
-  Where it plays an HLS stream without listing its sound tracks or subtitles, the master playlist is read once
-  (`HlsRenditions`: the `#EXT-X-MEDIA` of the group the first variant names) and its renditions listed, ids their
-  place, which is hls.js's index for them too. Choosing one other than the default opens the stream again through
-  hls.js where it is, with that one (`media: audio track 1 of the playlist chosen: opening it again through hls.js at
-  20 s`), and the id chosen stays the id: a TV's own player cannot be told a rendition. Without Media Source nothing
-  changes, and it is said.
+  A sound track of its own chosen lands where it was, playing or paused as it was: webOS 3's player starts its
+  pipeline again from 0 about half a second after one is chosen in an HLS stream (and stalls and comes back a few
+  seconds before in an MP4), so the place is set again as a resume's is (`ResumeSeek`, below).
+  Where it plays an HLS stream without listing its sound tracks or subtitles (webOS 3 lists the sound renditions but
+  no subtitle renditions), the master playlist is read once (`HlsRenditions`: the `#EXT-X-MEDIA` of the group the
+  first variant names) and its renditions listed, ids their place, which is hls.js's index for them too. A subtitle
+  rendition chosen is read by EveryUI, its media playlist and then its segments, each a plain WebVTT file
+  (`HlsVtt`: the cues joined, as written against the stream's first timestamp), and given to the element as a
+  `<track>`, as a sidecar is, the TV's player playing on as it was (its pipeline, its HDR, its place). A sound
+  rendition other than the default, or live subtitles, open the stream again through hls.js where it is, with that one
+  (`media: audio track 1 of the playlist chosen: opening it again through hls.js at 20 s`), and the id chosen stays the
+  id: a TV's own player cannot be told a rendition. The element's own source is kept until hls.js has loaded, and kept
+  for good where it cannot be: where there is no Media Source, or hls.js cannot run (`WebFeatures.hlsJs`, below),
+  nothing changes and it is said; live subtitles are then shown as they stand.
+- hls.js needs Chromium 47's built-ins (`Array.from`, `find` and `includes`, `Object.assign`, `startsWith`,
+  `Uint8Array.from` and `slice`, `Map`, `Set`, `Promise`), and throws as it loads without them (webOS 3's Chromium 38).
+  `WebFeatures.hlsJs` asks for exactly those, and where it is false hls.js is never loaded: the TV's own player plays
+  HLS (LG's advice anyway), choices are made as above, and a stream given `headers` is played without them, said as it
+  opens, its error saying why (`MediaError 4 (the stream's request headers were not sent: this engine's own player
+  sends none, and hls.js, which does, cannot run here)`). No polyfills are shipped for it: a dozen built-ins patched in
+  front of a third party's script on a 1 GB TV, a set that moves with each hls.js, for a player the TV has no need of.
 - Sidecars (`sidecars`, `MediaSidecar`): now on the web too. Each file is fetched (with `headers`; from another origin
   its server must allow CORS), SubRip made WebVTT (`SubRipVtt`), and given to the element as a `<track>` of a `blob:`
   of the page's own, so neither the file's origin nor the element's `crossorigin` matters. They are listed after the
   file's own tracks, in the order given, ids `side<n>`, labelled as Android labels them (the label, else the language,
   else "Subtitles"). SubStation and picture subtitles cannot be shown by a browser and are left out (logged).
+- What shows is EveryUI's choice, whatever the engine chooses of itself: webOS 3 showed a sidecar nobody chose at
+  every open (its caption setting), and once two at once. The modes of EveryUI's `<track>`s (and of the element's
+  own text tracks, once one is chosen) are set again as a track is added or loaded, as the list says a mode changed
+  (`addtrack`, `change`), at a cue, and as the element loads.
 
 **Resume.** `open(url, from)` starts there: hls.js is given it as its start, and the element is given it before it has
 loaded (its default start). A TV's player may drop that, or a seek made before it could take one, so the time is set
-again as it says more (`loadedmetadata`, `canplay`, `playing`, `timeupdate`) while it stands short of it, until it has
-played on from there, up to 6 times (`ResumeSeek`; `media: starting at 1260 s again, the player at 0 s (canplay)`); a
-seek of the viewer's ends it. Until it has landed `playhead()` says the start rather than 0, so a checkpoint saved as
-it opens saves where the viewer is, not the beginning.
+again as it says more (`loadedmetadata`, `canplay`, `playing`, `timeupdate`) while it stands more than 2 s
+short of it (a segment's start, a keyframe before it, is there), until it has played 2 s on from where it landed, up
+to 6 times (`ResumeSeek`; `media: landing at 1260 s again, the player at 0 s (canplay)`). A seek lands the same way,
+in place of any other (webOS 3 sprang back from a seek in an MP4, 30 s to about 25.6, in 2 of 3 tries; in HLS it
+lands at the segment's start, 28 s of 4 s segments for 30), and so does a sound track chosen on the element's own
+player. Until it has landed `playhead()` says the place asked for, so a checkpoint saved as it opens saves where the
+viewer is, not the beginning, and a seek reads where it was asked to.
 
 **Teardown.** A source changed or emptied, a view released (`release`, `dispose`) or put away out of sight: hls.js is
 destroyed (and its MediaSource with it), the sidecars' `<track>`s are taken off and their `blob:`s revoked, and the
@@ -5108,7 +5151,7 @@ Both are 0 once every screen that played something has been left. The memory che
 fails where anything is held after a case is taken apart (`everyuiMemory.media()`), and `MediaHeldSpec` holds a screen
 left and come back to twenty times to one player at most and none at the end.
 
-**Checked** by webcheck's `PlayerCheck <page dir> <media dir> [--webos] [--chrome <binary>] [--rounds <n>]`, over test
+**Checked** by webcheck's `PlayerCheck <page dir> <media dir> [--webos [--tv]] [--chrome <binary>] [--rounds <n>]`, over test
 media of its own served by a server of its own (an HLS stream of H.264 with two AAC renditions and two WebVTT
 subtitle renditions, a VP8 and Opus WebM, a WebVTT and a SubRip sidecar, made with ffmpeg), headless and muted: the
 example's `demo=decodes`, then `demo=player rounds=20` (`PlayerRounds`), a player screen entered at 20 s, its second
@@ -5116,7 +5159,13 @@ sound track chosen, each text track shown and then none, a seek, and left, twent
 (no source, `<track>` or open MediaSource; every MediaSource the page makes is counted) and nothing at the end. In Chrome
 157 through hls.js and, as webOS, through the browser's own HLS and the playlist's renditions; in Chromium 53 (webOS
 4's engine, on the ES2015 build) and Chromium 38 (webOS 3's, on the ES 5.1 build), which have no H.264 in a snapshot
-build, the WebM with its sidecars.
+build, the WebM with its sidecars. Each round also checks that no text track shows before one is chosen, that the place
+is kept through the sound track's change, and that the seek landed on the element too. `--tv` makes the element a TV's
+own player as webOS 3's was seen to be: it plays the playlist itself (the WebM standing in where the engine has no
+H.264), lists its two sound renditions as its own `audioTracks` and starts again from 0 half a second after one is
+chosen, lists none of its subtitles (so they are read from their WebVTT), shows each `<track>` as it is added, and
+springs back 4.4 s from a seek once. `--attach http://<tv>:9998 --host <this machine's address>` drives a browser
+already running, a TV's inspector (`DevTools.attached`), with no stubs, the media served where the TV reaches it.
 
 ```sh
 env -u WAYLAND_DISPLAY xvfb-run -a java -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.PlayerCheck \
@@ -6454,17 +6503,24 @@ asks of an app:
   launch (`Platform.onLaunch`), with its parameters, which `launchArg` reads from then on; one with no parameters (the
   app chosen again in the launcher) is not. A launch with a `contentId` also goes to `Platform.onDeepLink(contentId,
   mediaType)`, as a Roku's deep link does, the one the app started with a turn after it is asked.
-- **Away and back**: a hidden app is suspended, and says so with `visibilitychange` (the TV's home screen or another
-  app over it): `onAway` and `onResume`, as in a browser.
+- **Away and back**: a hidden app is suspended, and says so with `visibilitychange` (another app over it):
+  `onAway` and `onResume`, as in a browser. Before webOS 6, Back at the root (`platformBack`) and Home bring up the
+  launcher over the app and the page stays shown with no `visibilitychange` (webOS 3: `document.hasFocus()` false, and
+  nothing said either way); LG says a system overlay (the launcher, the settings) takes the window's focus
+  (`blur`). So on webOS the window's own `blur`, with the page's focus gone, is away too, and its `focus` or a
+  `webOSRelaunch` is back (`AppHost.hearPresence`), each said once. The TV's keyboard takes no focus from the page.
 - **Its server**: the page comes from no server, so, as on a Roku, `Platform.origin()` is the setting
   "everyui.origin" the app saves (else "") and `webSocketOrigin()` is "": the app names its server.
 - **Its screen**: 540 units tall, as on Android TV and a Roku, so a screen designed for one TV is the same size on
   all of them: at 1080p (1920 by 1080 CSS pixels) `Platform.screenWidth()` and `screenHeight()` are 960 and 540, and a
   unit is two CSS pixels (`TvUnits`: CSS pixels over `innerHeight / 540`). The app's root is drawn at that scale, as a
   size chosen (`UiScale`) is, so words, pictures, borders and the pointer's place all follow it, and a size chosen
-  multiplies it. `Platform.pixelRatio()` is the CSS pixels to a unit times the page's `devicePixelRatio`: 2 on an LG at
-  1080p, as on Android TV, so a picture asked for by its width in pixels stays sharp (about 2.33 in LG's Simulator,
-  whose page has a pixel ratio of 1.1667). The scale is measured again each time the window changes size, before the
+  multiplies it. `Platform.pixelRatio()` is the CSS pixels to a unit times the surface's own pixels to a CSS pixel: 2 on an
+  LG at 1080p, as on Android TV, so a picture asked for by its width in pixels stays sharp and no larger (about 2.33
+  in LG's Simulator, whose page has a pixel ratio of 1.1667). The surface's ratio is `devicePixelRatio` where the
+  resolution query agrees, else what the query matches (`SurfaceRatio`): webOS 3's Chromium 38 says 2 on a web plane
+  drawn 1:1 (its `screen` 1920 by 1080, its screenshots too; `deviceInfo`'s 3840 by 2160 is the panel the plane is
+  scaled up to), which made pictures twice as wide and four times the memory. The scale is measured again each time the window changes size, before the
   app hears of it (`Platform.onResize`): the Simulator starts the page in a window of no size and gives it the screen
   after. No scrollbar is drawn, on the page or on anything that scrolls in it; a remote scrolls by the focus. Any host
   (`AppHosts`: Tizen's and Vega's next) is laid out so; a browser, a phone's or a desktop's, is not.
@@ -6581,6 +6637,14 @@ taken there while every newer browser keeps its own:
 - **No `Element.scrollTo`** (before 61): a smooth scroll goes there at once.
 - **Unprefixed `user-select`** (from 54): `-webkit-user-select` before it (and in Safari).
 - **No BroadcastChannel** (before 54): a sign-in opens no popup, the page itself going to the provider.
+- **No `system-ui`** (before 56): text with no family of the app's names the systems' sans after it (Apple's, Windows',
+  Roboto, then LG's as its Enact apps name it, `LG Smart UI`, `LG Display`, Museo Sans; Noto Sans, Arial), then
+  `sans-serif` (`RenderNode.systemFamily`).
+- **Not hls.js** (before 47: `Array.from`, `Object.assign`, typed arrays' `slice` and the rest it calls on): it is
+  never loaded there (`WebFeatures.hlsJs`), the TV's own player plays HLS, and a playlist's subtitles are read from
+  their WebVTT ("A TV's player on the web").
+- **`devicePixelRatio` saying 2 on a 1:1 web plane** (webOS 3): the resolution query's answer is taken
+  (`SurfaceRatio`).
 - **A layer of its own under the app's scaled root** (before 53, asked by the unprefixed `filter`): what was hidden
   over one and shown again (a first screen built under a loading overlay, over the backdrop's washes, which are
   `Component.cached`) was drawn again only where it met the top left quarter of the screen, so webOS 3 showed 4 of a

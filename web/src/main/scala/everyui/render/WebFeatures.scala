@@ -140,6 +140,20 @@ object WebFeatures {
     * for there. */
   lazy val ownLayers: Boolean = css("filter", "blur(1px)")
 
+  /** Whether hls.js (1.7) can run: the built-ins it calls on without a fallback of its own (`Array.from`, `find` and
+    * `includes`, `Object.assign`, `startsWith` and `includes` on strings, `Uint8Array.from` and `slice`, `Promise`,
+    * `Map` and `Set`), Chromium 47's. webOS 3's Chromium 38 has none of the first ones, and hls.js throws there as it
+    * loads; a TV that old plays HLS with its own player, which needs none of them. (`Object.entries` is only its
+    * CMCD's, which EveryUI does not turn on, so webOS 4's Chromium 53 runs it.) */
+  lazy val hlsJs: Boolean = {
+    def method(owner: String, name: String, onPrototype: Boolean = false): Boolean = global(owner).exists { o =>
+      js.typeOf((if (onPrototype) o.prototype else o).selectDynamic(name)) == "function"
+    }
+    List("Promise", "Map", "Set").forall(has) && method("Array", "from") && method("Array", "find", true) &&
+      method("Array", "includes", true) && method("Object", "assign") && method("String", "startsWith", true) &&
+      method("String", "includes", true) && method("Uint8Array", "from") && method("Uint8Array", "slice", true)
+  }
+
   /** The nearest of `el` and those holding it that `selector` matches (`closest`, Chromium 41; else asked of each
     * by `matches`, or `webkitMatchesSelector` before Chromium 34), or null. */
   def closest(el: dom.Element, selector: String): dom.Element =

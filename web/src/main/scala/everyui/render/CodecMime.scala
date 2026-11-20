@@ -15,6 +15,27 @@ object CodecMime {
     else if (f.codec == "pcm" || f.codec == "lpcm" || f.codec.startsWith("pcm_")) Some("audio/wav; codecs=\"1\"")
     else codecs.map(c => base(f) + "; codecs=\"" + c + "\"")
   }
+  /** `mime` and the other forms its codec's family writes it in, in the order to ask them: an engine that refuses the
+    * form written may know another (webOS 3's Chromium 38 refuses `vp09.00.10.08` but takes `vp9`, and refuses
+    * `dvh1.*` but takes `dvhe.*`). VP9 profile 0 at 8 bits is `vp9` too, and `vp9` is `vp09.00.10.08`; Dolby Vision's
+    * sample entries are asked swapped (`dvh1` and `dvhe` over HEVC, `dva1` and `dvav` over AVC), as each names the
+    * same stream carried another way. */
+  def forms(mime: String): List[String] = {
+    val at = mime.indexOf("codecs=\"")
+    val end = if (at < 0) -1 else mime.indexOf('"', at + 8)
+    if (end < 0) List(mime)
+    else {
+      val codec = mime.substring(at + 8, end)
+      val parts = codec.split('.')
+      val swaps = Map("dvh1" -> "dvhe", "dvhe" -> "dvh1", "dva1" -> "dvav", "dvav" -> "dva1")
+      val others =
+        if (codec == "vp9") List("vp09.00.10.08")
+        else if (parts(0) == "vp09" && parts.length >= 4 && parts(1) == "00" && parts(3) == "08") List("vp9")
+        else swaps.get(parts(0)).map(s => (s +: parts.drop(1)).mkString(".")).toList
+      mime :: others.map(o => mime.substring(0, at + 8) + o + mime.substring(end))
+    }
+  }
+
   private def base(f: MediaFormat): String =
     if (f.video) f.container match {
       case "" | "mp4" | "mov" | "m4v" | "ts" | "hls" | "fmp4" | "cmaf" => "video/mp4"

@@ -12,7 +12,8 @@ package everyui.render
   *    "Dolby Atmos" (Atmos);
   *  - and the runtime's own `deviceInfo` string, where it carries any of the same names.
   *
-  * LG names no HLG flag: an LG set that takes HDR10 has taken HLG too since 2017's models, so HLG is read as HDR10. A
+  * LG names no HLG flag: an LG set that takes HDR10 has taken HLG too since 2017's models, so HLG is read as HDR10;
+  * and LG has never made a set that shows HDR10+, so wherever the TV says anything of HDR, HDR10+ is a no. A
   * feature not said is not known (absent), never a no. */
 object WebOSDisplay {
   val configService: String = "luna://com.webos.service.config"
@@ -28,7 +29,8 @@ object WebOSDisplay {
     def flag(name: String): Option[Boolean] = info.get(name).flatMap(v =>
       if (v == "true") Some(true) else if (v == "false") Some(false) else None)
     val hdr = flag("hdr10")
-    List("hdr10" -> hdr, "hlg" -> hdr, "dolbyvision" -> flag("dolbyVision"), "atmos" -> flag("dolbyAtmos"),
+    List("hdr10" -> hdr, "hlg" -> hdr, "hdr10plus" -> hdr.map(_ => false), "dolbyvision" -> flag("dolbyVision"),
+      "atmos" -> flag("dolbyAtmos"),
       "uhd" -> flag("uhd").orElse(flag("UHD")).orElse(flag("uhd8K").filter(identity)))
       .collect { case (name, Some(on)) => name -> on }.toMap
   }
@@ -42,7 +44,8 @@ object WebOSDisplay {
       val hdr = bool("tv.model.supportHDR")
       val atmos = bool("tv.config.supportDolbyTVATMOS").map(_ || c.get("tv.model.soundModeType").contains("Dolby Atmos"))
         .orElse(c.get("tv.model.soundModeType").map(_ == "Dolby Atmos"))
-      List("hdr10" -> hdr, "hlg" -> hdr, "dolbyvision" -> bool("tv.config.supportDolbyHDRContents"),
+      List("hdr10" -> hdr, "hlg" -> hdr, "hdr10plus" -> hdr.map(_ => false),
+        "dolbyvision" -> bool("tv.config.supportDolbyHDRContents"),
         "atmos" -> atmos, "uhd" -> c.get("tv.hw.panelResolution").map(r => r == "UD" || r == "8K"))
         .collect { case (name, Some(on)) => name -> on }.toMap
     }

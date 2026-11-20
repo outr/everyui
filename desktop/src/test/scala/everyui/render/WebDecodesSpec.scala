@@ -50,6 +50,20 @@ class WebDecodesSpec extends AnyWordSpec with Matchers {
       mime("truehd") shouldBe Some("audio/mp4; codecs=\"mlpa\"")
       mime("pcm_s16le") shouldBe Some("audio/wav; codecs=\"1\"")
     }
+    "be asked in its family's other forms, as webOS 3's engine knows only some" in {
+      CodecMime.forms("video/webm; codecs=\"vp09.00.10.08\"") shouldBe
+        List("video/webm; codecs=\"vp09.00.10.08\"", "video/webm; codecs=\"vp9\"")
+      CodecMime.forms("video/webm; codecs=\"vp09.02.10.10.01.09.16.09.01\"") shouldBe
+        List("video/webm; codecs=\"vp09.02.10.10.01.09.16.09.01\"")
+      CodecMime.forms("video/webm; codecs=\"vp9\"") shouldBe
+        List("video/webm; codecs=\"vp9\"", "video/webm; codecs=\"vp09.00.10.08\"")
+      CodecMime.forms("video/mp4; codecs=\"dvh1.08.06\"") shouldBe
+        List("video/mp4; codecs=\"dvh1.08.06\"", "video/mp4; codecs=\"dvhe.08.06\"")
+      CodecMime.forms("video/mp4; codecs=\"dvhe.05.06\"").last shouldBe "video/mp4; codecs=\"dvh1.05.06\""
+      CodecMime.forms("video/mp4; codecs=\"dva1.09.05\"").last shouldBe "video/mp4; codecs=\"dvav.09.05\""
+      CodecMime.forms("audio/mp4; codecs=\"mp4a.40.2\"") shouldBe List("audio/mp4; codecs=\"mp4a.40.2\"")
+      CodecMime.forms("audio/mpeg") shouldBe List("audio/mpeg")
+    }
     "write nothing for a codec it does not know, which is then a yes" in {
       mime("wmav2") shouldBe None
       mime("") shouldBe None
@@ -59,7 +73,7 @@ class WebDecodesSpec extends AnyWordSpec with Matchers {
   "What an LG TV says it shows" should {
     "be read from webOS.deviceInfo, and the runtime's deviceInfo" in {
       WebOSDisplay.fromDeviceInfo("""{"modelName":"OLED55C1","uhd":true,"hdr10":true,"dolbyVision":false,"dolbyAtmos":true}""") shouldBe
-        Map("hdr10" -> true, "hlg" -> true, "dolbyvision" -> false, "atmos" -> true, "uhd" -> true)
+        Map("hdr10" -> true, "hlg" -> true, "hdr10plus" -> false, "dolbyvision" -> false, "atmos" -> true, "uhd" -> true)
       WebOSDisplay.fromDeviceInfo("""{"modelName":"OLED55C4","platformVersionMajor":"9"}""") shouldBe Map.empty
       WebOSDisplay.fromDeviceInfo("not json") shouldBe Map.empty
     }
@@ -67,11 +81,19 @@ class WebDecodesSpec extends AnyWordSpec with Matchers {
       WebOSDisplay.fromConfigs("""{"returnValue":true,"configs":{"tv.model.supportHDR":true,""" +
         """"tv.config.supportDolbyHDRContents":true,"tv.hw.panelResolution":"UD","tv.config.supportDolbyTVATMOS":false,""" +
         """"tv.model.soundModeType":"Dolby Atmos"}}""") shouldBe
-        Map("hdr10" -> true, "hlg" -> true, "dolbyvision" -> true, "atmos" -> true, "uhd" -> true)
+        Map("hdr10" -> true, "hlg" -> true, "hdr10plus" -> false, "dolbyvision" -> true, "atmos" -> true,
+          "uhd" -> true)
       WebOSDisplay.fromConfigs("""{"returnValue":true,"configs":{"tv.model.supportHDR":false,""" +
-        """"tv.hw.panelResolution":"FHD"}}""") shouldBe Map("hdr10" -> false, "hlg" -> false, "uhd" -> false)
+        """"tv.hw.panelResolution":"FHD"}}""") shouldBe
+        Map("hdr10" -> false, "hlg" -> false, "hdr10plus" -> false, "uhd" -> false)
       WebOSDisplay.fromConfigs("""{"returnValue":false,"errorText":"Denied method call"}""") shouldBe Map.empty
       WebOSDisplay.fromConfigs("") shouldBe Map.empty
+    }
+    "be read as a 2017 LG answers, its partial reply taken (webOS 3.5, OLED55E7P)" in {
+      WebOSDisplay.fromConfigs("""{"missingConfigs":["tv.model.soundModeType"],"subscribed":false,"returnValue":true,""" +
+        """"configs":{"tv.config.supportDolbyHDRContents":true,"tv.model.supportHDR":true,"tv.hw.panelResolution":"UD",""" +
+        """"tv.config.supportDolbyTVATMOS":true},"errorCode":-2,"errorText":"Partial configs found"}""") shouldBe
+        Map("hdr10" -> true, "hlg" -> true, "hdr10plus" -> false, "dolbyvision" -> true, "atmos" -> true, "uhd" -> true)
     }
   }
 }

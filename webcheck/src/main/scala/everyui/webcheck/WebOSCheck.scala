@@ -21,9 +21,11 @@ import scala.concurrent.duration.*
   *  - another app is asked for (`getAppLoadStatus`) and launched (`launch`) through the runtime's PalmServiceBridge,
   *    and through webOSTV.js's `webOS.service.request` where the app has it, one not installed read so;
   *  - the Magic Remote's pointer focuses what it comes onto while it shows (`cursorStateChange`), and not while hidden;
-  *  - the page hidden and shown again is away and resumed;
+  *  - the page hidden and shown again is away and resumed, and so is the window's focus lost (to the launcher, over
+  *    the page still shown, as Back at the root leaves it before webOS 6) and had again;
   *  - the screen is 960 by 540 units at 1080p, a box 100 units across 200 CSS pixels, at a scale of 2 (2.33 where the
-  *    page's pixel ratio is the Simulator's 1.1667);
+  *    page's pixel ratio is the Simulator's 1.1667), though `devicePixelRatio` says twice the page's, as webOS 3's does
+  *    on its 1:1 web plane (but in the Simulator);
   *  - Home, which scrolls, shows no scrollbar, and the page itself runs past the window on neither side;
   *  - on a sign-in form, the arrows pass over its fields without the TV's keyboard; OK puts the field's input in the
   *    page's focus, which brings the keyboard up, and submits nothing; what is typed arrives, Left moving the caret;
@@ -71,6 +73,7 @@ object WebOSCheck extends RapidApp {
       |  platformBack: function () { window.everyuiExits.push("$system"); }
       |};
       |${if (simulator) "Object.defineProperty(window, \"PalmSystem\", { value: window.webOSSystem });" else ""}
+      |${if (simulator) "" else WebOSCheck.twice}
       |window.everyuiKeyboard = false;
       |window.everyuiKeyboards = 0;
       |var everyuiShow = function (v) {
@@ -213,6 +216,19 @@ object WebOSCheck extends RapidApp {
       def exits: Task[Int] = browser.eval("return window.everyuiExits.length").map(_("result")("value").asInt)
       def visible(state: String): Task[Unit] = browser.eval(
         s"""window.everyuiVisible = "$state"; document.dispatchEvent(new Event("visibilitychange")); return 0""").unit
+      // the page hidden and shown, then left shown under the launcher with the window's focus gone and had again (as
+      // Back at the root leaves it before webOS 6): each away and resumed
+      def presence: Task[(Boolean, Boolean)] = for {
+        _ <- visible("hidden")
+        away <- heard("tv: away")
+        _ <- visible("visible")
+        resumed <- heard("tv: resumed")
+        _ <- browser.eval("document.hasFocus = function () { return false; }; " +
+          "window.dispatchEvent(new Event(\"blur\")); return 0")
+        under <- heard("tv: away", 2)
+        _ <- browser.eval("delete document.hasFocus; window.dispatchEvent(new Event(\"focus\")); return 0")
+        back <- heard("tv: resumed", 2)
+      } yield (away && resumed, under && back)
       // the page `width` by `height`, at the pixel ratio of the run
       def window(width: Int, height: Int): Task[Unit] = browser.size(width, height, ratio)
       // the language screen, shown as the loading overlay goes: eleven buttons in a grid three across, centred, each
@@ -225,7 +241,11 @@ object WebOSCheck extends RapidApp {
         shot <- browser.picture()
       } yield {
         val laid = grid.asVector.take(4).map(_.asInt)
-        val drawn = WebOSCheck.drawn(shot, grid.asVector(4).asVector.map(_.asVector.map(_.asDouble)))
+        // the picture's pixels to a CSS pixel, as it was taken: the emulated ratio in today's headless engine, 1 in an
+        // old one, which captures its window as it is (the Simulator's 1.1667 in Chromium 38 and 53 sampled amiss)
+        val scale = shot.getWidth.toDouble / grid.asVector(5).asDouble
+        val drawn = WebOSCheck.drawn(shot, grid.asVector(4).asVector.map(_.asVector.map(_.asDouble)).map(p =>
+          p.take(2).map(_ * scale) ++ p.drop(2)))
         check("the language screen shows its 11 buttons in 3 columns, centred, each drawn (" + laid.mkString(", ") +
           ", " + drawn.toString + " drawn)", laid == Vector(11, 11, 3, 0) && drawn == 11)
       }
@@ -305,11 +325,9 @@ object WebOSCheck extends RapidApp {
         _ <- pointTo("Open details")
         stays = count("tv: focus Container \"Open details\"") == 2
         _ = check("hidden, the pointer leaves the focus where it is", stays)
-        _ <- visible("hidden")
-        away <- heard("tv: away")
-        _ <- visible("visible")
-        resumed <- heard("tv: resumed")
-        _ = check("hidden and shown is away and resumed", away && resumed)
+        seen <- presence
+        _ = check("hidden and shown is away and resumed", seen._1)
+        _ = check("the window's focus lost to the launcher and had again is away and resumed", seen._2)
         // the sign-in form: Home's third button, from the focus left on Settings
         _ <- press(40, "ArrowDown")
         _ <- press(13, "Enter")
@@ -402,11 +420,17 @@ object WebOSCheck extends RapidApp {
       |all.forEach(function (r) { if (lefts.indexOf(Math.round(r.left)) < 0) lefts.push(Math.round(r.left)); });
       |var left = Math.min.apply(null, all.map(function (r) { return r.left; }));
       |var right = Math.max.apply(null, all.map(function (r) { return r.right; }));
-      |var ratio = devicePixelRatio || 1;
       |var points = shown.map(function (e) {
       |  var r = e.getBoundingClientRect(), c = getComputedStyle(e).backgroundColor.match(/\d+/g);
-      |  return [(r.left + r.height / 2) * ratio, (r.top + r.height / 2) * ratio, +c[0], +c[1], +c[2]]; });
-      |return [all.length, seen, lefts.length, Math.round((left + right) / 2 - innerWidth / 2), points]""".stripMargin
+      |  return [r.left + r.height / 2, r.top + r.height / 2, +c[0], +c[1], +c[2]]; });
+      |return [all.length, seen, lefts.length, Math.round((left + right) / 2 - innerWidth / 2), points, innerWidth]""".stripMargin
+
+  /** `devicePixelRatio` saying twice what the page is drawn at, as webOS 3's Chromium 38 says 2 on its 1:1 web plane (the
+    * resolution query, `screen` and its screenshots all 1). */
+  val twice: String =
+    """window.everyuiTrueRatio = window.devicePixelRatio;
+      |Object.defineProperty(window, "devicePixelRatio", { configurable: true,
+      |  get: function () { return 2 * window.everyuiTrueRatio; } });""".stripMargin
 
   /** How many of `points` (x, y, red, green, blue) are their colour in `shot`, near enough. */
   def drawn(shot: java.awt.image.BufferedImage, points: Vector[Vector[Double]]): Int = points.count { p =>

@@ -108,11 +108,13 @@ class RailPerfScreen extends UIScreen {
     focused.attach(on => if (on) {
       if (!ringed) {
         ringed = true
+        // the card's own focus: inside the ring, `focused` is the ring's, never focused
+        val lit = focused
         children += new Container {
           size.width @= 120.0
           size.height @= 180.0
           radius @= 10.0
-          borderWidth := (if (focused()) 2.5 else 0.0)
+          borderWidth := (if (lit()) 2.5 else 0.0)
           borderColor @= Color.fromHex("#ffb000")
         }
       }

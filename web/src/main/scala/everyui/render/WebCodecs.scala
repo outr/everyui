@@ -20,13 +20,15 @@ import scala.scalajs.js
   *    WAV.
   *  - HDR ("hdr10", "hlg", "hdr10plus", "dolbyvision", alone or in a codec string's transfer characteristics) is
   *    what the host says it shows (`AppHost.display`: an LG TV's own flags, `WebOSDisplay`), else the screen's
-  *    `(dynamic-range: high)` where the engine knows the query, else not known; Dolby Vision with no word from the host
-  *    is the engine's answer for its codec string (`dvh1.05.06` where none is given). "atmos" is the host's flag, else
-  *    E-AC-3's answer (Atmos's bed plays wherever E-AC-3 does).
+  *    `(dynamic-range: high)` where the engine knows the query, else not known: a no for a name asked alone (the
+  *    screen vouching for HDR10 and HLG only), the codec's answer in a codec string; Dolby Vision with no word from the
+  *    host is the engine's answer for its codec string (`dvh1.05.06` or `dvhe.05.06` where none is given). "atmos"
+  *    is the host's flag, else E-AC-3's answer (Atmos's bed plays wherever E-AC-3 does).
   *
   * A name not known here is a yes, since the cost of a wrong no is a transcode nobody needed; codecs no browser plays
-  * (VC-1, MPEG-2, WMV and WMA) are a no. The engine's answers are kept; HDR's are asked each time, as a TV says them a
-  * moment after the app starts. */
+  * (VC-1, MPEG-2, WMV and WMA) are a no. A string the engine refuses is asked in its family's other forms before it is a
+  * no (`CodecMime.forms`: `vp9` for `vp09.00.*.08`, `dvhe` for `dvh1`). The engine's answers are kept; HDR's are
+  * asked each time, as a TV says them a moment after the app starts. */
 object WebCodecs {
   private val never: Set[String] = Set("vc1", "mpeg2video", "mpeg1video", "msmpeg4", "wmv3", "wmv2", "wmav2", "wma")
 
@@ -41,12 +43,20 @@ object WebCodecs {
     else plays(MediaFormat.of(c, "", "", "", 0))
   }
 
-  /** Whether it plays `f`: its HDR shown, and its codec in its container. */
+  /** Whether it plays `f`: its HDR shown, and its codec in its container (asked in its family's other forms where an
+    * older engine refuses the one written: `CodecMime.forms`). An HDR name alone is what the host or the screen says,
+    * and no where neither says (Dolby Vision: the engine's word for its codec string); the screen's dynamic range
+    * vouches for HDR10 and HLG, never for HDR10+. */
   def plays(f: MediaFormat): Boolean =
-    if (f.codec.isEmpty) hdr(f.hdr).getOrElse(f.hdr != "dolbyvision" || engine("video/mp4; codecs=\"dvh1.05.06\"") ||
-      engine("video/mp4; codecs=\"dvhe.05.06\""))
+    if (f.codec.isEmpty) {
+      val said = if (f.hdr.isEmpty) Some(true)
+        else host(f.hdr).orElse(if (f.hdr == "hdr10" || f.hdr == "hlg") dynamicRange else None)
+      said.getOrElse(f.hdr == "dolbyvision" && (engine("video/mp4; codecs=\"dvh1.05.06\"") ||
+        engine("video/mp4; codecs=\"dvhe.05.06\"")))
+    }
     else if (never.contains(f.codec)) false
-    else hdr(f.hdr).getOrElse(true) && CodecMime.of(f, host("dolbyvision").nonEmpty).forall(engine)
+    else hdr(f.hdr).getOrElse(true) &&
+      CodecMime.of(f, host("dolbyvision").nonEmpty).forall(asked => CodecMime.forms(asked).exists(engine))
 
   /** What the host or the screen says of `kind` of HDR, None where neither says; "" is no HDR, shown everywhere. */
   def hdr(kind: String): Option[Boolean] =

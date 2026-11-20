@@ -1531,7 +1531,7 @@ object RenderNode {
   private[render] def textClass(): Unit = if (!textRule) {
     textRule = true
     val style = dom.document.createElement("style")
-    style.textContent = ".everyui-text { font: 600 32px system-ui, sans-serif; }"
+    style.textContent = ".everyui-text { font: 600 32px " + systemFamily + "; }"
     dom.document.head.appendChild(style)
   }
   /** How many of the app's nodes are turned or scaled now, by their own transform or a motion's: while none is, a box
@@ -1851,6 +1851,15 @@ object RenderNode {
   def emojiFaces: String = systemEmoji + Faces.colorEmojiFaces().map(f => ", '" + f.family + "'").mkString
   private val systemEmoji: String = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'"
 
+  /** The system's own sans, for text with no family of the app's: `system-ui` (Chromium 56, Safari 11, Firefox 92), then
+    * by name where an older engine knows no `system-ui` (webOS 3's Chromium 38, webOS 4's 53, Tizen 4's 56): Apple's,
+    * Windows', Android's and ChromeOS's, then LG's as its own Enact apps name it (`LG Smart UI` from 2019's sets,
+    * `LG Display` and Museo Sans before), Noto, Arial, and the engine's sans last. */
+  val systemFamily: String = systemFaces + ", sans-serif"
+  /** The same without the engine's sans, for a list that goes on (the emoji faces before it). */
+  def systemFaces: String = "system-ui, -apple-system, 'Segoe UI', Roboto, 'LG Smart UI', 'LG Display', 'Museo Sans', " +
+    "'Noto Sans', Arial"
+
 
   /** The embed keys at `el` (the page's focused element) belong to, "" for none: the name given by the nearest element
     * marked `data-everyui-embed` (an editor or other page embedded in the app; "embed" when it gives none), else
@@ -2127,7 +2136,7 @@ object Nodes {
     el.className = "everyui-select"
     // the family a text node starts with, until the app's (`Theme.family`) is set: a select drawn by the page has the
     // page's, a serif
-    el.style.fontFamily = "system-ui, " + RenderNode.emojiFaces + ", sans-serif"
+    el.style.fontFamily = RenderNode.systemFaces + ", " + RenderNode.emojiFaces + ", sans-serif"
     el.style.position = "absolute"
     el.style.left = "0px"
     el.style.top = "0px"
@@ -2154,7 +2163,7 @@ object Nodes {
     el.style.background = "transparent"
     el.style.setProperty("resize", "none")
     // the family a text node starts with, until the app's (`Theme.family`) is set: a textarea's own is monospace
-    el.style.fontFamily = "system-ui, " + RenderNode.emojiFaces + ", sans-serif"
+    el.style.fontFamily = RenderNode.systemFaces + ", " + RenderNode.emojiFaces + ", sans-serif"
     el.style.setProperty("box-sizing", "border-box")
     el.style.setProperty(WebFeatures.userSelect, "text")
     new RenderNode(el)
@@ -2173,7 +2182,7 @@ object Nodes {
     // more other parts at its start) the class's, shared by every text node rather than written into each one's style
     RenderNode.textClass()
     el.className = "everyui-text"
-    el.style.fontFamily = "system-ui, sans-serif"
+    el.style.fontFamily = RenderNode.systemFamily
     el.style.fontWeight = "600"
     el.style.fontSize = "32px"
     el.style.color = "#1c1b1f"
@@ -2303,6 +2312,8 @@ object Platform {
     if (dom.document.visibilityState == "hidden") presence.hidden() else presence.shown())
   dom.window.addEventListener("pagehide", (_: dom.Event) => presence.hidden())
   dom.window.addEventListener("pageshow", (e: dom.PageTransitionEvent) => if (e.persisted) presence.shown())
+  // and where the host says more: webOS before 6 leaves the page shown under its launcher
+  AppHosts.current.foreach(_.hearPresence(() => presence.hidden(), () => presence.shown()))
 
   // the window's own focus, which a page in sight may still not have: another window in front of it, a popup it
   // opened. Focus gone into one of the page's own frames is the page's still (`document.hasFocus`), so a click into a
@@ -2718,7 +2729,7 @@ object Platform {
         page.title = waiting
         val words = page.createElement("p")
         words.textContent = waiting
-        words.setAttribute("style", "font: 16px system-ui, sans-serif; margin: 3em; text-align: center; color: #555")
+        words.setAttribute("style", "font: 16px " + RenderNode.systemFamily + "; margin: 3em; text-align: center; color: #555")
         page.body.appendChild(words)
       }
       catch { case _: Throwable => () }
@@ -3140,11 +3151,21 @@ object Platform {
     * in its units: 960 by 540 at 1080p), less what a phone's on-screen keyboard covers (VisibleArea). */
   def screenWidth(): Double = dom.window.innerWidth.toDouble / RenderNode.drawnAt
   def screenHeight(): Double = VisibleArea.height() / RenderNode.drawnAt
-  /** Screen pixels to a layout unit: the browser's device pixel ratio (2 on a HiDPI screen, often 1.5 or 2 on a
-    * television whose page is laid out smaller than its panel), times the size the app is drawn at: 2 on an LG at 1080p,
-    * as on Android TV, where an image asked for by its width in pixels stays sharp. */
-  def pixelRatio(): Double =
-    (if (dom.window.devicePixelRatio > 0.0) dom.window.devicePixelRatio else 1.0) * RenderNode.drawnAt
+  /** Screen pixels to a layout unit: the surface's pixels to a CSS pixel (`SurfaceRatio`: the browser's device pixel
+    * ratio, 2 on a HiDPI screen, where the resolution query agrees, else what the query matches: 1 on webOS 3's 1080p
+    * web plane, whose engine says 2), times the size the app is drawn at: 2 on an LG at 1080p, as on Android TV, where
+    * an image asked for by its width in pixels stays sharp and no larger. */
+  def pixelRatio(): Double = {
+    val reported = dom.window.devicePixelRatio
+    if (reported != ratioOf._1) ratioOf = (reported, SurfaceRatio.of(reported, atLeast))
+    ratioOf._2 * RenderNode.drawnAt
+  }
+  // the ratio worked out for the last device pixel ratio said (it changes with a desktop's zoom and screen)
+  private var ratioOf = (-1.0, 1.0)
+  private def atLeast(r: Double): Option[Boolean] = {
+    val query = dom.window.matchMedia("(-webkit-min-device-pixel-ratio: " + r + ")")
+    if (query.media == "not all") None else Some(query.matches)
+  }
 
   /** The app drawn `factor` times its size (everyui.theme.UiScale), as the browser's zoom draws a page: the root
     * scaled from its top left and laid out in the window over it, its edges the window's. The browser's own zoom is

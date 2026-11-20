@@ -56,6 +56,19 @@ object WebOSTv extends AppHost {
     })
   }
 
+  /** Out of sight as the window loses the focus to a system overlay (LG: "When an overlay-type system UI element, such
+    * as Launcher or Settings menu, appears", `blur`), and back as it has it again (`focus`) or the app is launched
+    * again (`webOSRelaunch`): before webOS 6, Back at the root (`platformBack`) and Home bring up the launcher over the
+    * app, the page left shown with no `visibilitychange`, which LG sends only as another app takes the screen. The
+    * TV's keyboard on the screen takes no focus from the page (webOS 3: its field stays the page's focus). */
+  override def hearPresence(away: () => Unit, back: () => Unit): Unit = {
+    // the window's own, not a field's heard on its way down
+    dom.window.addEventListener("blur", (e: dom.Event) => if (e.target eq dom.window) dom.window.setTimeout(() =>
+      if (!dom.document.hasFocus()) away(), 0))
+    dom.window.addEventListener("focus", (e: dom.Event) => if (e.target eq dom.window) back())
+    dom.document.addEventListener("webOSRelaunch", (_: dom.Event) => back())
+  }
+
   /** `keyboardStateChange`, with `detail.visibility` (LG's "System UI Visibility"), heard on its way to the page. */
   override def hearKeyboard(shown: Boolean => Unit): Unit =
     dom.window.addEventListener("keyboardStateChange", (e: dom.Event) => {

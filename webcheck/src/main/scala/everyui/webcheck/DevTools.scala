@@ -17,8 +17,10 @@ import scala.concurrent.duration.*
   * newer one is refused (`addScript`, `insertText`, `size`: the Page domain's metrics before Chromium 39's Emulation),
   * and the page's console is read from either domain.
   *
-  * Its profile is a new directory under `java.io.tmpdir`, removed with it. */
-final class DevTools private (process: Process, profile: Path, val major: Int, socket: WebSocket) {
+  * Its profile is a new directory under `java.io.tmpdir`, removed with it. Or one already running, a TV's among them, is
+  * driven where it is (`attach`): webOS 3 answers at `http://<tv>:9998` once Developer Mode is on, and only the socket
+  * is closed after. */
+final class DevTools private (process: Option[Process], profile: Option[Path], val major: Int, socket: WebSocket) {
   private val ids = new AtomicInteger(0)
   private val waiting = new ConcurrentHashMap[Int, CompletableFuture[Json]]()
   private val listeners = new CopyOnWriteArrayList[(String, Json) => Unit]()
@@ -136,15 +138,19 @@ final class DevTools private (process: Process, profile: Path, val major: Int, s
     javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder.decode(r("data").asString)))
   }
 
-  /** The browser ended and its profile removed. */
+  /** The browser ended and its profile removed, where it was started here; else the socket closed. */
   def close(): Unit = {
     try socket.abort() catch { case _: Throwable => () }
-    process.descendants().forEach(p => { p.destroy(); () })
-    process.destroy()
-    if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly()
-    process.descendants().forEach(p => { p.destroyForcibly(); () })
-    try Files.walk(profile).sorted(java.util.Comparator.reverseOrder()).forEach(p => Files.deleteIfExists(p))
-    catch { case _: Throwable => () }
+    process.foreach { process =>
+      process.descendants().forEach(p => { p.destroy(); () })
+      process.destroy()
+      if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly()
+      process.descendants().forEach(p => { p.destroyForcibly(); () })
+    }
+    profile.foreach { dir =>
+      try Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(p => Files.deleteIfExists(p))
+      catch { case _: Throwable => () }
+    }
   }
 }
 
@@ -170,6 +176,30 @@ object DevTools {
   def around[A](binary: String, agent: Option[String] = None)(f: DevTools => Task[A]): Task[A] =
     Task(start(binary, agent)).flatMap(tools => Task.defer(f(tools)).guarantee(Task(tools.close())))
 
+  /** `f` with a browser already running driven where it is (a TV's: `http://<tv>:9998` on webOS 3, its inspector on),
+    * its first page's console (replayed from the page's start, so nothing is lost by coming late) and runtime on, and
+    * only the socket closed after. `address` is the inspector's (`http://host:port`, its first page taken) or a page's
+    * own `ws://` endpoint; its major version is read from `/json/version` where it says, else `major`. */
+  def attached[A](address: String, major: Int = 38)(f: DevTools => Task[A]): Task[A] =
+    Task(attach(address, major)).flatMap(tools => Task.defer(f(tools)).guarantee(Task(tools.close())))
+
+  /** A browser already running, driven where it is (`attached`); its socket closed by `close`. */
+  def attach(address: String, major: Int = 38): DevTools = {
+    val client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
+    val base = address.stripSuffix("/")
+    if (base.startsWith("ws")) connect(client, base, major, None, None)
+    else {
+      val said = try {
+        val r = client.send(HttpRequest.newBuilder(URI.create(base + "/json/version")).build(),
+          HttpResponse.BodyHandlers.ofString())
+        val version = JsonParser(r.body())
+        List("Browser", "User-Agent").flatMap(version.get).map(_.asString).flatMap(s =>
+          """Chrome/(\d+)""".r.findFirstMatchIn(s).map(_.group(1).toInt)).headOption
+      } catch { case _: Throwable => None }
+      connect(client, page(client, base, 100), said.getOrElse(major), None, None)
+    }
+  }
+
   private def start(binary: String, agent: Option[String]): DevTools = {
     val major = majorOf(binary)
     val port = { val s = new ServerSocket(0); try s.getLocalPort finally s.close() }
@@ -189,27 +219,7 @@ object DevTools {
     try {
       // (HTTP/1.1 alone: an old browser's endpoint answers no upgrade to HTTP/2)
       val client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
-      val endpoint = page(client, port, 100)
-      val tools = new Array[DevTools](1)
-      val text = new StringBuilder
-      val listener = new WebSocket.Listener {
-        override def onText(ws: WebSocket, data: CharSequence, last: Boolean): CompletionStage[?] = {
-          text.append(data)
-          if (last) {
-            val whole = text.toString
-            text.clear()
-            tools(0).heard(JsonParser(whole))
-          }
-          ws.request(1)
-          null
-        }
-      }
-      val socket = client.newWebSocketBuilder().buildAsync(URI.create(endpoint), listener).get()
-      tools(0) = new DevTools(process, profile, major, socket)
-      val t = tools(0)
-      List("Runtime.enable", "Page.enable").foreach(m => t.send(m).sync())
-      if (major < 54) t.send("Console.enable").sync()
-      t
+      connect(client, page(client, "http://127.0.0.1:" + port, 100), major, Some(process), Some(profile))
     }
     catch {
       case e: Throwable =>
@@ -218,18 +228,43 @@ object DevTools {
     }
   }
 
-  // the first page's own endpoint, once the browser lists it
-  private def page(client: HttpClient, port: Int, left: Int): String = {
+  // the page at `endpoint` driven: its runtime and page on, and its console where the runtime does not say it
+  private def connect(client: HttpClient, endpoint: String, major: Int, process: Option[Process],
+                      profile: Option[Path]): DevTools = {
+    val tools = new Array[DevTools](1)
+    val text = new StringBuilder
+    val listener = new WebSocket.Listener {
+      override def onText(ws: WebSocket, data: CharSequence, last: Boolean): CompletionStage[?] = {
+        text.append(data)
+        if (last) {
+          val whole = text.toString
+          text.clear()
+          tools(0).heard(JsonParser(whole))
+        }
+        ws.request(1)
+        null
+      }
+    }
+    val socket = client.newWebSocketBuilder().buildAsync(URI.create(endpoint), listener).get()
+    tools(0) = new DevTools(process, profile, major, socket)
+    val t = tools(0)
+    List("Runtime.enable", "Page.enable").foreach(m => t.send(m).sync())
+    if (major < 54) t.send("Console.enable").sync()
+    t
+  }
+
+  // the first page's own endpoint at the inspector `base`, once it lists one
+  private def page(client: HttpClient, base: String, left: Int): String = {
     val listed = try {
-      val r = client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/json")).build(),
+      val r = client.send(HttpRequest.newBuilder(URI.create(base + "/json")).build(),
         HttpResponse.BodyHandlers.ofString())
       JsonParser(r.body()).asVector.find(t => t("type").asString == "page").flatMap(_.get("webSocketDebuggerUrl"))
         .map(_.asString)
     } catch { case _: Throwable => None }
     listed.getOrElse {
-      if (left == 0) sys.error("the browser opened no page to drive (port " + port + ")")
+      if (left == 0) sys.error("the browser opened no page to drive (" + base + ")")
       Thread.sleep(100)
-      page(client, port, left - 1)
+      page(client, base, left - 1)
     }
   }
 }

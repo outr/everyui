@@ -65,7 +65,8 @@ final class WebMedia(el: html.Element) {
     tries = 0
     played = true
   })
-  // the start set again where the player dropped it
+  // the start, a seek's place or a sound track's set again where the player dropped it (a seek is followed by a
+  // timeupdate), and the text tracks' modes set again as it loads
   for (event <- List("loadedmetadata", "canplay", "playing", "timeupdate"))
     el.addEventListener(event, (_: dom.Event) => resumed(event))
 
@@ -93,6 +94,8 @@ final class WebMedia(el: html.Element) {
     landing = new ResumeSeek(at)
     WebMedia.holding += this
     val scripted = WebMedia.hls(to) && (through || script)
+    if (WebMedia.hls(to) && headers.nonEmpty && !scripted) everyui.scribe.warn("media: " + WebMedia.origin(to) +
+      " is played without its request headers: this engine's own player sends none, and hls.js cannot run here")
     extra.opened(to, !scripted, headers)
     if (scripted) attach(to, opened) else native(to)
   }
@@ -103,11 +106,14 @@ final class WebMedia(el: html.Element) {
   /** Seconds in, for saving: where it was asked to start until it has played on from there. */
   def position: Double = landing.position(m.currentTime.asInstanceOf[Double])
 
-  /** Sought to `seconds`, the viewer's or the app's: a start not yet landed is given up. */
-  def seek(seconds: Double): Unit =
-    // before it has loaded, where an older engine refuses a time, it is a start to land at instead
-    if (!placed(seconds)) landing = new ResumeSeek(seconds)
-    else landing.cancel()
+  /** Sought to `seconds`, the viewer's or the app's: a place to land on (ResumeSeek) in place of any other, as webOS 3's
+    * player springs back from a seek in an MP4 now and then; `position` says it until it has. Before the element has
+    * loaded, where an older engine refuses a time, it is set once the player says more. */
+  def seek(seconds: Double): Unit = {
+    placed(seconds)
+    landing = new ResumeSeek(seconds)
+    keeping = false
+  }
 
   // the playhead set to `seconds`, and whether the engine took it: before Chromium 39 or so, and on a TV, a time set
   // before the element has loaded anything (HAVE_NOTHING) throws
@@ -117,14 +123,23 @@ final class WebMedia(el: html.Element) {
       true
     } catch { case _: Throwable => false }
 
-  // the player's word as it opens: the start set again while it stands short of it
+  // the player's word as it opens, seeks or changes its sound: the place set again while it stands short of it, and
+  // after a sound track chosen, playing or paused as it was
   private def resumed(event: String): Unit = if (url.nonEmpty) {
+    if (event != "timeupdate") extra.enforce()
     landing.heard(event, m.currentTime.asInstanceOf[Double], m.seeking.asInstanceOf[Boolean]).foreach { at =>
-      if (event != "loadedmetadata") everyui.scribe.info("media: starting at " + at.toInt + " s again, the player at " +
+      if (event != "loadedmetadata") everyui.scribe.info("media: landing at " + at.toInt + " s again, the player at " +
         m.currentTime.asInstanceOf[Double].toInt + " s (" + event + ")")
       placed(at)
     }
+    if (landing.done) keeping = false
+    else if (keeping) {
+      if (!playing && !m.paused.asInstanceOf[Boolean]) m.pause()
+      else if (meantToPlay) resume()
+    }
   }
+  // whether the player is kept playing or paused as it was while it lands (a sound track chosen on its own player)
+  private var keeping = false
 
   /** The centre of a surround source at `db` dB over the usual (MediaSupport.centerMix). */
   def centerMix(db: Double): Unit = {
@@ -189,11 +204,14 @@ final class WebMedia(el: html.Element) {
 
   /** The track `id` heard or read; "" leaves the audio alone and shows no text. A stream's closed captions (`cc<n>`)
     * are the element's own tracks, hls.js's subtitles its, a sidecar (`side<n>`) a `<track>` of its own, and one
-    * showing hides the others. A track the element plays without listing (the playlist's) opens the stream again
-    * through hls.js, where it is, with that track. */
+    * showing hides the others. A sound track of the element's own chosen lands where it was (a TV's player starts
+    * again from 0), playing or paused as it was. A subtitle rendition the element plays without listing (the
+    * playlist's) is read from its WebVTT segments and shown as a `<track>`, the player playing on as it was; a sound
+    * rendition, or live subtitles, open the stream again through hls.js, where it is, with that track, once hls.js has
+    * loaded (the element's own source kept until then, and kept where it cannot be). */
   def select(kind: String, id: String): Unit = {
     val audio = kind == MediaTrack.Audio
-    if (!audio) extra.showSide(if (id.startsWith("side")) id else "")
+    if (!audio) extra.show(if (id.startsWith("side")) id else "")
     val i = if (id.startsWith("side")) -1 else id.toIntOption.getOrElse(-1)
     hls match {
       case Some(h) =>
@@ -205,19 +223,45 @@ final class WebMedia(el: html.Element) {
         }
       case None =>
         val own = extra.own(kind)
-        if (own.nonEmpty || (!audio && i < 0)) extra.selectOwn(kind, if (i < 0) "" else id)
-        else if (i >= 0 && i < extra.listed(kind).size && (audio && i != extra.listedDefault(kind) || !audio))
-          url.foreach { to =>
-            if (!WebMedia.mse) everyui.scribe.warn("media: the player lists no " + kind + " tracks, and there is no " +
-              "Media Source here to choose one through hls.js")
-            else {
-              everyui.scribe.info("media: " + kind + " track " + i + " of the playlist chosen: opening it again " +
-                "through hls.js at " + position.toInt + " s")
-              val at = position
-              open(to, at, through = true)
-              pick = Some(kind -> i)
-            }
+        if (own.nonEmpty || (!audio && i < 0)) {
+          val at = position
+          if (extra.selectOwn(kind, if (i < 0) "" else id)) {
+            landing = new ResumeSeek(at)
+            keeping = true
           }
+        }
+        else if (i >= 0 && i < extra.listed(kind).size) {
+          if (!audio) extra.showListed(i, headers, () => reopen(kind, i))
+          else if (i != extra.listedDefault(kind)) reopen(kind, i)
+        }
+    }
+  }
+
+  // the stream opened again through hls.js, where it is, with the playlist's track `i` of `kind`, once hls.js has
+  // loaded; whether it will be. Where hls.js cannot run or load, the element plays on as it was, and it is said
+  private def reopen(kind: String, i: Int): Boolean = url.exists { to =>
+    val why = if (!WebMedia.mse) "there is no Media Source here" else if (!WebFeatures.hlsJs) "hls.js cannot run on " +
+      "this engine (it needs Chromium 47's built-ins)" else ""
+    if (why.nonEmpty) {
+      everyui.scribe.warn("media: the player lists no " + kind + " tracks, and " + why + " to choose one through hls.js")
+      false
+    }
+    else {
+      val at = opened
+      HlsScript.load { loaded =>
+        if (at == opened && hls.isEmpty) {
+          if (!loaded || !HlsScript.hls.isSupported().asInstanceOf[Boolean])
+            everyui.scribe.warn("media: hls.js could not be loaded to choose " + kind + " track " + i + " of the " +
+              "playlist: it plays on as it was")
+          else {
+            everyui.scribe.info("media: " + kind + " track " + i + " of the playlist chosen: opening it again " +
+              "through hls.js at " + position.toInt + " s")
+            open(to, position, through = true)
+            pick = Some(kind -> i)
+          }
+        }
+      }
+      true
     }
   }
 
@@ -239,7 +283,14 @@ final class WebMedia(el: html.Element) {
           (if (t.label.isEmpty) "" else "(" + t.label + ")")
       }.mkString(",")
       MediaDiagnostics(audio, video, languages, failure)
-    case None => MediaDiagnostics(failure = failure)
+    case None =>
+      // the element's own sound tracks, where it lists them, marked as hls.js's are
+      val heard = extra.ownHeard
+      val languages = extra.own(MediaTrack.Audio).map { t =>
+        (if (t.language.isEmpty) t.id else t.language) + (if (t.id == heard.toString) "*" else "") +
+          (if (t.label.isEmpty) "" else "(" + t.label + ")")
+      }.mkString(",")
+      MediaDiagnostics(audioTracks = languages, failure = failure)
   }
 
   // ---- the browser's own player ----
@@ -313,7 +364,7 @@ final class WebMedia(el: html.Element) {
   // the element's own error: a source it cannot play may be HLS it does not know by its address, so the server is
   // asked what it is, once, before the error is said; hls.js's errors are its own
   private def refused(): Unit = if (hls.isEmpty) url.foreach { to =>
-    if (!probed && WebMedia.mse && !WebMedia.hls(to)) {
+    if (!probed && WebMedia.scriptable && !WebMedia.hls(to)) {
       probed = true
       probe(to, opened)
     }
@@ -337,19 +388,26 @@ final class WebMedia(el: html.Element) {
 
   private def nativeError: String = {
     val e = m.error
-    if (js.isUndefined(e) || e == null) "media error"
-    else "MediaError " + e.code.toString + Some(text(e.message)).filter(_.nonEmpty).map(": " + _).getOrElse("")
+    val said = if (js.isUndefined(e) || e == null) "media error"
+      else "MediaError " + e.code.toString + Some(text(e.message)).filter(_.nonEmpty).map(": " + _).getOrElse("")
+    // an HLS stream that only hls.js could have played as asked: with its headers, or at all
+    val stream = url.exists(WebMedia.hls)
+    if (stream && !WebMedia.scriptable && headers.nonEmpty) said + " (the stream's request headers were not sent: " +
+      "this engine's own player sends none, and hls.js, which does, cannot run here)"
+    else if (stream && !WebMedia.scriptable && !WebMedia.nativeHls(m)) said + " (this engine plays no HLS: it has no " +
+      "player of its own for it, and hls.js cannot run here)"
+    else said
   }
 
   // ---- hls.js ----
 
   // where hls.js plays it: with Media Source Extensions, and where the browser does not play HLS itself as well (and
   // list its tracks), or there are headers to send
-  private def script: Boolean = WebMedia.mse && (headers.nonEmpty || !WebMedia.nativeHls(m))
+  private def script: Boolean = WebMedia.scriptable && (headers.nonEmpty || !WebMedia.nativeHls(m))
 
   private def attach(to: String, at: Int): Unit = HlsScript.load { loaded =>
     if (at == opened) {
-      if (!loaded) fail("hls.js could not be loaded")
+      if (!loaded) { if (WebMedia.nativeHls(m)) native(to) else fail("hls.js could not be loaded") }
       else if (!HlsScript.hls.isSupported().asInstanceOf[Boolean]) native(to)
       else {
         // a probe leaves the refused source behind
@@ -469,6 +527,7 @@ final class WebMedia(el: html.Element) {
       el.querySelector("source") != null
     WebMedia.holding -= this
     landing = new ResumeSeek(0.0)
+    keeping = false
     played = false
     url = None
     tries = 0
@@ -554,6 +613,9 @@ object WebMedia {
     WebFetch(url, init).`then`(answered, failed)
   }
 
+  /** Whether hls.js can play here: Media Source Extensions, and the built-ins hls.js 1.7 calls on (`WebFeatures.hlsJs`;
+    * not on webOS 3's Chromium 38, where it throws as it loads). */
+  def scriptable: Boolean = mse && WebFeatures.hlsJs
   /** Whether the browser has Media Source Extensions (Safari on an iPhone, the managed kind). */
   def mse: Boolean = {
     val window = dom.window.asInstanceOf[js.Dynamic]

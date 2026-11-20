@@ -15,27 +15,47 @@ import scala.scalajs.js
   *    format "CC"), metadata left out; each id its place among them.
   *  - **The playlist's**: where the player lists no sound tracks (or no subtitles) of an HLS stream it plays itself, the
   *    master playlist is read once (`HlsRenditions`) and its renditions listed, each id its place in its group, which is
-  *    hls.js's index for it too.
+  *    hls.js's index for it too. A subtitle rendition chosen is read here, its media playlist and then its segments,
+  *    each a plain WebVTT file (`HlsVtt`), and given to the element as a `<track>` as a sidecar is, so the TV's own
+  *    player plays on as it was (its pipeline, its HDR, its place).
   *  - **Sidecars**: each file fetched (with the source's headers; CORS from another origin), SubRip made WebVTT
   *    (`SubRipVtt`), and given to the element as a `<track>` of a `blob:` of the page's own, so neither the file's
   *    origin nor the element's `crossorigin` matters; ids `side<n>`, after the file's own, in the order given, labelled
   *    as Android labels them (the label, else the language, else "Subtitles"). A file a browser cannot show (SubStation,
-  *    pictures) is left out, and said. */
+  *    pictures) is left out, and said.
+  *
+  * What is shown is EveryUI's choice, whatever the engine chooses of itself: a TV's runtime shows a subtitle track as
+  * its own caption setting says (webOS 3 showed a sidecar nobody chose, and once two at once), so the modes are set
+  * again as a track is added or loaded, as the list says a mode changed, and as the element loads (`enforce`, which
+  * [[WebMedia]] calls as it hears the element). */
 final class WebTracks(el: html.Element) {
   private val m = el.asInstanceOf[js.Dynamic]
   private var files: List[MediaSidecar] = Nil
-  // the sidecars made: their place in `files`, their `<track>`, its `blob:`
-  private var made: List[(Int, html.Element, String)] = Nil
+  // the `<track>`s made, by their id ("side<n>" a sidecar, "hls<n>" a playlist's subtitles), each with its `blob:`
+  private var made: List[(String, html.Element, String)] = Nil
   private var renditions: Map[String, List[HlsRendition]] = Map.empty
-  // the sidecar to show once it is made ("" none)
+  // the master playlist's address, where it was read
+  private var playlist = ""
+  // the made track to show, once it is made ("" none)
   private var shown = ""
+  // the element's own text track chosen ("" none), once one is
+  private var ownText: Option[String] = None
   // each source a new round, so what an older one's fetch answers late is let go
   private var round = 0
+
+  {
+    val heard: js.Function1[js.Any, Unit] = _ => enforce()
+    val list = m.textTracks
+    if (!js.isUndefined(list) && list != null && js.typeOf(list.addEventListener) == "function") {
+      list.addEventListener("addtrack", heard)
+      list.addEventListener("change", heard)
+    }
+  }
 
   /** The subtitle files to offer beside the source; for a source open now (`headers` its), made at once. */
   def sidecars(list: List[MediaSidecar], open: Boolean, headers: Map[String, String]): Unit = if (list != files) {
     files = list
-    unmake()
+    unmake(_.startsWith("side"))
     if (open) make(headers)
   }
 
@@ -46,6 +66,7 @@ final class WebTracks(el: html.Element) {
     make(headers)
     if (native && WebMedia.hls(url)) {
       val at = round
+      playlist = url
       fetchText(url, headers, text => if (at == round && HlsRenditions.master(text)) {
         renditions = Map("AUDIO" -> HlsRenditions.of(text, "AUDIO"), "SUBTITLES" -> HlsRenditions.of(text, "SUBTITLES"))
       })
@@ -57,16 +78,22 @@ final class WebTracks(el: html.Element) {
   def clear(): Unit = {
     round += 1
     renditions = Map.empty
-    unmake()
+    playlist = ""
+    ownText = None
+    if (shown.startsWith("hls")) shown = ""
+    unmake(_ => true)
   }
 
-  /** How many sidecar `<track>`s are on the element. */
+  /** How many `<track>`s of EveryUI's (sidecars, a playlist's subtitles) are on the element. */
   def held: Int = made.size
 
   /** The element's own tracks of `kind`. */
   def own(kind: String): List[MediaTrack] = ownList(kind).zipWithIndex.map { case (t, i) =>
     MediaTrack(i.toString, kind, text(t.language), text(t.label), if (text(t.kind) == "captions") "CC" else "")
   }
+
+  /** The place of the element's own sound track heard, -1 for none. */
+  def ownHeard: Int = ownList(MediaTrack.Audio).indexWhere(_.enabled.asInstanceOf[Any] == true)
 
   /** The renditions of `kind` the master playlist names, where it was read. */
   def listed(kind: String): List[MediaTrack] =
@@ -79,10 +106,11 @@ final class WebTracks(el: html.Element) {
     math.max(0, renditions.getOrElse(if (kind == MediaTrack.Audio) "AUDIO" else "SUBTITLES", Nil).indexWhere(_.default))
 
   /** The sidecars made, in the order given. */
-  def side: List[MediaTrack] = made.sortBy(_._1).map { case (i, _, _) =>
-    val f = files(i)
-    MediaTrack("side" + i, MediaTrack.Text, f.language, label(f), "")
-  }
+  def side: List[MediaTrack] = made.collect { case (id, _, _) if id.startsWith("side") => id.drop(4).toInt }.sorted
+    .map { i =>
+      val f = files(i)
+      MediaTrack("side" + i, MediaTrack.Text, f.language, label(f), "")
+    }
 
   /** The closed captions among the element's own text tracks (hls.js puts a stream's there), ids `cc<n>`. */
   def captions: List[MediaTrack] = ownList(MediaTrack.Text).filter(t => text(t.kind) == "captions").zipWithIndex
@@ -93,21 +121,59 @@ final class WebTracks(el: html.Element) {
     .foreach { case (t, i) => t.mode = if ("cc" + i == id) "showing" else "hidden" }
 
   /** The element's own track `id` of `kind` heard or shown, the rest not; "" leaves the sound alone, and shows no
-    * text. */
-  def selectOwn(kind: String, id: String): Unit = if (kind == MediaTrack.Text || id.nonEmpty) {
-    ownList(kind).zipWithIndex.foreach { case (t, i) =>
-      val on = id == i.toString
-      if (kind == MediaTrack.Audio) t.enabled = on else t.mode = if (on) "showing" else "disabled"
+    * text. Whether the sound heard changed. */
+  def selectOwn(kind: String, id: String): Boolean =
+    if (kind == MediaTrack.Audio) {
+      val list = ownList(kind).zipWithIndex
+      val changed = id.nonEmpty && list.exists { case (t, i) => (t.enabled.asInstanceOf[Any] == true) != (id == i.toString) }
+      if (changed) list.foreach { case (t, i) => t.enabled = id == i.toString }
+      changed
+    }
+    else {
+      ownText = Some(id)
+      enforce()
+      false
+    }
+
+  /** The made track `id` shown (`side<n>`, `hls<n>`), now or once it is made, and the others not; "" shows none. */
+  def show(id: String): Unit = {
+    shown = id
+    enforce()
+  }
+
+  /** The playlist's subtitle rendition `i` shown, read from its segments the first time (`HlsVtt`). A live one (its
+    * playlist not whole) is `live`'s, where it takes it (hls.js, which reads it again as it grows); else what it holds
+    * now is shown, and said. */
+  def showListed(i: Int, headers: Map[String, String], live: () => Boolean): Unit = {
+    show("hls" + i)
+    if (!made.exists(_._1 == "hls" + i)) renditions.getOrElse("SUBTITLES", Nil).lift(i).foreach { r =>
+      val at = round
+      val address = WebTracks.resolve(r.uri, playlist)
+      fetchText(address, headers, media => if (at == round) {
+        val whole = HlsVtt.ended(media)
+        if (whole || !live()) {
+          if (!whole) everyui.scribe.warn("media: subtitles " + r.name + " are live: only what they hold now is shown")
+          val segments = HlsVtt.segments(media).map(WebTracks.resolve(_, address))
+          gather(segments, headers, parts => if (at == round && !made.exists(_._1 == "hls" + i))
+            add("hls" + i, if (r.name.nonEmpty) r.name else if (r.language.nonEmpty) r.language else "Subtitles",
+              r.language, HlsVtt.join(parts)))
+        }
+      })
     }
   }
 
-  /** The sidecar `id` shown (`side<n>`), now or once it is made, and the others not; "" shows none. */
-  def showSide(id: String): Unit = {
-    shown = id
-    made.foreach { case (i, track, _) =>
-      track.asInstanceOf[js.Dynamic].track.mode = if (id == "side" + i) "showing" else "disabled"
+  /** The modes EveryUI chose set again over the engine's own choice, only where they differ (so a change heard is not
+    * made again): as the element loads, and as tracks are added, loaded or changed. */
+  def enforce(): Unit = {
+    made.foreach { case (id, track, _) =>
+      mode(track.asInstanceOf[js.Dynamic].track, if (id == shown) "showing" else "disabled")
+    }
+    ownText.foreach { id =>
+      ownList(MediaTrack.Text).zipWithIndex.foreach { case (t, i) => mode(t, if (id == i.toString) "showing" else "disabled") }
     }
   }
+  private def mode(t: js.Dynamic, to: String): Unit =
+    if (!js.isUndefined(t) && t != null && t.mode.asInstanceOf[Any] != to) t.mode = to
 
   private def ownList(kind: String): List[js.Dynamic] = {
     val list = m.selectDynamic(if (kind == MediaTrack.Audio) "audioTracks" else "textTracks")
@@ -123,48 +189,81 @@ final class WebTracks(el: html.Element) {
     files.zipWithIndex.foreach { case (f, i) =>
       fetchText(f.url, headers, body => if (at == round) SubRipVtt(body) match {
         case None => everyui.scribe.warn("media: subtitles " + label(f) + " are in a format a browser cannot show")
-        case Some(vtt) =>
-          val blob = js.Dynamic.newInstance(js.Dynamic.global.Blob)(js.Array(vtt), js.Dynamic.literal(`type` = "text/vtt"))
-          val address = js.Dynamic.global.URL.createObjectURL(blob).asInstanceOf[String]
-          val track = dom.document.createElement("track").asInstanceOf[html.Element]
-          track.id = WebTracks.prefix + i
-          track.setAttribute("kind", "subtitles")
-          track.setAttribute("label", label(f))
-          if (f.language.nonEmpty) track.setAttribute("srclang", f.language)
-          track.setAttribute("src", address)
-          el.appendChild(track)
-          track.asInstanceOf[js.Dynamic].track.mode = if (shown == "side" + i) "showing" else "disabled"
-          made = (i, track, address) :: made
+        case Some(vtt) => add("side" + i, label(f), f.language, vtt)
       })
     }
   }
 
-  private def unmake(): Unit = {
-    made.foreach { case (_, track, address) =>
+  // a `<track>` of WebVTT `vtt` (a `blob:` of the page's own) on the element as `id`, its mode as chosen
+  private def add(id: String, label: String, language: String, vtt: String): Unit = {
+    val blob = js.Dynamic.newInstance(js.Dynamic.global.Blob)(js.Array(vtt), js.Dynamic.literal(`type` = "text/vtt"))
+    val address = js.Dynamic.global.URL.createObjectURL(blob).asInstanceOf[String]
+    val track = dom.document.createElement("track").asInstanceOf[html.Element]
+    track.id = WebTracks.prefix + id
+    track.setAttribute("kind", "subtitles")
+    track.setAttribute("label", label)
+    if (language.nonEmpty) track.setAttribute("srclang", language)
+    track.setAttribute("src", address)
+    List("load", "cuechange").foreach(e => track.addEventListener(e, (_: dom.Event) => enforce()))
+    el.appendChild(track)
+    made = (id, track, address) :: made
+    enforce()
+  }
+
+  private def unmake(which: String => Boolean): Unit = {
+    made.filter(t => which(t._1)).foreach { case (_, track, address) =>
       if (track.parentNode != null) track.parentNode.removeChild(track)
       js.Dynamic.global.URL.revokeObjectURL(address)
     }
-    made = Nil
+    made = made.filterNot(t => which(t._1))
   }
 
   private def label(f: MediaSidecar): String =
     if (f.label.nonEmpty) f.label else if (f.language.nonEmpty) f.language else "Subtitles"
 
-  // the body of `url` as text, to `got`; a failure said and let be
-  private def fetchText(url: String, headers: Map[String, String], got: String => Unit): Unit = {
+  // the bodies of `urls`, in their order, to `got` once every one has answered ("" for one that failed)
+  private def gather(urls: List[String], headers: Map[String, String], got: List[String] => Unit): Unit = {
+    val bodies = js.Array[String](urls.map(_ => "")*)
+    var left = urls.size
+    def one(): Unit = {
+      left -= 1
+      if (left == 0) got(bodies.toList)
+    }
+    if (urls.isEmpty) got(Nil)
+    urls.zipWithIndex.foreach { case (u, i) =>
+      fetchText(u, headers, body => {
+        bodies(i) = body
+        one()
+      }, () => one())
+    }
+  }
+
+  // the body of `url` as text, to `got`; a failure said, and told to `failed`
+  private def fetchText(url: String, headers: Map[String, String], got: String => Unit,
+                        failed: () => Unit = () => ()): Unit = {
     val init = js.Dynamic.literal(headers = js.Dictionary(headers.toSeq*))
     val answered: js.Function1[js.Dynamic, js.Any] = r =>
       if (r.ok.asInstanceOf[Boolean]) r.text() else js.Promise.reject("HTTP " + r.status.toString)
     val read: js.Function1[js.Any, Unit] = body => got(body.toString)
-    val failed: js.Function1[js.Any, Unit] = why =>
+    val refused: js.Function1[js.Any, Unit] = why => {
       everyui.scribe.warn("media: " + WebMedia.origin(url) + " could not be read for its tracks: " + why.toString)
-    WebFetch(url, init).`then`(answered).`then`(read, failed)
+      failed()
+    }
+    WebFetch(url, init).`then`(answered).`then`(read, refused)
   }
 
   private def text(value: js.Dynamic): String = if (js.isUndefined(value) || value == null) "" else value.toString
 }
 
 object WebTracks {
-  /** The id each sidecar's `<track>` has, before its place. */
+  /** The id each `<track>` of EveryUI's has, before its own ("side0", "hls1"). */
   val prefix: String = "everyui-side-"
+
+  /** `address` against `base` (itself against the page's address), as the page resolves it (`URL`); as it is where it
+    * cannot be. */
+  def resolve(address: String, base: String): String =
+    scala.util.Try {
+      val page = js.Dynamic.newInstance(js.Dynamic.global.URL)(base, dom.window.location.href).href
+      js.Dynamic.newInstance(js.Dynamic.global.URL)(address, page).href.toString
+    }.getOrElse(address)
 }

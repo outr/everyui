@@ -31,6 +31,11 @@ trait AppHost {
     * None by default: a host that does not say has its fields let go only by the app. */
   def hearKeyboard(shown: Boolean => Unit): Unit = ()
 
+  /** Hear the app go out of sight (`away`) and come back (`back`) where the host says so beyond the page's
+    * `visibilitychange` (webOS before 6 leaves the page shown, under its launcher, after Back at the root). None by
+    * default. */
+  def hearPresence(away: () => Unit, back: () => Unit): Unit = ()
+
   /** Leave the app, as Back at its root does (the system's own way: its launcher, or its exit prompt). */
   def exit(): Unit
 

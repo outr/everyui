@@ -8,8 +8,8 @@ import everyui.ui
   * seeking and going back does (PlayerDemo with `rounds=<n>`): each round a screen with a VideoView is put up, the
   * sidecars in `side=` given (`url|label|language`, comma separated), `src=` opened `start=` seconds in (a resume),
   * and once it is ready, a step (`step=` seconds, 2) apart: the second sound track chosen where there is one, each
-  * text track shown in turn, then none, a seek 10 s on, and the screen left and taken apart. Logs, for a check to
-  * follow (webcheck's PlayerCheck):
+  * text track shown in turn, then none, a seek 10 s on, a step for it to land, and the screen left and taken apart.
+  * Logs, for a check to follow (webcheck's PlayerCheck):
   *
   *   player round <n> ready at <playhead> tracks=<kind:id:language:label|...>
   *   player round <n> audio <id> heard <diagnostics' audio tracks>
@@ -73,10 +73,8 @@ object PlayerRounds {
             say(n, "text off")
           })
           later(3.0 + texts.size, () => video.seek(start + 10.0))
-          later(4.0 + texts.size, () => {
-            say(n, "sought " + tenths(video.playhead()))
-            leave()
-          })
+          later(4.0 + texts.size, () => say(n, "sought " + tenths(video.playhead())))
+          later(5.0 + texts.size, () => leave())
         }
       }
       video.sidecars @= sides
