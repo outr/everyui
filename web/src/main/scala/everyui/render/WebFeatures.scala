@@ -152,22 +152,23 @@ object WebFeatures {
     * for there. */
   lazy val ownLayers: Boolean = css("filter", "blur(1px)")
 
-  /** Whether a colour may be written `#rrggbbaa` (Chromium 62). Before it a style given one kept what it had, so every
-    * colour seen through (a scrim, a wash, an edge, a shadow, a gradient with one such stop) was not drawn; there it is
-    * written `rgba(...)` (`CssColour`). */
+  /** Whether a colour may be written `#rrggbbaa` (Chromium 62, and LG's own 38 on webOS 3.5). Where not, a style given
+    * one kept what it had, so every colour seen through (a scrim, a wash, an edge, a shadow, a gradient with one such
+    * stop) was not drawn; there it is written `rgba(...)` (`CssColour`). */
   lazy val alphaHex: Boolean = css("color", "#00000000")
 
   /** `colour` (`#rrggbb`, `#rrggbbaa`, or any CSS colour) as this engine reads it. */
   def colour(colour: String): String = if (alphaHex) colour else CssColour.written(colour)
 
   /** Whether what is drawn over a playing video must be kept out of the layer the browser shares among the boxes over
-    * one (squashing). Before Chromium 62 (asked by its `#rrggbbaa`, the nearest thing to ask: 38, 53 and 56 all do it,
-    * today's does not) a box over a video under the app's scaled root, put in a layer shared with others, was drawn
-    * under the picture or not at all: on webOS 3 a player's title was drawn over the picture and its control bar, lower
-    * down, not; on webOS 4 and Tizen 4 the bar was under the picture. A box with a transform of its own is never put in
-    * a shared layer, so there each box after a video, or after a box holding one, is given one that moves nothing
-    * (`RenderNode.overVideo`). */
-  lazy val videoSquashes: Boolean = !alphaHex
+    * one (squashing). Before Chromium 62 (38, 53 and 56 all do it, today's does not) a box over a video under the app's
+    * scaled root, put in a layer shared with others, was drawn under the picture or not at all: on webOS 3 a player's
+    * title was drawn over the picture and its control bar, lower down, not; on webOS 4 and Tizen 4 the bar was under the
+    * picture. A box with a transform of its own is never put in a shared layer, so there each box after a video, or
+    * after a box holding one, is given one that moves nothing (`RenderNode.overVideo`). Told by the engine's version
+    * (`TvEngine.squashesOverVideo`): no feature test sees the compositor, and the nearest one, `#rrggbbaa`, is read by
+    * webOS 3.5's Chromium 38, where it left the rule off (NaboTV on an LG E7P, 0.1.41). */
+  lazy val videoSquashes: Boolean = TvEngine.squashesOverVideo(dom.window.navigator.userAgent)
 
   /** Whether hls.js (1.7) can run: the built-ins it calls on without a fallback of its own (`Array.from`, `find` and
     * `includes`, `Object.assign`, `startsWith` and `includes` on strings, `Uint8Array.from` and `slice`, `Promise`,

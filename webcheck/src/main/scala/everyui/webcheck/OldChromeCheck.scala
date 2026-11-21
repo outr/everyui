@@ -32,12 +32,14 @@ import scala.concurrent.duration.*
   * Chromium 90, `overflow: hidden` pinned, `BoxClip`), a box so cut not shifted as the focus goes into it, and the
   * frames of a few moves said (a report, not a check).
   *
-  * `playerbar` is a TV player's overlay over a playing video (the example's `demo=playerbar`, its video `--video`,
-  * `assets/media/bars.webm` from where the check runs unless named), in a browser drawing as a TV does: its rounded bar
-  * cut to its box, of a gradient seen through, an edge and round buttons, drawn over the picture, read off a picture of
-  * the page with the bar and one with it hidden, which must differ across the bar's box (before Chromium 62 a box over a
-  * video was put in a layer shared with others and drawn under the picture or not at all, and a colour seen through,
-  * written `#rrggbbaa`, was not drawn: `WebFeatures.videoSquashes`, `alphaHex`).
+  * `playerbar` is a TV player's overlay over a playing video, nested as NaboTV's is (the example's `demo=playerbar`, its
+  * video `--video`, `assets/media/bars.webm` from where the check runs unless named), in a browser drawing as a TV does
+  * (before Chromium 62 under webOS 3.5's user agent): its rounded bar cut to its box, of a gradient seen through, an edge
+  * and round buttons, drawn over the picture, read off a picture of the page with the bar and one with it hidden, which
+  * must differ across the bar's box (before Chromium 62 a box over a video was put in a layer shared with others and
+  * drawn under the picture or not at all, and a colour seen through, written `#rrggbbaa`, was not drawn:
+  * `WebFeatures.videoSquashes`, `alphaHex`); and, in an engine that says it reads `#rrggbbaa` as webOS 3.5's Chromium 38
+  * does, the over-video rule on the page before Chromium 62 and off after.
   *
   * `motionstop` is the demo of motions taken away mid-cycle: each node read from the engine's computed style to be
   * drawn as it has itself, not where its motion stood (a turn, a scale, a fade, a slide, a turn replaced by a fade, and a
@@ -52,6 +54,9 @@ object OldChromeCheck extends RapidApp {
   override def run(args: List[String]): Task[Unit] = {
     def option(name: String): Option[String] = args.dropWhile(_ != name).drop(1).headOption
     val chrome = option("--chrome").getOrElse(DevTools.defaultChrome)
+    // the player's page before Chromium 62 under the user agent of webOS 3.5's own Chromium 38 (an LG E7P's)
+    val playerAgent = Option.when(DevTools.majorOf(chrome) < 62)("Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Chrome/38.0.2125.122 Safari/537.36 WebAppManager")
     val shots = option("--shots").map(Paths.get(_))
     // the demos named: what is neither an option nor its value
     def named(rest: List[String]): List[String] = rest match {
@@ -148,17 +153,30 @@ object OldChromeCheck extends RapidApp {
         _ = check("corners: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
       } yield ()
     }
-    // A TV player's overlay over a playing video (`demo=playerbar`), in a browser drawing as a TV does: its rounded bar
-    // drawn over the picture, the page's picture with the bar and with it hidden differing across the bar's box (each
-    // pixel's largest channel difference, averaged), and no error left uncaught.
+    // A TV player's overlay over a playing video (`demo=playerbar`, nested as NaboTV's player is), in a browser drawing
+    // as a TV does, before Chromium 62 under LG's user agent for webOS 3.5: its rounded bar drawn over the picture, the
+    // page's picture with the bar and with it hidden differing across the bar's box (each pixel's largest channel
+    // difference, averaged), and no error left uncaught. Then the page again in an engine that says it reads
+    // `#rrggbbaa`, as webOS 3.5's Chromium 38 does (LG's, not upstream's): the over-video rule on the page and a box on
+    // the bar's way up to the app's root given its transform, before Chromium 62 and not after
+    // (`WebFeatures.videoSquashes`, which 64cb2792 asked of `#rrggbbaa` and so left off on the TV).
     def playerbar(browser: DevTools): Task[Unit] = {
       val before = browser.lines.size
       def since: List[String] = browser.lines.toArray.drop(before).map(_.toString).toList
-      def ready(tries: Int): Task[Unit] =
-        if (tries == 0 || since.exists(_.contains("playerbar ready"))) Task.unit
-        else Task.sleep(100.millis).flatMap(_ => ready(tries - 1))
+      def ready(from: Int, tries: Int): Task[Unit] =
+        if (tries == 0 || browser.lines.toArray.drop(from).exists(_.toString.contains("playerbar ready"))) Task.unit
+        else Task.sleep(100.millis).flatMap(_ => ready(from, tries - 1))
       val video = Paths.get(option("--video").getOrElse("assets/media/bars.webm")).toAbsolutePath
       val bar = "var bar = document.querySelector('[aria-label=\"player bar\"]'); "
+      val url = page + "?demo=playerbar&src=" + video.toUri.toString
+      // whether the page has the over-video rule, and how many boxes on the bar's way up to the app's root (the bar's
+      // own and the root's not counted) are given a transform
+      val layered = bar + "if (!bar) return null; var rule = false; " +
+        "for (var i = 0; i < document.styleSheets.length; i++) { var rs = document.styleSheets[i].cssRules || []; " +
+        "for (var j = 0; j < rs.length; j++) if ((rs[j].cssText || '').indexOf('everyui-video-path') >= 0) rule = true; } " +
+        "var n = 0; for (var e = bar.parentElement; e && e.id !== 'app'; e = e.parentElement) " +
+        "if (getComputedStyle(e).transform !== 'none') n++; return [rule, n]"
+      val squashes = browser.major < 62
       browser.onLine { line =>
         println(line)
         System.out.flush()
@@ -167,8 +185,8 @@ object OldChromeCheck extends RapidApp {
       else for {
         _ <- browser.addScript("Error.stackTraceLimit = 50")
         _ <- browser.size(1920, 1080)
-        _ <- browser.navigate(page + "?demo=playerbar&src=" + video.toUri.toString)
-        _ <- ready(100)
+        _ <- browser.navigate(url)
+        _ <- ready(before, 100)
         _ <- Task.sleep(1500.millis)
         box <- browser.value(bar + "if (!bar) return null; var r = bar.getBoundingClientRect(); " +
           "return [r.left, r.top, r.width, r.height, innerWidth]")
@@ -178,6 +196,14 @@ object OldChromeCheck extends RapidApp {
         _ <- Task.sleep(700.millis)
         hidden <- browser.picture()
         _ <- shots.map(d => browser.screenshot(d.resolve("playerbar-hidden.png"))).getOrElse(Task.unit)
+        // the engine says it reads `#rrggbbaa` from here on, as webOS 3.5's does
+        _ <- browser.addScript("(function () { var s = CSS.supports; CSS.supports = function (p, v) { " +
+          "return v === '#00000000' || s.apply(CSS, arguments); }; })()")
+        again = browser.lines.size
+        _ <- browser.navigate(url)
+        _ <- ready(again, 100)
+        _ <- Task.sleep(500.millis)
+        lg <- browser.value(layered)
       } yield {
         check("playerbar: the video playing", since.exists(_.contains("playerbar ready")))
         check("playerbar: its bar laid out", box.isArr)
@@ -196,6 +222,11 @@ object OldChromeCheck extends RapidApp {
           check("playerbar: its bar drawn over the picture (" + (math.round(mean * 10.0) / 10.0) +
             " apart on average across its box, shown and hidden)", mean >= 30.0)
         }
+        val (rule, boxes) = if (lg.isArr) (lg.asVector(0).asBoolean, lg.asVector(1).asInt) else (false, -1)
+        check("playerbar: where the engine reads #rrggbbaa, the over-video rule " + (if (squashes) "on" else "off") +
+          " in Chrome " + browser.major + " (the rule " + (if (rule) "found" else "not found") + ", " + boxes +
+          " box(es) on the bar's way up given a transform)",
+          lg.isArr && rule == squashes && (boxes > 0) == squashes)
         val errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
         check("playerbar: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
       }
@@ -335,7 +366,7 @@ object OldChromeCheck extends RapidApp {
           .foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
       } yield ()
     }.flatMap(_ => if (demos.contains("corners")) DevTools.around(chrome, gpu = true)(corners) else Task.unit)
-    .flatMap(_ => if (demos.contains("playerbar")) DevTools.around(chrome, gpu = true)(playerbar) else Task.unit)
+    .flatMap(_ => if (demos.contains("playerbar")) DevTools.around(chrome, playerAgent, gpu = true)(playerbar) else Task.unit)
     .map { _ =>
       println(if (failed.isEmpty) "[old chrome] all passed" else "[old chrome] failed: " + failed.mkString("; "))
       if (failed.nonEmpty) sys.exit(1)

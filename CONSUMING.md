@@ -6844,11 +6844,14 @@ taken there while every newer browser keeps its own:
   `Component.cached`) was drawn again only where it met the top left quarter of the screen, so webOS 3 showed 4 of a
   language screen's 11 buttons, every one of them laid out and pointed at where it should be. No node is made a layer
   of its own there (`WebFeatures.ownLayers`): the washes are drawn with the rest.
-- **No `#rrggbbaa`** (before 62): a style given one keeps what it had, so every colour seen through (a scrim, a wash,
-  an edge, a shadow, a gradient with one such stop) was not drawn at all on webOS 3 and 4 and Tizen 4. It is written
-  `rgba(...)` there (`WebFeatures.alphaHex`, `CssColour`). The washes and shadows a TV that old never drew before now
-  cost their raster: an app that finds them too slow there lowers its `Quality`.
-- **A box over a video put in a layer shared with others** (before 62, asked by `#rrggbbaa`; 38, 53 and 56 all do it):
+- **No `#rrggbbaa`** (before 62, but for LG's own 38 on webOS 3.5, which reads it): a style given one keeps what
+  it had, so every colour seen through (a scrim, a wash, an edge, a shadow, a gradient with one such stop) was not
+  drawn at all on webOS 4 and Tizen 4. It is written `rgba(...)` there (`WebFeatures.alphaHex`, `CssColour`). The
+  washes and shadows a TV that old never drew before now cost their raster: an app that finds them too slow there
+  lowers its `Quality`.
+- **A box over a video put in a layer shared with others** (before 62; 38, 53 and 56 all do it, told by the
+  engine's version, `TvEngine.squashesOverVideo`, as no feature test sees a compositor: asked by `#rrggbbaa` in
+  0.1.41, the rule was left off on webOS 3.5, whose Chromium 38 reads it):
   under the app's scaled root, what lay over a playing video was squashed into one layer that was drawn under the
   picture or, on Chromium 38, only where it met the screen's top left quarter. On webOS 3 (an LG E7P) a player's title
   showed over the picture and its control bar and clock did not, but for the ends of the bar past the picture's edges;
@@ -6856,7 +6859,9 @@ taken there while every newer browser keeps its own:
   transform of its own is never squashed, so there each box after a `<video>`, or after a box holding one (marked
   `everyui-video-path` once the video loads), is given `transform: translateX(0px)` by the page's rule
   (`WebFeatures.videoSquashes`): made a layer only where it lies over the picture, each on its own, which every engine
-  draws over it. OldChromeCheck's `playerbar` holds a rounded bar over a playing video to being drawn.
+  draws over it. OldChromeCheck's `playerbar` holds a rounded bar over a playing video, nested as NaboTV's
+  player is and under webOS 3.5's user agent, to being drawn, and to the rule being on before 62 in an engine that
+  says it reads `#rrggbbaa`.
 - **No unprefixed `max-content`** (before 46): `-webkit-max-content` for words measured on one line
   (`TextView`'s whole words).
 - **No `overflow-wrap: anywhere`** (before 80): `break-word`, which breaks a word too long for its line alike in a box

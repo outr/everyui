@@ -14,4 +14,17 @@ object TvEngine {
   /** Whether a page `remote` driven (a TV's: `Platform.remoteNavigation`) with user agent `agent` runs on a slow TV:
     * a Chromium of `slowChromium` or older, or an engine with no Chromium at all (webOS 1 and 2's WebKit). */
   def slow(remote: Boolean, agent: String): Boolean = remote && chromium(agent) <= slowChromium
+
+  /** The newest Chromium that puts a box over a playing video in a layer shared with the other boxes over it
+    * (squashing), drawn under the picture or not at all under a scaled root (38, 53 and 56; 62 does not). */
+  val lastSquashing: Int = 61
+
+  /** Whether the engine in `agent` squashes what lies over a video (`WebFeatures.videoSquashes`): a Chromium of
+    * `lastSquashing` or older. A fault of the compositor, which no feature test sees, so the engine's version says: LG's
+    * Chromium 38 (webOS 3.5) reads `#rrggbbaa`, which upstream 38 does not, and squashes all the same. An engine with no
+    * Chromium (webOS 1 and 2's WebKit) is not taken to. */
+  def squashesOverVideo(agent: String): Boolean = {
+    val major = chromium(agent)
+    major > 0 && major <= lastSquashing
+  }
 }
