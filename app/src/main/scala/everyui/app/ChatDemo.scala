@@ -39,7 +39,10 @@ import reactify.*
   * (`ChatView.workingInline`) rather than over the composer, the release notes' worker with a long brief, cut to three
   * lines. Helper's first message links a file shared in the room (`demo-file:plan.md`), which the app answers
   * (`Link.handle`), logging `chat file plan.md`. Last, Helper's reply to another session and a message come
-  * from one say so over their words (`ChatEntry.Message.direction`). In `queue=1` where the message is sent from is a
+  * from one say so over their words (`ChatEntry.Message.direction`), and Helper asks a question answered by a chip
+  * under it (`ChatEntry.Message.replies`), and two more with a group of chips each, every press logged (`chat reply
+  * <id> <label>`); `answer=1` presses the first of each group a second on, and `still=1` leaves the conversation as it
+  * opens, nothing played. In `queue=1` where the message is sent from is a
   * chip after the files (`Composer.extraChips`), `place=1` to start with one. `tables=1` adds six messages after the
   * opening's, each with a table, narrow and wide in turn and a link in each, for drags and taps begun on a table. Logs
   * `chat ok` once built. */
@@ -144,7 +147,10 @@ object ChatDemo {
       case c: Composer => c.focusField()
       case _ => ()
     }
-    play(entries, working, connection, chat)
+    // the conversation left as it opens (`still=1`); the first answer to each question pressed, a second on, as a tap
+    // presses it (`answer=1`)
+    if (Platform.launchArg("still") != "1") play(entries, working, connection, chat)
+    if (Platform.launchArg("answer") == "1") Platform.after(1.0, () => answer(chat))
     if (Platform.launchArg("probe") == "1") probe(chat)
     Platform.log("chat ok " + chat.size.width().toInt.toString + "x" + chat.size.height().toInt.toString)
   }
@@ -388,7 +394,18 @@ object ChatDemo {
       Some(start - 50000L), direction = Some(MessageDirection.To("everyui", elsewhere))),
     ChatEntry.message("d2", helper, self = false, "Does 0.1.28 have the composer's chips yet? We'd like them for search.",
       Some(start - 45000L), direction = Some(MessageDirection.From("NaboTV", nabo))),
-    ChatEntry.message("d3", helper, self = false, "I'll answer NaboTV once the build is green.", Some(start - 40000L))) ++
+    ChatEntry.message("d3", helper, self = false, "I'll answer NaboTV once the build is green.", Some(start - 40000L)),
+    // a question answered with a press (`ChatEntry.Message.replies`), and one asking two, each its group of answers
+    answerable(asks(ChatEntry.message("r1", helper, self = false,
+      "The release candidate is built and every test passes. Shall I publish it?", Some(start - 30000L))),
+      List(QuickReply("Yes", () => ()), QuickReply("No", () => ()))),
+    answerable(highlightedTwo(asks(ChatEntry.message("r2", helper, self = false, ChatDemo.twoQuestions,
+      Some(start - 20000L)))), List(
+      QuickReply("Yes", () => (), Some(ChatDemo.firstQuestion)),
+      QuickReply("No", () => (), Some(ChatDemo.firstQuestion)),
+      QuickReply("Start with group 2", () => (), Some(ChatDemo.firstQuestion)),
+      QuickReply("Yes", () => (), Some(ChatDemo.secondQuestion)),
+      QuickReply("No, I'll tell them", () => (), Some(ChatDemo.secondQuestion))))) ++
     tables(start)).map(e => topic(e, 21))
 
   // a question for you, with Ignore under it, which sets it aside
@@ -400,6 +417,40 @@ object ChatDemo {
     }))
     m
   }
+  // the first chip of each group showing, clicked
+  private def answer(root: Component): Unit = {
+    def chips(c: Component): Vector[QuickReplyChip] = c match {
+      case q: QuickReplyChip => Vector(q)
+      case _ => c.childComponents.flatMap(chips)
+    }
+    val all = chips(root)
+    def first(c: QuickReplyChip): Boolean =
+      all.find(o => o.parent().exists(p => c.parent().exists(_ eq p))).exists(_ eq c)
+    all.filter(first).foreach(c =>
+      c.event.click @= everyui.event.PointerEvent(everyui.event.PointerKind.Click, 0.0, 0.0))
+  }
+  // answers under a question, each logged as it is pressed (`chat reply <id> <label>`), cleared with Ignore
+  private def answerable(m: ChatEntry.Message, replies: List[QuickReply]): ChatEntry.Message = {
+    m.replies @= replies.map(r => r.copy(action = () => Platform.log("chat reply " + m.id + " " + r.label)))
+    m.actions @= List(MessageAction(MaterialIcon.VisibilityOff, "Ignore", () => {
+      Platform.log("chat ignored " + m.id)
+      m.replies @= Nil
+      setAside(m)
+    }))
+    m
+  }
+  private def highlightedTwo(m: ChatEntry.Message): ChatEntry.Message = {
+    m.highlights @= Vector(ChatDemo.firstQuestion, ChatDemo.secondQuestion)
+      .map(MessageHighlight(_, label = ChatWords.questionForYou))
+    m
+  }
+  val firstQuestion: String = "Shall I start with group 1?"
+  val secondQuestion: String = "Should I email the team about the schema change first?"
+  /** A reply asking two questions, answered by a group of chips each. */
+  val twoQuestions: String = "I grouped the 14 failures into three groups.\n\n**Group 1** is the stale cache in the " +
+    "session store. " + firstQuestion + " The rest can wait until it passes.\n\n**Group 2** needs a schema change. " +
+    secondQuestion + "\n\n**Group 3** fails on CI only, and only on the slow runners."
+
   // a long reply with its three questions highlighted where they are: in a paragraph, a list item and a table cell's
   // bold words; the code block holding the first's words is passed over
   private def highlighted(m: ChatEntry.Message): ChatEntry.Message = {

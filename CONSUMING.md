@@ -2722,6 +2722,42 @@ It is made the first time it is read or set, so a message never given one costs 
 or clearing it draws that bubble again in place (only a row whose grouping changes is made again). `demo=chat` ends
 with a reply to another session, a message from one, and one of Helper's own after them.
 
+### Answers in one press (`ChatEntry.Message.replies`, `QuickReply`)
+
+A message that asks a closed question can carry its answers as chips under the bubble, easy to hit with a thumb:
+`replies` (a `Var[List[QuickReply]]`, none by default) is set, changed and cleared at any time. A `QuickReply` is
+its `label`, the `action` a press runs, and an optional `group`: a message asking several questions gives each its
+group, and each group shows under a small caption of its words (cut short to one line), in the order the groups first
+appear.
+
+The chips go under the bubble and under the words saying it asks ("Question for you"), over the message's `actions`.
+They are pills in the theme's accent, edged and lightly washed, their words a message's size, at least 40 px tall on a
+touch screen or a remote (32 with a mouse), and they wrap onto more lines rather than scroll on a phone. A press runs
+the action once (the same chip pressed again at once, a double tap, is the same press), fills that chip with the
+accent and dims the rest of its group, which can still be pressed; that shows until the replies change, so the app
+clears them (or sets others) once the question is closed. An empty list shows nothing.
+
+The forward arrow on the message comes to them after the words that bring its highlights into view and before its
+actions; Left and Right go along them, group after group, Up and Down from group to group and on to the message above
+and the actions below, and Escape or Back return to the message. Enter or Space presses one. A screen reader hears
+"Reply: Yes", or "Reply to Shall I start with group 1?: Yes" (`chat.quickReply`, `chat.quickReplyTo`), and whether it
+is pressed.
+
+```scala
+ask.replies @= List(QuickReply("Yes", () => answer("yes")), QuickReply("No", () => answer("no")))
+two.replies @= List(
+  QuickReply("Yes", () => start(1), Some("Shall I start with group 1?")),
+  QuickReply("No", () => wait(1), Some("Shall I start with group 1?")),
+  QuickReply("Yes", () => email(), Some("Should I email the team first?")),
+  QuickReply("No", () => (), Some("Should I email the team first?")))
+ask.replies @= Nil                          // the question closed: the chips go
+```
+
+Like `actions`, it is made the first time it is read or set (`ChatEntry.message(..., replies = ...)` sets it only for
+a list with some), so a message without answers makes and listens for nothing more; changing them makes that message's
+chips again, and nothing else. `demo=chat` ends with a yes-or-no question and one asking two (`answer=1` presses the
+first of each group).
+
 ### Passages highlighted where they are (`ChatEntry.Message.highlights`)
 
 An agent's long reply may hold several questions for the person, or one that is not at its end. `highlights` (a

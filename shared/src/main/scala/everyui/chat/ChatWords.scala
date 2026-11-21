@@ -71,6 +71,11 @@ object ChatWords {
   def cameFrom(name: String): String = word("chat.from").replace("{name}", name)
   /** "Reply to everyui", a message sent elsewhere to a screen reader. */
   def replyTo(name: String): String = word("chat.replyTo").replace("{name}", name)
+  /** "Reply: Yes", one of a message's answers (`QuickReply`) to a screen reader. */
+  def quickReply(label: String): String = word("chat.quickReply").replace("{label}", label)
+  /** "Reply to Shall I start?: Yes", one of a group's answers to a screen reader. */
+  def quickReplyTo(group: String, label: String): String =
+    word("chat.quickReplyTo").replace("{group}", group).replace("{label}", label)
   def selectAll: String = word("chat.selectAll")
   /** "About Ada", the menu's way to a message's author. */
   def about(name: String): String = word("chat.about").replace("{name}", name)

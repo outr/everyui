@@ -718,10 +718,11 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
     case _ => ()
   }
 
-  // a forward arrow on a message: onto the words under it that bring its highlights into view, where they do, then the
-  // app's actions under it, where it has any, else the buttons beside it
+  // a forward arrow on a message: onto the words under it that bring its highlights into view, where they do, then its
+  // answers, then the app's actions under it, where it has any, else the buttons beside it
   private def toActions(entry: ChatEntry): Option[() => Unit] = entry match {
     case m: ChatEntry.Message if jumperOf(m).nonEmpty => jumperOf(m).map(j => () => j.focus())
+    case m: ChatEntry.Message if m.repliesNow.nonEmpty && chipOf(m).nonEmpty => chipOf(m).map(c => () => c.focus())
     case m: ChatEntry.Message if m.actionsNow.nonEmpty => (list.rowAt(list.indexOf(m.id)) match {
       case Some(r: ChatRow) => r.message.flatMap(_.actionButtons.headOption)
       case _ => None
@@ -731,6 +732,12 @@ class Transcript(val entries: Var[Vector[ChatEntry]],
       retarget()
       bar.filter(_.showing()).flatMap(_.actionButtons.headOption).foreach(_.focus())
     })
+    case _ => None
+  }
+
+  // the first of the answers under `m`, where it shows them
+  private def chipOf(m: ChatEntry.Message): Option[Component] = list.rowAt(list.indexOf(m.id)) match {
+    case Some(r: ChatRow) => r.message.flatMap(_.replyChips.headOption)
     case _ => None
   }
 
@@ -1252,7 +1259,7 @@ object Transcript {
   def estimate(entry: ChatEntry, width: Double, bodyLines: Int): Double = entry match {
     case m: ChatEntry.Message => groupGap + headerGuess(width) + padY * 2.0 +
       estimateText(m.text(), widest(width) - padX * 2.0) + (if (m.meta().nonEmpty || m.streaming()) 18.0 else 0.0) +
-      (if (m.directionNow.nonEmpty) 20.0 else 0.0)
+      (if (m.directionNow.nonEmpty) 20.0 else 0.0) + QuickReplies.estimate(m.repliesNow)
     case a: ChatEntry.Activity => 48.0 + (if (a.body().isEmpty) 0.0
       else math.min(estimateText(a.body(), widest(width) - padX * 2.0 - 40.0), 20.0 * math.max(1, bodyLines)))
     case _: ChatEntry.Thinking => 44.0

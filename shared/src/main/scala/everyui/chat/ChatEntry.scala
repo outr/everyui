@@ -42,12 +42,14 @@ object ChatEntry {
     /** What people reacted to it with, the app's to keep (`Transcript.reactionsEnabled` shows them). */
     val reactions: Var[List[ChatReaction]] = Var(Nil)
 
-    // `attention`, `actions`, `highlights` and `direction`, made the first time they are asked for, so a message given
-    // none costs nothing and nothing drawing it listens for them: what draws it is told (`made`) as one is made
+    // `attention`, `actions`, `highlights`, `direction` and `replies`, made the first time they are asked for, so a
+    // message given none costs nothing and nothing drawing it listens for them: what draws it is told (`made`) as one
+    // is made
     private var attentionMade: Option[Var[Option[Attention]]] = None
     private var actionsMade: Option[Var[List[MessageAction]]] = None
     private var highlightsMade: Option[Var[Vector[MessageHighlight]]] = None
     private var directionMade: Option[Var[Option[MessageDirection]]] = None
+    private var repliesMade: Option[Var[List[QuickReply]]] = None
     private[chat] var made: List[() => Unit] = Nil
 
     /** Whether it asks something of the person (`Attention`): None by default, an open question (`Attention.asking`)
@@ -91,6 +93,21 @@ object ChatEntry {
       made.foreach(_())
       v
     }
+    /** Answers the person can give it with one press (`QuickReply`): chips under the bubble, over its `actions`, in the
+      * theme's accent and a thumb's height on a touch screen; none by default, which makes nothing. Replies with a
+      * `group` show under their group's words, a group to each question it asks. A press runs the reply's action and
+      * shows it pressed, the rest of its group dimmed but still pressable, until the replies change (the app clears them
+      * once the question is answered). Set, changed or cleared at any time, only its chips are made again. */
+    def replies: Var[List[QuickReply]] = repliesMade.getOrElse {
+      val v: Var[List[QuickReply]] = Var(Nil)
+      repliesMade = Some(v)
+      made.foreach(_())
+      v
+    }
+    // which of `replies` were pressed, by group, for the list they were pressed in (none for any other)
+    private[chat] var pressedReplies: Option[(List[QuickReply], Map[Option[String], Int])] = None
+    private[chat] def pressedNow(list: List[QuickReply]): Map[Option[String], Int] =
+      pressedReplies.filter(_._1 eq list).map(_._2).getOrElse(Map.empty)
     /** What it asks, and its actions, as they stand, without making either: followed where they have been made. */
     private[chat] def attentionNow: Option[Attention] = attentionMade.flatMap(_())
     private[chat] def actionsNow: List[MessageAction] = actionsMade.map(_()).getOrElse(Nil)
@@ -100,6 +117,8 @@ object ChatEntry {
     private[chat] def highlightsKept: Boolean = highlightsMade.nonEmpty
     private[chat] def directionNow: Option[MessageDirection] = directionMade.flatMap(_())
     private[chat] def directionKept: Boolean = directionMade.nonEmpty
+    private[chat] def repliesNow: List[QuickReply] = repliesMade.map(_()).getOrElse(Nil)
+    private[chat] def repliesKept: Boolean = repliesMade.nonEmpty
   }
 
   /** A tool call, as one line: what it does (`summary`) and how it stands. `details` makes what there is to see of it
@@ -157,12 +176,13 @@ object ChatEntry {
 
   def message(id: String, author: Participant, self: Boolean, text: String = "", time: Option[Long] = None,
               streaming: Boolean = false, meta: Option[String] = None, rail: Option[Color] = None,
-              direction: Option[MessageDirection] = None): Message = {
+              direction: Option[MessageDirection] = None, replies: List[QuickReply] = Nil): Message = {
     val m = new Message(id, author, self, time)
     m.text @= text
     m.streaming @= streaming
     m.meta @= meta
     if (direction.nonEmpty) m.direction @= direction
+    if (replies.nonEmpty) m.replies @= replies
     railed(m, rail)
   }
 

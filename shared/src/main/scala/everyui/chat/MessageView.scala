@@ -29,6 +29,10 @@ import reactify.*
   * them, Up, Down, Escape and Back to `out`, and on past the last is `onward`. Neither is listened for until the app
   * makes it; `kept` is told as what it asks is first made, for what reads it out.
   *
+  * Its answers (`ChatEntry.Message.replies`) go under the bubble and the words saying it asks, over the rest, as chips
+  * (`QuickReplies`), made only while it has some: the forward arrow comes to them after those words and before the
+  * actions, Up and Down go between the message, the chips and the actions.
+  *
   * Its highlighted passages (`ChatEntry.Message.highlights`) are marked in its words where they are drawn as Markdown
   * (`MessageMarkdown`). Where it asks too, the words under the bubble count them ("2 questions for you") where they
   * are the default's, and a press on them (a click, Enter, a remote's OK) brings the next into view (`reveal`), from
@@ -241,21 +245,63 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     }
     val forward = if (Direction.rtl()) Key.ArrowLeft else Key.ArrowRight
     val back = if (Direction.rtl()) Key.ArrowRight else Key.ArrowLeft
-    made.exitAction(forward, () => actionButtons.headOption.map(_.focus()).getOrElse(onward()))
+    made.exitAction(forward, () => replyChips.headOption.orElse(actionButtons.headOption).map(_.focus())
+      .getOrElse(onward()))
+    // (down onto the answers under it, where it has some)
+    made.exitAction(Key.ArrowDown, () => replyChips.headOption.orElse(out).foreach(_.focus()))
     out.foreach { o =>
-      List(back, Key.ArrowUp, Key.ArrowDown).foreach(k => made.exitAction(k, () => o.focus()))
+      List(back, Key.ArrowUp).foreach(k => made.exitAction(k, () => o.focus()))
     }
     made.position.left := at(made.size.width())
     made.position.top := bubble.position.top() + bubble.size.height() + 4.0
     note = Some(made)
     noteWords = Some(said)
     children += made
-    // what follows under the bubble moved down by the words while they show
-    def room: Double = if (made.visible()) made.size.height() + 4.0 else 0.0
+    place()
+  }
+  // the room the words under the bubble take while they show
+  private def noteRoom: Double = note.filter(_.visible()).map(_.size.height() + 4.0).getOrElse(0.0)
+  // what follows under the bubble (the answers, then the reactions and the meta line) moved down by what is over it:
+  // bound again as the words or the answers are made
+  private def place(): Unit = {
+    replying.foreach(r => r.position.top := bubble.position.top() + bubble.size.height() + noteRoom +
+      MessageView.repliesGap)
+    def room: Double = noteRoom + replying.map(_.size.height() + MessageView.repliesGap + 2.0).getOrElse(0.0)
     reacted.position.top := bubble.position.top() + bubble.size.height() + room + 4.0
     footer.position.top := (if (reactionsShown()) reacted.position.top() + reacted.size.height() + 3.0
       else bubble.position.top() + bubble.size.height() + room + 3.0)
   }
+
+  // ---- its answers (ChatEntry.Message.replies): nothing made or bound for a message with none ----
+
+  // the chips under the bubble, made while it has some, and made again (they alone) as they change
+  private var replying: Option[QuickReplies] = None
+  private def replied(list: List[QuickReply]): Unit = if (list.nonEmpty || replying.nonEmpty) {
+    // (the focus on one of them going, back to `out`: something must keep it, on a remote above all)
+    val held = replying.exists(_.holdsFocus)
+    replying.foreach { r =>
+      children -= r
+      r.dispose()
+    }
+    replying = if (list.isEmpty) None else Some(answersFor(list))
+    replying.foreach(r => children += r)
+    place()
+    if (held) out.foreach(_.focus())
+  }
+  private def answersFor(list: List[QuickReply]): QuickReplies = {
+    val r = new QuickReplies(m, list, Transcript.widest(width),
+      back = () => jumper.orElse(out).foreach(_.focus()),
+      forward = () => actionButtons.headOption.map(_.focus()).getOrElse(onward()),
+      up = () => out.foreach(_.focus()),
+      down = () => actionButtons.headOption.orElse(out).foreach(_.focus()),
+      out = () => out.foreach(_.focus()))
+    r.position.left := at(r.size.width())
+    r
+  }
+  /** Its answers' chips, group after group, while it has some. */
+  private[chat] def replyChips: Vector[QuickReplyChip] = replying.map(_.all).getOrElse(Vector.empty)
+  /** Its answers under the bubble, while it has some. */
+  private[chat] def quickReplies: Option[QuickReplies] = replying
   // (said as it comes to ask while it shows, not as it is drawn asking)
   private def heard(a: Option[Attention]): Unit = {
     attend(a)
@@ -380,13 +426,13 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
     }.toVector
     buttons.zipWithIndex.foreach { case (b, i) =>
       out.foreach { o =>
-        // (the list itself, not the nearest of what it holds)
-        b.exitAction(Key.ArrowUp, () => o.focus())
+        // (the list itself, not the nearest of what it holds; up onto the answers over them, where it has some)
+        b.exitAction(Key.ArrowUp, () => replying.flatMap(_.bottom).getOrElse(o).focus())
         b.exitAction(Key.ArrowDown, () => o.focus())
         b.event.key.down.attach(e => if (e.key == Key.Escape || e.key == Key.Back) o.focus())
       }
       if (i > 0) b.exitFocus(back, buttons(i - 1))
-      else out.foreach(o => b.exitAction(back, () => jumper.getOrElse(o).focus()))
+      else out.foreach(o => b.exitAction(back, () => replyChips.lastOption.orElse(jumper).getOrElse(o).focus()))
       if (i < buttons.length - 1) b.exitFocus(forward, buttons(i + 1))
       else b.exitAction(forward, onward)
     }
@@ -453,6 +499,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   children ++= List(header, bubble, reacted, footer)
   // (after the rest: the actions come last to the focus too)
   attend(m.attentionNow)
+  replied(m.repliesNow)
   acts(m.actionsNow)
   direct(m.directionNow)
   // what it asks and its actions followed once the app has made them (`ChatEntry.Message.attention`, `actions`):
@@ -461,6 +508,7 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
   private var acted = false
   private var marking = false
   private var going = false
+  private var answering = false
   private def watch(): Unit = {
     if (!marking && m.highlightsKept) {
       marking = true
@@ -483,6 +531,10 @@ class MessageView(m: ChatEntry.Message, leads: Boolean, width: => Double, now: V
       going = true
       follow(m.direction, turned)
       kept()
+    }
+    if (!answering && m.repliesKept) {
+      answering = true
+      follow(m.replies, replied)
     }
   }
   private val watcher: () => Unit = () => watch()
@@ -524,6 +576,8 @@ object MessageView {
 
   /** How tall a reaction's pill is. */
   val pillHeight: Double = 24.0
+  /** Space between the bubble (or the words under it) and its answers' chips (`ChatEntry.Message.replies`). */
+  val repliesGap: Double = 6.0
 
   /** A bubble's colour: one's own a wash of the accent, everybody else's the control colour (`othersOpacity` of it);
     * the text colour reads on either, in a light theme and a dark one. */
