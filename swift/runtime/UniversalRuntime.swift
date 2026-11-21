@@ -51,6 +51,8 @@ enum UI {
     static var textScaleObservers: [NSObjectProtocol] = []
     /// Whether the Keychain has refused a secret (uiSecretPut), said once.
     static var secretsUnkept = false
+    /// Each secret as it was read or kept this run (uiSecretGet), so the Keychain, asked through securityd, is asked once.
+    static var secrets: [String: String] = [:]
     /// The text dialog up (uiEditText), and what closes it, Done (true) or Cancel, for the drive's keys and typing.
     static var editing: (UIAlertController, (Bool) -> Void)? = nil
     /// The drive's hook into the program (uiOnDrive), where the app was built and launched to be driven.
@@ -2284,17 +2286,25 @@ func uiSettingPut(_ name: V, _ value: V) -> V {
 /// the Keychain refuses (signed with no entitlements: errSecMissingEntitlement, -34018) keeps it in its UserDefaults
 /// instead, as the settings are kept, and says so once.
 func uiSecretGet(_ name: V) -> V {
-    var query = uiSecretQuery(rtS(name))
+    let n = rtS(name)
+    if let known = UI.secrets[n] { return .vStr(known) }
+    let value = uiSecretRead(n)
+    UI.secrets[n] = value
+    return .vStr(value)
+}
+private func uiSecretRead(_ name: String) -> String {
+    var query = uiSecretQuery(name)
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
     var found: CFTypeRef? = nil
     if SecItemCopyMatching(query as CFDictionary, &found) == errSecSuccess, let data = found as? Data {
-        return .vStr(String(decoding: data, as: UTF8.self))
+        return String(decoding: data, as: UTF8.self)
     }
-    return .vStr(UserDefaults.standard.string(forKey: "everyui.secret." + rtS(name)) ?? "")
+    return UserDefaults.standard.string(forKey: "everyui.secret." + name) ?? ""
 }
 func uiSecretPut(_ name: V, _ value: V) -> V {
     let query = uiSecretQuery(rtS(name)), v = rtS(value), unkept = "everyui.secret." + rtS(name)
+    UI.secrets[rtS(name)] = v
     SecItemDelete(query as CFDictionary)
     UserDefaults.standard.removeObject(forKey: unkept)
     if !v.isEmpty {

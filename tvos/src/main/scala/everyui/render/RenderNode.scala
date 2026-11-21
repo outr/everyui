@@ -975,6 +975,8 @@ object Platform {
   def secret(name: String): String = uiSecretGet(name)
   /** Keep `value` under `name` in the Keychain; "" forgets it. */
   def saveSecret(name: String, value: String): Unit = uiSecretPut(name, value)
+  /** The secret kept under `name`, told to `got` at once: the Keychain is asked once a run, on the main queue. */
+  def secretThen(name: String, got: String => Unit): Unit = got(secret(name))
 
   /** The device's own store of documents (see [[everyui.store.Store]]). Files under the app's Caches directory: a
     * television app has no other place of its own to keep them, and the system may empty it whenever it wants the

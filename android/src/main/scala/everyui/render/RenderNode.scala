@@ -3327,8 +3327,19 @@ object Platform {
   }
 
   /** A value that must not be readable off the device (a session's token), kept across launches encrypted under a
-    * keystore key ([[Secrets]]), or "" when there is none. */
+    * keystore key ([[Secrets]]), or "" when there is none. The keystore is asked the first time only, which can take
+    * seconds on the main thread just after the device wakes: `secretThen` reads one without holding it. */
   def secret(name: String): String = Secrets.get(name)
+  /** The secret kept under `name`, told to `got` on the main thread: at once where it has been read already, and
+    * otherwise once it is opened off the main thread, so the keystore never holds the thread that draws. Asked at
+    * launch for a secret the app will want, it has it ready. */
+  def secretThen(name: String, got: String => Unit): Unit = Secrets.cached(name) match {
+    case Some(value) if onDrawingThread() => got(value)
+    case _ => offThread(() => {
+      val value = Secrets.get(name)
+      later(() => got(value))
+    })
+  }
   /** Keep `value` under `name`, sealed; "" forgets it. */
   def saveSecret(name: String, value: String): Unit = Secrets.put(name, value)
 

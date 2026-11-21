@@ -26,8 +26,10 @@ abstract class EveryUIActivity extends Activity {
     everyui.task.Frames.guarded = true
     everyui.task.Frames.origin = () => new everyui.render.WokeFrom
     // where a change made off the main thread was made, logged in a debug build or where the launch asks (`--es hops 1`)
+    // and where a secret asks the keystore on the main thread (Secrets)
     everyui.render.Hop.audit = (getApplicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 ||
       everyui.render.Platform.launchArg("hops") == "1"
+    if (everyui.render.Hop.audit) everyui.render.Secrets.audit = true
     Host.freeze = extra("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
     Host.path = extra("path").getOrElse("")
     extra("viewport").map(_.split('x')).foreach {

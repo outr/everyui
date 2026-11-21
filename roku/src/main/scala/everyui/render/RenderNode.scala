@@ -1241,6 +1241,8 @@ object Platform {
   // nowhere safer than the settings to keep a secret here
   def secret(name: String): String = setting(name)
   def saveSecret(name: String, value: String): Unit = saveSetting(name, value)
+  /** The secret kept under `name`, told to `got` at once: reading one here holds nothing up. */
+  def secretThen(name: String, got: String => Unit): Unit = got(secret(name))
 
   def saveSetting(name: String, value: String): Unit = uiSaveSetting(name, value)
 
