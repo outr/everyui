@@ -560,8 +560,9 @@ lazy val desktop = (project in file("desktop"))
     Test / unmanagedSources ++= Seq("CodecMime.scala", "WebOSDisplay.scala", "HlsRendition.scala", "HlsRenditions.scala",
       "HlsVtt.scala", "SubRipVtt.scala", "ResumeSeek.scala", "SurfaceRatio.scala", "BoxClip.scala").map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // and how Android starts another app for a link (IntentPlan), when a track choice reopens a file (TrackReopen) and
-    // the player's sockets closed at once (MediaSockets), plain Scala as well
-    Test / unmanagedSources ++= Seq("IntentPlan.scala", "TrackReopen.scala", "MediaSockets.scala")
+    // the player's sockets closed at once (MediaSockets), and the players let go kept until released (Leftovers), plain
+    // Scala as well
+    Test / unmanagedSources ++= Seq("IntentPlan.scala", "TrackReopen.scala", "MediaSockets.scala", "Leftovers.scala")
       .map(n => (file("android") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // the web service worker's reading of a Markdown push (WebPushText), plain Scala, checked against PushText here
     Test / unmanagedSources += (file("sbt-support") / "src" / "main" / "scala" / "everyui" / "sbt" / "WebPushText.scala").getAbsoluteFile,

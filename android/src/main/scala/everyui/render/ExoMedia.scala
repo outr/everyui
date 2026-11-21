@@ -2,8 +2,8 @@ package everyui.render
 
 import android.net.Uri
 import android.view.{SurfaceView, TextureView, View}
-import androidx.media3.common.{AudioAttributes, C, MediaItem, PlaybackParameters, Player, TrackSelectionOverride,
-  TrackSelectionParameters, Tracks, VideoSize}
+import androidx.media3.common.{AudioAttributes, C, MediaItem, PlaybackException, PlaybackParameters, Player,
+  TrackSelectionOverride, TrackSelectionParameters, Tracks, VideoSize}
 import androidx.media3.exoplayer.{DefaultLoadControl, DefaultRenderersFactory, ExoPlayer}
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -152,8 +152,10 @@ class ExoMedia(frame: Option[VideoFrame]) {
         val load = new HeldLoadControl(new DefaultLoadControl.Builder()
           .setBufferDurationsMs(holding.minMs, holding.maxMs, holding.startMs, holding.resumeMs)
           .build(), () => !rolled && !playing)
+        // its sound, which the main thread can silence itself when it is let go (letGo)
+        val quiet = new QuietTracks
         val made = new ExoPlayer.Builder(Host.activity)
-          .setRenderersFactory(renderers(url).setEnableDecoderFallback(true))
+          .setRenderersFactory(renderers(url, quiet).setEnableDecoderFallback(true))
           .setTrackSelector(new DefaultTrackSelector(Host.activity))
           // how long one load may go on failing before it is lost is the profile's patience, and the number of
           // attempts follows from it rather than being picked: the viewer is watching a clock, not a counter. Never
@@ -169,6 +171,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
                 math.max(6, holding.patienceMs / math.max(1000, holding.readMs))
             }))
           .setLoadControl(load)
+          // how long letting it go may hold the main thread: see ExoMedia.releaseMs
+          .setReleaseTimeoutMs(ExoMedia.releaseMs)
           .build()
         sounding(made)
         attach(made)
@@ -265,10 +269,17 @@ class ExoMedia(frame: Option[VideoFrame]) {
             // the code and every cause under it: "AudioTrack init failed" under a decoder error is the whole diagnosis
             val causes = Iterator.iterate(error.getCause)(_.getCause).takeWhile(_ != null)
               .map(c => Option(c.getMessage).getOrElse(c.getClass.getSimpleName)).mkString(" <- ")
-            Platform.log("media: " + url + " failed (" + error.getErrorCodeName + ")" +
-              (if (causes.isEmpty) "" else ": " + causes))
-            failure = error.getErrorCodeName + (if (causes.isEmpty) "" else ": " + causes)
-            listener("error")
+            val said = " (" + error.getErrorCodeName + ")" + (if (causes.isEmpty) "" else ": " + causes)
+            // one let go says only what happened to it: its release timing out, said as it is let go with the next
+            // source already set, is no failure of what plays now (Leftovers)
+            Leftovers.blame(player.exists(_ eq made), error.errorCode == PlaybackException.ERROR_CODE_TIMEOUT) match {
+              case Leftovers.Report =>
+                Platform.log("media: " + url + " failed" + said)
+                failure = error.getErrorCodeName + (if (causes.isEmpty) "" else ": " + causes)
+                listener("error")
+              case Leftovers.Keep => ExoMedia.leftover(made, quiet, url)
+              case _ => Platform.log("media: " + url + ", let go, failed" + said)
+            }
           }
         })
         // every load the player retries on its own, as it happens: a route that keeps timing out is otherwise a
@@ -341,7 +352,9 @@ class ExoMedia(frame: Option[VideoFrame]) {
     * the tap hears is handed over on the main thread, and only while it is still this source playing. After them come
     * the player's volume and the loudness enhancer (on the AudioTrack and its session), so a boost past full volume
     * works on the fold, limited already. */
-  private def renderers(url: String): DefaultRenderersFactory = {
+  @annotation.nowarn("cat=deprecation") // the AudioTracks' provider, how QuietTracks sees them
+  private def renderers(url: String, quiet: QuietTracks): DefaultRenderersFactory = {
+    hushing = Some(quiet)
     val fold = new CenterMixer
     fold.db = centre
     mixer = Some(fold)
@@ -359,6 +372,7 @@ class ExoMedia(frame: Option[VideoFrame]) {
                                             params: Boolean): androidx.media3.exoplayer.audio.AudioSink = {
         val made = new CenterGate(new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
           .setEnableAudioOutputPlaybackParameters(params)
+          .setAudioTrackProvider(quiet)
           .setAudioProcessors((fold :: aids :: tap).toArray[androidx.media3.common.audio.AudioProcessor])
           .build())
         made.force(centre)
@@ -417,6 +431,8 @@ class ExoMedia(frame: Option[VideoFrame]) {
   /** Whether the listening aids are in the path of what is heard now: PCM going out, through [[ListeningProcessor]]. */
   def aidsHeard(): Boolean = aided
 
+  // the AudioTracks of the player now, silenced as it is let go
+  private var hushing: Option[QuietTracks] = None
   private var centre = 0.0
   private var mixer: Option[CenterMixer] = None
   private var gate: Option[CenterGate] = None
@@ -847,11 +863,11 @@ class ExoMedia(frame: Option[VideoFrame]) {
     hooks = Nil
     enhancer.foreach(e => try e.release() catch { case _: Throwable => () })
     enhancer = None
-    player.foreach { p =>
-      try p.stop() catch { case _: Throwable => () }
-      p.release()
-    }
+    // no longer the player, before it is let go: what it says as it goes is its own (onPlayerError)
+    val was = player
     player = None
+    was.foreach(ExoMedia.letGo(_, hushing))
+    hushing = None
     // its connections with it, rather than when its loading thread gets round to them: a server answering the next
     // source (the same file reopened) may be waiting for them to go
     sockets.foreach(_.closeAll())
@@ -956,6 +972,70 @@ class ExoMedia(frame: Option[VideoFrame]) {
 }
 
 object ExoMedia {
+  /** How long letting a player go may hold the main thread, in milliseconds: Media3's own default, kept. Its release
+    * is done on its own thread, and the main thread waits for it this long. Longer would not have saved the SHIELD's
+    * (its thread was making a decoder, which can take seconds) and would freeze the screen for as long on every such
+    * release; shorter gives a video decoder less time to be given back before the next source asks for one. One that
+    * runs out costs nothing heard: the player is silent first ([[letGo]]) and kept until it is released (leftover).
+    * `mediaReleaseMs=<ms>` at launch, for a test, sets it, to make a release time out. */
+  lazy val releaseMs: Long = Platform.launchArg("mediaReleaseMs").toLongOption.filter(_ > 0L).getOrElse(500L)
+
+  // for a test: the thread of each player let go held this many seconds first, as a decoder being made holds it
+  private lazy val stall = Platform.launchArg("mediaReleaseStall").toDoubleOption.getOrElse(0.0)
+
+  /** A player let go: silent before anything else, its volume 0, not to play, and its sound tracks silenced and paused
+    * from here ([[QuietTracks]]), which needs nothing of its own thread. Then stopped and released: Media3 does both
+    * on that thread, after whatever it is doing, so a release that does not finish in time can no longer be heard. */
+  private def letGo(p: ExoPlayer, quiet: Option[QuietTracks]): Unit = {
+    if (stall > 0.0) new android.os.Handler(p.getPlaybackLooper).post(() => Thread.sleep(math.round(stall * 1000.0)))
+    try {
+      p.setVolume(0f)
+      p.pause()
+      quiet.foreach(_.hush())
+      p.stop()
+    } catch { case t: Throwable => Platform.logError("media: letting go", t) }
+    try p.release() catch { case t: Throwable => Platform.logError("media: release", t) }
+    sweep()
+  }
+
+  // the players let go whose release timed out: done once their own thread has ended, which is the release's last step
+  private val leftovers = new Leftovers[(ExoPlayer, QuietTracks)](h => !h._1.getPlaybackLooper.getThread.isAlive,
+    h => h._2.hush())
+  private var sweeping = false
+
+  /** `p`, of `url`, let go and its release timed out: said, kept silent, and looked at each second (and as another is
+    * let go) until its thread has done it. */
+  private[render] def leftover(p: ExoPlayer, quiet: QuietTracks, url: String): Unit = {
+    Platform.log("media: " + url + " not released in " + releaseMs.toString + " ms (its thread busy): kept, silent " +
+      "(volume " + p.getVolume.toString + ", playWhenReady " + p.getPlayWhenReady.toString + "), until it is")
+    leftovers.keep((p, quiet), url, now())
+    val _ = away
+    sweepSoon()
+  }
+
+  private def sweepSoon(): Unit = if (!sweeping) {
+    sweeping = true
+    Platform.after(1.0, () => {
+      sweeping = false
+      sweep()
+      if (!leftovers.isEmpty) sweepSoon()
+    })
+  }
+
+  private def sweep(): Unit = if (!leftovers.isEmpty) leftovers.sweep(now()).foreach { case (url, late) =>
+    Platform.log("media: " + url + " released " + f"$late%.1f" + " s after it was let go")
+  }
+
+  // the app going away (paused, stopped, or on its way to being destroyed): the leftovers looked at and silenced again
+  private lazy val away = Platform.onAway(() => {
+    sweep()
+    leftovers.waiting(now()).foreach { case (url, held) =>
+      Platform.log("media: " + url + " still not released " + f"$held%.1f" + " s after it was let go: kept silent")
+    }
+  })
+
+  private def now(): Double = Platform.ticks() / 1000.0
+
   /** Says what size a `SurfaceView` is to the display as `what` happens to it: its frame, its surface's, the
     * window's, the display's as the app sees it, and the panel's own mode. */
   private def sizes(what: String, s: SurfaceView): Unit = {

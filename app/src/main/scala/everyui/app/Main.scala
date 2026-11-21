@@ -312,6 +312,7 @@ import everyui.render.Platform
   else if (demo == "unwind") UnwindDemo.run()
   else if (demo == "confirm") ConfirmDemo.run()
   else if (demo == "audio") AudioDemo.run()
+  else if (demo == "audioflip") AudioFlipDemo.run()
   else if (demo == "player") PlayerDemo.run()
   else if (demo == "leave") LeaveDemo.run()
   else if (demo == "reparent") ReparentDemo.run()

@@ -5675,6 +5675,12 @@ device's, none and each track, and whose second writes the device's mode where i
 `captions device <mode> <language>`, the rule's choice once the video is ready, and `captions setDevice <mode>
 <written>`.
 
+**A source changed as it opens, on Android.** A player let go (a new `source`, `""`, the view released) is silent
+before it is stopped: its volume 0, paused, and its AudioTracks silenced and paused from the main thread, so a release
+that Media3 cannot finish in its half second (its thread busy making a decoder, as a SHIELD's can be for seconds) is
+never heard. It is kept until its own thread has released it (`media: <address> not released in 500 ms … kept,
+silent`, then `… released <s> s after it was let go`), and its timeout is not an `error` on the source that follows.
+
 ## Web builds: JavaScript, WebAssembly, or both
 
 The `sbt-everyui` plugin builds a web app as JavaScript, as WebAssembly, or as both, with a loader in the page that

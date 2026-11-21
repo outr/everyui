@@ -48,7 +48,9 @@ class DesktopMedia(pane: Option[Pane]) {
         made.setCycleCount(if (looping) MediaPlayer.INDEFINITE else 1)
         made.setMute(muted)
         made.setVolume(volume)
-        made.setOnReady(() => {
+        // each said only while it is the player: one let go may still have something on its way to the FX thread
+        def mine: Boolean = player.exists(_ eq made)
+        made.setOnReady(() => if (mine) {
           fit()
           if (from > 0.0) made.seek(Duration.seconds(from))
           ready = true
@@ -56,14 +58,14 @@ class DesktopMedia(pane: Option[Pane]) {
           listener("ready")
         })
         // an end from a source that was never ready played nothing: an error, as on every platform, not the end
-        made.setOnEndOfMedia(() => if (!looping) {
+        made.setOnEndOfMedia(() => if (!looping && mine) {
           if (ready) listener("ended")
           else {
             failure = "ended without playing"
             listener("error")
           }
         })
-        made.setOnError(() => {
+        made.setOnError(() => if (mine) {
           failure = Option(made.getError).map(e => DesktopMedia.unaddressed(e.getType.toString + ": " + e.getMessage))
             .getOrElse("")
           listener("error")
@@ -150,11 +152,14 @@ class DesktopMedia(pane: Option[Pane]) {
   }
 
   private def close(): Unit = {
-    player.foreach { p =>
+    val was = player
+    player = None
+    // silent first, so nothing of it is heard whatever its stop and disposal take
+    was.foreach { p =>
+      p.setMute(true)
       p.stop()
       p.dispose()
     }
-    player = None
     view.foreach(v => pane.foreach(_.getChildren.remove(v)))
     view = None
   }
