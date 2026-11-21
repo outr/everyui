@@ -37,13 +37,13 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
                    private val reach: RectF => Unit)
     extends View.OnAttachStateChangeListener {
   private var animators: List[ValueAnimator] = Nil
-  private var moving = false
+  private[render] var moving = false
   // when the animators began, by the Choreographer's clock (-1 until the first step)
   private var began = -1L
   // the frame rate the view asked for before it moved (Android 15 on)
   private var rate = Float.NaN
   // what was last looked at for whether it is in sight (Motion.generation)
-  private var looked = -1L
+  private[render] var looked = -1L
   /** What the motion is for (`Component.lineage`), for the idle audit. */
   var owner: () => String = () => ""
 
@@ -158,6 +158,7 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
       Motion.live.add(this)
       Motion.step()
       IdleAudit.motion(true, owner)
+      if (MotionLog.on) MotionLog.say("started: " + state)
     }
   }
 
@@ -168,6 +169,7 @@ final class Motion(view: View, make: () => List[ValueAnimator], still: () => Uni
     still()
     Motion.live.remove(this)
     IdleAudit.motion(false, owner)
+    if (MotionLog.on) MotionLog.say("stopped: " + state)
   }
 
   /** Each animator set to where it is `now` (the Choreographer's nanoseconds): nothing in its first wait (its start
@@ -202,16 +204,32 @@ object Motion {
   private lazy val pacer = new MotionPacer(gapMillis, 250L, (r, ms) => handler.postDelayed(r, ms),
     r => handler.removeCallbacks(r), () => Choreographer.getInstance.postFrameCallback(stepper),
     () => Choreographer.getInstance.removeFrameCallback(stepper), () => !live.isEmpty,
-    now => live.toArray(new Array[Motion](0)).foreach(_.step(now)))
+    now => {
+      if (MotionLog.on) MotionLog.steps += 1
+      live.toArray(new Array[Motion](0)).foreach(_.step(now))
+    })
   // away (another app in front, the screen off) nothing is stepped, as Android 14 on pauses an endless animator, and
   // nothing asked is left waiting: the steps are asked afresh as the app comes back, and each motion set looks again
   // before the next frame at whether it can be seen (one stopped as its window was hidden, a pre-draw going out as the
-  // app went, waited on a move to look again)
+  // app went, waited on a move to look again); and the window given the focus while still away is a return too, so no
+  // return missed by the lifecycle leaves the motions standing for good (an activity made again as the screen was off,
+  // whose own return Android said and EveryUI once did not: ActivityPresence)
   Platform.onAway(() => pacer.away())
-  Platform.onResume(() => {
+  Platform.onResume(() => back())
+  Platform.onFocus(() => if (pacer.isAway) back())
+
+  private def back(): Unit = {
     pacer.back()
     moved()
-  })
+  }
+
+  /** The pacing now, for the motion log. */
+  def pacing: String = "asked " + pacer.waiting.toString + ", away " + pacer.isAway.toString + ", running " +
+    running.toString + " of " + inWindow.size.toString + " in a window, generation " + generation.toString
+
+  /** What each motion set in a window but not running is for, and why, for the motion log. */
+  def waiting: List[String] = inWindow.values.toArray(new Array[Motion](0)).toList.filter(m => m.moving && !m.running)
+    .map(m => m.state + " looked " + m.looked.toString)
 
   /** The next step of the running motions asked for, `gapMillis` on, unless it already is. */
   private def step(): Unit = pacer.ask()

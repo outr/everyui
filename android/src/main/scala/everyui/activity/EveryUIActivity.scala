@@ -20,6 +20,7 @@ abstract class EveryUIActivity extends Activity {
     super.onCreate(savedInstanceState)
     ServiceRuntime.init(this)
     Host.activity = this
+    EveryUIActivity.presence.created(this)
     everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
     // a frame the loop asked for and never had is asked for again, and logged with where the loop was woken from
     everyui.task.Frames.guarded = true
@@ -69,6 +70,7 @@ abstract class EveryUIActivity extends Activity {
     everyui.render.PushAccess.launched(getIntent)
     // what keeps it busy while nothing moves, logged where the launch asks (`--es idleAudit 1`)
     everyui.render.IdleAudit.start()
+    everyui.render.MotionLog.start(this)
     // the APK's baseline profile, to ART where the installer did not hand it over (ProfileInstall)
     ProfileInstall.later(this)
   }
@@ -272,7 +274,7 @@ abstract class EveryUIActivity extends Activity {
     * everything again on its way back read it all twice on the way in. */
   override def onResume(): Unit = {
     super.onResume()
-    presence.shown()
+    EveryUIActivity.presence.resumed(this)
   }
 
   /** A change it takes itself (`configChanges`): the night mode among them, which the app hears as the system's scheme
@@ -282,14 +284,10 @@ abstract class EveryUIActivity extends Activity {
     everyui.render.Platform.configurationChanged()
   }
 
-  /** Whether it has been out of sight since it was last in front, told once each way. */
-  private val presence = new everyui.app.Presence(() => everyui.render.Platform.away(),
-    () => everyui.render.Platform.resumed())
-
   /** Nobody can see it now — another app has the screen, or the device is going to sleep. Stop rather than pause,
     * which a picture-in-picture or a dialog over the top also brings, and neither means nobody is watching. */
   override def onStop(): Unit = {
-    presence.hidden()
+    EveryUIActivity.presence.stopped(this)
     super.onStop()
   }
 
@@ -309,4 +307,11 @@ abstract class EveryUIActivity extends Activity {
   }
 
   private def extra(name: String): Option[String] = Option(getIntent.getStringExtra(name))
+}
+
+object EveryUIActivity {
+  /** Whether the app has been out of sight since it was last in front, told once each way, across the activities the
+    * process makes (ActivityPresence). */
+  private val presence = new ActivityPresence(new everyui.app.Presence(() => everyui.render.Platform.away(),
+    () => everyui.render.Platform.resumed()))
 }

@@ -371,7 +371,9 @@ busy while nothing moves, launch it with `--es idleAudit 1` (release builds too)
 `[idle]`, the frames the loop ran and what keeps it running (holds, frames owed, the tasks or screen that want them,
 and, once it has run a second without idling, where each wake came from), the motions running, every message the main
 thread ran by who sent it with its time, where each `Platform.after` was asked for, and each thread's CPU. Off, it
-costs nothing.
+costs nothing. For motions that stand still, launch it with `--es motionLog 1` (release builds too): each second
+it logs, under `[motion]`, how many steps ran, whether a step is asked for and whether the app is away, how many
+motions run and why each one set is not running, with the activities' lifecycle and the window's focus as they come.
 
 ## The page
 
@@ -7091,7 +7093,8 @@ Platform.onResume(() => handedOver.foreach(show => askWatched(show)))
   launch, not a return: keep what the app needs to ask (the show handed over) in `everyui.store`, and ask from there as
   it starts. Focus is never used: devtools or another window in front of a page still in sight is not away.
 - **Android**: away when the activity stops (another app has the screen, the device sleeps), not when it pauses (a
-  dialog or picture-in-picture over it); resumed when it resumes after that.
+  dialog or picture-in-picture over it); resumed when it resumes after that. An activity Android makes again (for a
+  change it does not take itself, while the screen is off) is the same app: the return is told as the new one resumes.
 - **Apple TV**: away when the application resigns active (another app opened over it with a URL, the TV's home screen
   or app switcher, the device sleeping) or goes into the background; resumed when it is active again.
 - **Desktop**: away when the window is minimised, resumed when it is restored. Another window in front, or the focus

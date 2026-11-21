@@ -28,6 +28,9 @@ final class MotionPacer(gapMillis: Long, stallMillis: Long, post: (Runnable, Lon
   /** Whether a step is asked for now. */
   def waiting: Boolean = asked
 
+  /** Whether the app is away now. */
+  def isAway: Boolean = gone
+
   /** The next step asked for, `gapMillis` on, unless it already is, the app is away or nothing moves. */
   def ask(): Unit = if (!asked && !gone && live()) {
     asked = true
