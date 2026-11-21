@@ -41,11 +41,20 @@ object UiScale {
 
   /** The size drawn at for the size `chosen` and the device's text size `asked`, on a screen `room` across in the
     * platform's own units (0 unknown): `asked` held to what leaves the app `narrowest` across, never under 1 for that,
-    * then the two together, in range. */
+    * then the two together, in range, to a billionth (`steady`). */
   def drawnAt(chosen: Double, asked: Double, room: Double): Double = {
     val most = if (room > 0.0) math.max(1.0, room / (narrowest * chosen)) else asked
-    clamp(chosen * math.max(math.min(asked, 1.0), math.min(asked, most)))
+    steady(clamp(chosen * math.max(math.min(asked, 1.0), math.min(asked, most))))
   }
+
+  /** `f` to a billionth: a size worked out from a width a bit or two off (1.4000000000000001 where 1.4) is the one
+    * size, and the app is not laid out again for a last bit. */
+  def steady(f: Double): Double = math.floor(f * 1000000000.0 + 0.5) / 1000000000.0
+
+  /** Whether `a` and `b` differ only by rounding: by no more than a billionth of the larger (of 1, near 0). A screen's
+    * size set again within this is the same size, not a change to lay the whole app out again for. */
+  def near(a: Double, b: Double): Boolean =
+    math.abs(a - b) <= 0.000000001 * math.max(1.0, math.max(math.abs(a), math.abs(b)))
 
   /** The size the app or the person chose (`factor`), in range: what the steps, the commands and `ScaleControl` go
     * by. */
@@ -64,7 +73,8 @@ object UiScale {
   val followsSystem: Var[Boolean] = Var(!everyui.render.Platform.remoteNavigation())
   /** The least the app has across to lay out in for the device's text size to draw it larger (WCAG's reflow, 320). */
   val narrowest: Double = 320.0
-  // how wide the screen is in the platform's own units, before any scale here (set by `ui` as it measures it)
+  // how wide the screen is in the platform's own units, before any scale here (set by `ui` as it measures it, from
+  // `Platform.screenRoom`: the window's own width, never one read back over the size it decides)
   private[everyui] val room: Var[Double] = Var(0.0)
 
   /** `f` in range: NaN, which no comparison holds for, is 1. */

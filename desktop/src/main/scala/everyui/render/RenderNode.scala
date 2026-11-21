@@ -2166,6 +2166,8 @@ object Platform {
   /** The window in the app's units: its size over the size the app is drawn at (everyui.theme.UiScale). */
   def screenWidth(): Double = Host.scene.getWidth / everyui.theme.UiScale()
   def screenHeight(): Double = Host.scene.getHeight / everyui.theme.UiScale()
+  /** The window across before the size the app is drawn at, which the device's text size is held to. */
+  def screenRoom(): Double = Host.scene.getWidth
   /** Screen pixels to a layout unit: the output scale of the screen the window is on (2 on a HiDPI display), times the
     * size the app is drawn at. */
   def pixelRatio(): Double =

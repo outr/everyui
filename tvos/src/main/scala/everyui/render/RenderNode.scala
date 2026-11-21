@@ -1118,6 +1118,8 @@ object Platform {
     * the part inside the safe area, which the root is placed in. */
   def screenWidth(): Double = uiScreenWidth() / everyui.theme.UiScale()
   def screenHeight(): Double = uiScreenHeight() / everyui.theme.UiScale()
+  /** The screen across before the size the app is drawn at, which the device's text size is held to. */
+  def screenRoom(): Double = uiScreenWidth()
   /** Screen pixels to a layout unit: on an iPhone or an iPad the screen's scale (2 or 3 pixels a point) times the size
     * the app is drawn at; on an Apple TV a point is taken as a pixel, as before. */
   def pixelRatio(): Double = if (tv()) everyui.theme.UiScale() else uiScreenScale() * everyui.theme.UiScale()

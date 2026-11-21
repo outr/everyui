@@ -3275,6 +3275,9 @@ object Platform {
     * in its units: 960 by 540 at 1080p), less what a phone's on-screen keyboard covers (VisibleArea). */
   def screenWidth(): Double = dom.window.innerWidth.toDouble / RenderNode.drawnAt
   def screenHeight(): Double = VisibleArea.height() / RenderNode.drawnAt
+  /** The window across before the size the app is drawn at (in CSS pixels, on a TV in its units), which the device's
+    * text size is held to. */
+  def screenRoom(): Double = dom.window.innerWidth.toDouble / RenderNode.hostScale
   /** Screen pixels to a layout unit: the surface's pixels to a CSS pixel (`SurfaceRatio`: the browser's device pixel
     * ratio, 2 on a HiDPI screen, where the resolution query agrees, else what the query matches: 1 on webOS 3's 1080p
     * web plane, whose engine says 2), times the size the app is drawn at: 2 on an LG at 1080p, as on Android TV, where

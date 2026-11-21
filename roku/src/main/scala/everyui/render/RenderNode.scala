@@ -1436,6 +1436,8 @@ object Platform {
   /** The screen in the app's units, over the size the app is drawn at (everyui.theme.UiScale). */
   def screenWidth(): Double = uiScreenWidth() / everyui.theme.UiScale()
   def screenHeight(): Double = uiScreenHeight() / everyui.theme.UiScale()
+  /** The screen across before the size the app is drawn at, which the device's text size is held to. */
+  def screenRoom(): Double = uiScreenWidth()
   /** Screen pixels to a layout unit. A Roku lays out at 1920 by 1080 whatever its panel, and says nothing here of a
     * 4K one: one pixel to a unit, times the size the app is drawn at. */
   def pixelRatio(): Double = everyui.theme.UiScale()

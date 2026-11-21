@@ -3440,6 +3440,11 @@ object Platform {
   def screenWidth(): Double =
     if (Host.viewportWidth > 0.0) Host.viewportWidth / everyui.theme.UiScale()
     else (windowPixels()._1 - Host.safe._1 - Host.safe._3).toDouble / Host.scale
+  /** The window across in dp, before the size the app is drawn at (everyui.theme.UiScale), which the device's text
+    * size is held to: its pixels over the density alone, or a pinned viewport. */
+  def screenRoom(): Double =
+    if (Host.viewportWidth > 0.0) Host.viewportWidth
+    else (windowPixels()._1 - Host.safe._1 - Host.safe._3).toDouble / Host.density
   /** Less what the on-screen keyboard covers while it is up (Host.keyboard), so a field at the bottom (a composer) is
     * laid out above it; and both, less what the bars, a cutout and the corners take (`safeArea`). */
   def screenHeight(): Double =
