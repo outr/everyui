@@ -60,6 +60,11 @@ RX PASS edge.txn.nested.active = true
 RX PASS edge.txn.nested.same = true
 RX PASS edge.txn.inactive.after = false
 RX PASS edge.txn.revert = 1
+RX PASS deep.chain.heard = 301
+RX PASS deep.chain.value = 301
+RX PASS deep.deferred.order = 2000/0
+RX PASS deep.throw.thrown = yes
+RX PASS deep.throw.nothing.stale = 0,1,other
 RX PASS edge.txn.throw.stays.active = true
 RX PASS edge.txn.throw.records = 1
 RX PASS emit.wide.last = 2
@@ -168,4 +173,4 @@ RX PASS emit.modassign.int = 6
 RX PASS emit.modassign.nested = 18
 RX PASS emit.modassign.companion = w,z
 RX PASS emit.modassign.model = boot,r,s,r,s
-RX DONE 170/170
+RX DONE 175/175
