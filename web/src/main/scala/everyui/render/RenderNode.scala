@@ -96,10 +96,10 @@ class RenderNode(val el: html.Element) {
   /** `"#rrggbb"`. */
   def setColor(hex: String): Unit = {
     counted("color", hex)
-    textColor = hex
-    if (!textFilled) el.style.color = hex
+    textColor = WebFeatures.colour(hex)
+    if (!textFilled) el.style.color = textColor
     // a field keeps its colour through the browser's autofill look, which would paint its words in its own
-    if (el.isInstanceOf[html.Input] || el.isInstanceOf[html.TextArea]) el.style.setProperty("--everyui-fill", hex)
+    if (el.isInstanceOf[html.Input] || el.isInstanceOf[html.TextArea]) el.style.setProperty("--everyui-fill", textColor)
   }
 
   /** A bundled face (index.html's `@font-face` rules): family, CSS weight,
@@ -246,7 +246,7 @@ class RenderNode(val el: html.Element) {
   /** `"#rrggbb"`, or `""` for transparent. */
   def setBackgroundColor(hex: String): Unit = {
     counted("background", hex)
-    el.style.backgroundColor = if (hex.isEmpty) "transparent" else hex
+    el.style.backgroundColor = if (hex.isEmpty) "transparent" else WebFeatures.colour(hex)
   }
 
   def setRadius(radius: Double): Unit = {
@@ -256,7 +256,7 @@ class RenderNode(val el: html.Element) {
 
   /** An edge `width` pixels wide, inside the box (an inset shadow follows the corners and changes no size). */
   def setBorder(width: Double, hex: String): Unit = {
-    edge = if (hex.isEmpty || width <= 0.0) "" else "inset 0 0 0 " + width.toString + "px " + hex
+    edge = if (hex.isEmpty || width <= 0.0) "" else "inset 0 0 0 " + width.toString + "px " + WebFeatures.colour(hex)
     paintShadows()
   }
 
@@ -281,7 +281,7 @@ class RenderNode(val el: html.Element) {
   /** Every shadow layer, each with its spread (`Shadow.encode`), in place of the one `setShadow` drew. */
   def setShadowLayers(layers: String): Unit = {
     drop = everyui.Shadow.decode(layers).map { case (x, y, blur, spread, hex) =>
-      x.toString + "px " + y.toString + "px " + blur.toString + "px " + spread.toString + "px " + hex
+      x.toString + "px " + y.toString + "px " + blur.toString + "px " + spread.toString + "px " + WebFeatures.colour(hex)
     }.mkString(", ")
     paintShadows()
   }
@@ -429,7 +429,7 @@ class RenderNode(val el: html.Element) {
     el.style.setProperty(WebFeatures.filter, if (blur.isEmpty) dark else if (dark.isEmpty) blur else blur + " " + dark)
   }
   def setShadow(x: Double, y: Double, blur: Double, hex: String): Unit = {
-    drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + hex
+    drop = if (hex.isEmpty) "" else x.toString + "px " + y.toString + "px " + blur.toString + "px " + WebFeatures.colour(hex)
     paintShadows()
   }
 
@@ -541,16 +541,16 @@ class RenderNode(val el: html.Element) {
     run.letterSpacing.foreach(px => span.style.letterSpacing = px.toString + "px")
     val look = RenderNode.runClass(run.color, run.underline, run.strike, run.background, run.mark, run.markLine)
     if (look.isEmpty) {
-      if (run.color.nonEmpty) span.style.color = run.color
+      if (run.color.nonEmpty) span.style.color = WebFeatures.colour(run.color)
       if (run.strike || run.underline)
         span.style.textDecoration = List(Option.when(run.underline)("underline"), Option.when(run.strike)("line-through"))
           .flatten.mkString(" ")
       if (run.mark.nonEmpty) {
-        span.style.backgroundColor = run.mark
-        if (run.markLine.nonEmpty) span.style.boxShadow = "inset 0 -2px 0 " + run.markLine
+        span.style.backgroundColor = WebFeatures.colour(run.mark)
+        if (run.markLine.nonEmpty) span.style.boxShadow = "inset 0 -2px 0 " + WebFeatures.colour(run.markLine)
       }
       else if (run.background.nonEmpty) {
-        span.style.backgroundColor = run.background
+        span.style.backgroundColor = WebFeatures.colour(run.background)
         span.style.padding = "0.08em 0.35em"
         span.style.borderRadius = "5px"
       }
@@ -1108,7 +1108,7 @@ class RenderNode(val el: html.Element) {
   /** The picture in one colour, its transparency kept: the box painted the colour through the picture as a mask, and
     * the picture itself drawn out of sight. */
   def setTint(hex: String): Unit = {
-    tint = hex
+    tint = WebFeatures.colour(hex)
     masked()
   }
   // the tint, and the picture masked by it as it is now (none until it has a source, which masks it as it comes)
@@ -1192,7 +1192,7 @@ class RenderNode(val el: html.Element) {
       el.style.removeProperty("outline-offset")
     }
     else {
-      el.style.outline = "2.5px solid " + hex
+      el.style.outline = "2.5px solid " + WebFeatures.colour(hex)
       el.style.setProperty("outline-offset", "2px")
     }
 
@@ -1270,10 +1270,10 @@ class RenderNode(val el: html.Element) {
   // an edge as the Flutter screensaver draws one: eight hard copies of the letters about them, no blur
   def setTextOutline(width: Double, hex: String): Unit =
     el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else List((-0.8, -0.8), (0.8, -0.8), (-0.8, 0.8), (0.8, 0.8),
-      (0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)).map(p => s"${p._1 * width}px ${p._2 * width}px 0 $hex").mkString(", "))
+      (0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)).map(p => s"${p._1 * width}px ${p._2 * width}px 0 ${WebFeatures.colour(hex)}").mkString(", "))
 
   def setTextShadow(x: Double, y: Double, blur: Double, hex: String): Unit =
-    el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else s"${x}px ${y}px ${blur}px $hex")
+    el.style.setProperty("text-shadow", if (hex.isEmpty) "none" else s"${x}px ${y}px ${blur}px ${WebFeatures.colour(hex)}")
 
   def setTextAlign(align: String): Unit = el.style.textAlign = align
   /** Which way the words run: "" the page's, "auto" their own (the first letter with a direction), "ltr" or "rtl". */
@@ -1789,11 +1789,11 @@ object RenderNode {
         case None =>
           val name = "everyui-run-" + runClasses.size.toString
           val lines = List(Option.when(underline)("underline"), Option.when(strike)("line-through")).flatten
-          val rule = (if (color.isEmpty) "" else "color:" + color + " !important;") +
+          val rule = (if (color.isEmpty) "" else "color:" + WebFeatures.colour(color) + " !important;") +
             (if (lines.isEmpty) "" else "text-decoration:" + lines.mkString(" ") + " !important;") +
-            (if (mark.nonEmpty) "background-color:" + mark + " !important;" +
-              (if (markLine.isEmpty) "" else "box-shadow:inset 0 -2px 0 " + markLine + " !important;")
-            else if (background.isEmpty) "" else "background-color:" + background +
+            (if (mark.nonEmpty) "background-color:" + WebFeatures.colour(mark) + " !important;" +
+              (if (markLine.isEmpty) "" else "box-shadow:inset 0 -2px 0 " + WebFeatures.colour(markLine) + " !important;")
+            else if (background.isEmpty) "" else "background-color:" + WebFeatures.colour(background) +
               " !important;padding:0.08em 0.35em !important;border-radius:5px !important;")
           val sheet = runSheet.asInstanceOf[js.Dynamic]
           sheet.insertRule("." + name + "{" + rule + "}", sheet.cssRules.length)
@@ -1942,10 +1942,10 @@ object RenderNode {
   /** A CSS radial gradient: a circle `radius` pixels about `x`, `y`, its stops from the centre out. */
   def radialGradient(x: Double, y: Double, radius: Double, stops: String): String =
     "radial-gradient(circle " + math.max(0.01, radius).toString + "px at " + x.toString + "px " + y.toString + "px, " +
-      everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
+      everyui.Gradient.decode(stops).map { case (hex, at) => WebFeatures.colour(hex) + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
   def linearGradient(angle: Double, stops: String): String =
     "linear-gradient(" + angle.toString + "deg, " +
-      everyui.Gradient.decode(stops).map { case (hex, at) => hex + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
+      everyui.Gradient.decode(stops).map { case (hex, at) => WebFeatures.colour(hex) + " " + (at * 100.0).toString + "%" }.mkString(", ") + ")"
   /** A CSS font-family for `family`: it, then the fallback faces (`Faces.fallbackFaces`), for what it has nothing to
     * draw with, then the system's colour emoji faces (`emojiFaces`), so an emoji anywhere draws in colour. */
   def families(family: String): String = {
@@ -2043,6 +2043,12 @@ object RenderNode {
   val noScrollbars: String =
     " html, body, #app, #app * { scrollbar-width: none !important; }" +
       " ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }"
+
+  /** Before Chromium 62 (`WebFeatures.videoSquashes`), each box after a video, or after a box holding one (marked
+    * `everyui-video-path` by `overVideo`), given a transform that moves nothing, which keeps it out of a layer shared
+    * with others: what is over the picture is drawn over it. A box's own transform (`setScale`) outranks it, and is one
+    * as well. */
+  val overVideoStyle: String = " #app video ~ *, #app .everyui-video-path ~ * { transform: translateX(0px); }"
 
   /** The page's rules for its fields under the browser's autofill: the words keep the field's colour (`--everyui-fill`)
     * and the box keeps its own, where the browser would paint both, and the `everyui-autofill` animation starts, so a
@@ -2165,7 +2171,9 @@ object Nodes {
       " [data-everyui-held]:focus { outline: none; }" +
       RenderNode.autofillStyle + RenderNode.selectStyle +
       // on a TV (`AppHosts`) no scrollbar: a remote scrolls by the focus, and the browser's bar was drawn down Home's edge
-      (if (AppHosts.current.nonEmpty) RenderNode.noScrollbars else "")
+      (if (AppHosts.current.nonEmpty) RenderNode.noScrollbars else "") +
+      // before Chromium 62 each box after a video, or after a box holding one, out of a layer shared with others
+      (if (WebFeatures.videoSquashes) RenderNode.overVideoStyle else "")
     dom.document.head.appendChild(style)
     new RenderNode(app)
   }
@@ -2185,7 +2193,22 @@ object Nodes {
     el.style.setProperty("object-fit", "cover")
     el.setAttribute("playsinline", "")
     el.setAttribute("preload", "auto")
+    if (tag == "video" && WebFeatures.videoSquashes) overVideo(el)
     new RenderNode(el)
+  }
+
+  // each box holding a video, up to the app's root, marked once it is on the page and loading, so what comes after any
+  // of them is kept out of a shared layer too (`overVideoStyle`); a mark left after the video goes only keeps a box
+  // that comes after it, and lies over nothing drawn in a layer, as it was
+  private def overVideo(el: html.Element): Unit = {
+    val mark: js.Function1[dom.Event, Unit] = _ => {
+      var at = el.parentNode
+      while (at != null && at.nodeType == dom.Node.ELEMENT_NODE && at.asInstanceOf[html.Element].id != "app") {
+        at.asInstanceOf[html.Element].classList.add("everyui-video-path")
+        at = at.parentNode
+      }
+    }
+    List("loadstart", "playing").foreach(el.addEventListener(_, mark))
   }
 
   /** A form (`everyui.form.Form`), a real `<form>` placed as a container is, so the browser and password managers see

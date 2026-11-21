@@ -25,22 +25,29 @@ import scala.concurrent.duration.*
   * answers a JSON object, which the demo reads with fabric and says back: fabric before 1.30.5 named the BigInt global
   * to tell a parsed value's kind, a ReferenceError for every object on an engine without it (Chromium 38).
   *
-  *   OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]
+  *   OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [--video <file>] [demo ...]
   *
   * `corners` is railperf's rounded cards with posters at the size drawn, in a browser drawing as a TV does (its GPU on,
   * where it has no headless mode): each poster cut to its card's rounded corner, read off a picture of the page (before
   * Chromium 90, `overflow: hidden` pinned, `BoxClip`), a box so cut not shifted as the focus goes into it, and the
   * frames of a few moves said (a report, not a check).
   *
+  * `playerbar` is a TV player's overlay over a playing video (the example's `demo=playerbar`, its video `--video`,
+  * `assets/media/bars.webm` from where the check runs unless named), in a browser drawing as a TV does: its rounded bar
+  * cut to its box, of a gradient seen through, an edge and round buttons, drawn over the picture, read off a picture of
+  * the page with the bar and one with it hidden, which must differ across the bar's box (before Chromium 62 a box over a
+  * video was put in a layer shared with others and drawn under the picture or not at all, and a colour seen through,
+  * written `#rrggbbaa`, was not drawn: `WebFeatures.videoSquashes`, `alphaHex`).
+  *
   * `motionstop` is the demo of motions taken away mid-cycle: each node read from the engine's computed style to be
   * drawn as it has itself, not where its motion stood (a turn, a scale, a fade, a slide, a turn replaced by a fade, and a
   * busy Sync glyph turned into a done tick).
   *
-  * The demos are tv, chat, rows, widgets, icons, net, motionstop and corners unless named. An engine older than 59 opens
-  * a window on `$DISPLAY`: run it under `xvfb-run`.
+  * The demos are tv, chat, rows, widgets, icons, net, motionstop, corners and playerbar unless named. An engine older
+  * than 59 opens a window on `$DISPLAY`: run it under `xvfb-run`.
   */
 object OldChromeCheck extends RapidApp {
-  private val usage = "usage: OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [demo ...]"
+  private val usage = "usage: OldChromeCheck <page dir> [--chrome <binary>] [--shots <dir>] [--video <file>] [demo ...]"
 
   override def run(args: List[String]): Task[Unit] = {
     def option(name: String): Option[String] = args.dropWhile(_ != name).drop(1).headOption
@@ -53,7 +60,7 @@ object OldChromeCheck extends RapidApp {
       case Nil => Nil
     }
     val demos = named(args.drop(1)) match {
-      case Nil => List("tv", "chat", "rows", "widgets", "icons", "net", "motionstop", "corners")
+      case Nil => List("tv", "chat", "rows", "widgets", "icons", "net", "motionstop", "corners", "playerbar")
       case some => some
     }
     val page = Paths.get(args.headOption.getOrElse(sys.error(usage))).toAbsolutePath.resolve("index.html").toUri.toString
@@ -140,6 +147,58 @@ object OldChromeCheck extends RapidApp {
         errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
         _ = check("corners: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
       } yield ()
+    }
+    // A TV player's overlay over a playing video (`demo=playerbar`), in a browser drawing as a TV does: its rounded bar
+    // drawn over the picture, the page's picture with the bar and with it hidden differing across the bar's box (each
+    // pixel's largest channel difference, averaged), and no error left uncaught.
+    def playerbar(browser: DevTools): Task[Unit] = {
+      val before = browser.lines.size
+      def since: List[String] = browser.lines.toArray.drop(before).map(_.toString).toList
+      def ready(tries: Int): Task[Unit] =
+        if (tries == 0 || since.exists(_.contains("playerbar ready"))) Task.unit
+        else Task.sleep(100.millis).flatMap(_ => ready(tries - 1))
+      val video = Paths.get(option("--video").getOrElse("assets/media/bars.webm")).toAbsolutePath
+      val bar = "var bar = document.querySelector('[aria-label=\"player bar\"]'); "
+      browser.onLine { line =>
+        println(line)
+        System.out.flush()
+      }
+      if (!Files.exists(video)) Task(check("playerbar: its video at " + video, false))
+      else for {
+        _ <- browser.addScript("Error.stackTraceLimit = 50")
+        _ <- browser.size(1920, 1080)
+        _ <- browser.navigate(page + "?demo=playerbar&src=" + video.toUri.toString)
+        _ <- ready(100)
+        _ <- Task.sleep(1500.millis)
+        box <- browser.value(bar + "if (!bar) return null; var r = bar.getBoundingClientRect(); " +
+          "return [r.left, r.top, r.width, r.height, innerWidth]")
+        shown <- browser.picture()
+        _ <- shots.map(d => browser.screenshot(d.resolve("playerbar.png"))).getOrElse(Task.unit)
+        _ <- browser.value(bar + "if (bar) bar.style.visibility = 'hidden'; return 0")
+        _ <- Task.sleep(700.millis)
+        hidden <- browser.picture()
+        _ <- shots.map(d => browser.screenshot(d.resolve("playerbar-hidden.png"))).getOrElse(Task.unit)
+      } yield {
+        check("playerbar: the video playing", since.exists(_.contains("playerbar ready")))
+        check("playerbar: its bar laid out", box.isArr)
+        if (box.isArr) {
+          val b = box.asVector.map(_.asDouble)
+          // the picture's pixels to a CSS pixel as it was taken, and the bar's box a little inside its edges
+          val k = shown.getWidth / b(4)
+          val (x0, y0) = ((b(0) * k).toInt + 4, (b(1) * k).toInt + 4)
+          val (x1, y1) = (math.min(shown.getWidth, ((b(0) + b(2)) * k).toInt - 4),
+            math.min(shown.getHeight, ((b(1) + b(3)) * k).toInt - 4))
+          val apart = for (x <- x0 until x1 by 3; y <- y0 until y1 by 3) yield {
+            val (p, q) = (shown.getRGB(x, y), hidden.getRGB(x, y))
+            List(16, 8, 0).map(s => math.abs(((p >> s) & 0xff) - ((q >> s) & 0xff))).max
+          }
+          val mean = if (apart.isEmpty) 0.0 else apart.sum.toDouble / apart.size
+          check("playerbar: its bar drawn over the picture (" + (math.round(mean * 10.0) / 10.0) +
+            " apart on average across its box, shown and hidden)", mean >= 30.0)
+        }
+        val errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
+        check("playerbar: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
+      }
     }
     DevTools.around(chrome) { browser =>
       println("[old chrome] Chrome " + browser.major + ": " + chrome)
@@ -271,11 +330,12 @@ object OldChromeCheck extends RapidApp {
         // (an error's whole stack, for the console)
         _ <- browser.addScript("Error.stackTraceLimit = 50")
         _ <- browser.size(1920, 1080)
-        _ <- demos.filterNot(_ == "corners")
+        _ <- demos.filterNot(d => d == "corners" || d == "playerbar")
           .map(d => if (d == "net") net() else if (d == "motionstop") motionstop() else demo(d))
           .foldLeft(Task.unit)((a, b) => a.flatMap(_ => b))
       } yield ()
     }.flatMap(_ => if (demos.contains("corners")) DevTools.around(chrome, gpu = true)(corners) else Task.unit)
+    .flatMap(_ => if (demos.contains("playerbar")) DevTools.around(chrome, gpu = true)(playerbar) else Task.unit)
     .map { _ =>
       println(if (failed.isEmpty) "[old chrome] all passed" else "[old chrome] failed: " + failed.mkString("; "))
       if (failed.nonEmpty) sys.exit(1)

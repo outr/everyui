@@ -281,6 +281,7 @@ import everyui.render.Platform
   else if (demo == "typing") TypingDemo.run()
   else if (demo == "keyboard") KeyboardDemo.run()
   else if (demo == "railperf") RailPerfDemo.run()
+  else if (demo == "playerbar") PlayerBarDemo.run()
   else if (demo == "httpperf") HttpPerfDemo.run()
   else if (demo == "pageopen") PageOpenDemo.run()
   else if (demo == "dialogclose") DialogCloseDemo.run()
