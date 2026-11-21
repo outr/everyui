@@ -6855,13 +6855,15 @@ taken there while every newer browser keeps its own:
   under the app's scaled root, what lay over a playing video was squashed into one layer that was drawn under the
   picture or, on Chromium 38, only where it met the screen's top left quarter. On webOS 3 (an LG E7P) a player's title
   showed over the picture and its control bar and clock did not, but for the ends of the bar past the picture's edges;
-  taking every `z-index` and `overflow: hidden` off the page changes nothing (Chromium 38 and 53). A box with a
-  transform of its own is never squashed, so there each box after a `<video>`, or after a box holding one (marked
-  `everyui-video-path` once the video loads), is given `transform: translateX(0px)` by the page's rule
-  (`WebFeatures.videoSquashes`): made a layer only where it lies over the picture, each on its own, which every engine
-  draws over it. OldChromeCheck's `playerbar` holds a rounded bar over a playing video, nested as NaboTV's
-  player is and under webOS 3.5's user agent, to being drawn, and to the rule being on before 62 in an engine that
-  says it reads `#rrggbbaa`.
+  taking every `z-index` and `overflow: hidden` off the page changes nothing (Chromium 38 and 53). A box put over the
+  picture later (a menu, a toast, a player's own card) was not drawn at all, or on the E7P drawn under the picture,
+  even with a 2D transform, which still leaves it squashed. So there each box after a `<video>`, or after a box holding
+  one (marked `everyui-video-path` while the video has a source), is given `transform: translateZ(0px)` by the page's
+  rule (`WebFeatures.videoSquashes`): a layer of its own, which every engine draws over the picture. What EveryUI puts
+  on the app's root (`Modal` and the menus and dialogs on it, `Toast`, `Tooltip`) comes after the box holding the
+  screen, so is reached too. OldChromeCheck's `playerbar` holds a rounded bar over a playing video, nested as
+  NaboTV's player is and under webOS 3.5's user agent, and a menu dropped from it, a card on the player's screen
+  and a toast, to being drawn, and to the rule being on before 62 in an engine that says it reads `#rrggbbaa`.
 - **No unprefixed `max-content`** (before 46): `-webkit-max-content` for words measured on one line
   (`TextView`'s whole words).
 - **No `overflow-wrap: anywhere`** (before 80): `break-word`, which breaks a word too long for its line alike in a box

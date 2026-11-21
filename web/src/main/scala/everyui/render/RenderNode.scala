@@ -2046,10 +2046,12 @@ object RenderNode {
       " ::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }"
 
   /** Before Chromium 62 (`WebFeatures.videoSquashes`), each box after a video, or after a box holding one (marked
-    * `everyui-video-path` by `overVideo`), given a transform that moves nothing, which keeps it out of a layer shared
-    * with others: what is over the picture is drawn over it. A box's own transform (`setScale`) outranks it, and is one
-    * as well. */
-  val overVideoStyle: String = " #app video ~ *, #app .everyui-video-path ~ * { transform: translateX(0px); }"
+    * `everyui-video-path` by `overVideo`), given a 3D transform that moves nothing, which makes it a layer of its own,
+    * drawn over the picture: a 2D one does not, and the box was squashed into the layer the video shares with what is
+    * over it, where a box put there later (a menu, a toast, a card of the player's) was not drawn, or drawn under the
+    * picture. What the app puts on its root (`Modal`, `Toast`, `Tooltip`) comes after the box holding the screen, so
+    * is reached too. A box's own transform (`setScale`) outranks it. */
+  val overVideoStyle: String = " #app video ~ *, #app .everyui-video-path ~ * { transform: translateZ(0px); }"
 
   /** The page's rules for its fields under the browser's autofill: the words keep the field's colour (`--everyui-fill`)
     * and the box keeps its own, where the browser would paint both, and the `everyui-autofill` animation starts, so a
@@ -2199,17 +2201,20 @@ object Nodes {
   }
 
   // each box holding a video, up to the app's root, marked once it is on the page and loading, so what comes after any
-  // of them is kept out of a shared layer too (`overVideoStyle`); a mark left after the video goes only keeps a box
-  // that comes after it, and lies over nothing drawn in a layer, as it was
+  // of them is a layer of its own too (`overVideoStyle`); and unmarked as its source is let go (`emptied`), where it
+  // holds no other video with one, so what comes after it costs no layer once the picture has gone
   private def overVideo(el: html.Element): Unit = {
-    val mark: js.Function1[dom.Event, Unit] = _ => {
+    def path(f: html.Element => Unit): Unit = {
       var at = el.parentNode
       while (at != null && at.nodeType == dom.Node.ELEMENT_NODE && at.asInstanceOf[html.Element].id != "app") {
-        at.asInstanceOf[html.Element].classList.add("everyui-video-path")
+        f(at.asInstanceOf[html.Element])
         at = at.parentNode
       }
     }
+    val mark: js.Function1[dom.Event, Unit] = _ => path(_.classList.add("everyui-video-path"))
     List("loadstart", "playing").foreach(el.addEventListener(_, mark))
+    el.addEventListener("emptied", (_: dom.Event) => path(box =>
+      if (box.querySelector("video[src]") == null) box.classList.remove("everyui-video-path")))
   }
 
   /** A form (`everyui.form.Form`), a real `<form>` placed as a container is, so the browser and password managers see

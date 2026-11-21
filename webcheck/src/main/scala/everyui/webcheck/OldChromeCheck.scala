@@ -38,8 +38,10 @@ import scala.concurrent.duration.*
   * and round buttons, drawn over the picture, read off a picture of the page with the bar and one with it hidden, which
   * must differ across the bar's box (before Chromium 62 a box over a video was put in a layer shared with others and
   * drawn under the picture or not at all, and a colour seen through, written `#rrggbbaa`, was not drawn:
-  * `WebFeatures.videoSquashes`, `alphaHex`); and, in an engine that says it reads `#rrggbbaa` as webOS 3.5's Chromium 38
-  * does, the over-video rule on the page before Chromium 62 and off after.
+  * `WebFeatures.videoSquashes`, `alphaHex`); what is opened over the playing picture drawn over it as the bar is, each
+  * measured so: a menu dropped from the bar (`open=menu`, on the app's overlay layer), a card on the player's own screen
+  * (`open=card`, as NaboTV's sound menu is) and a toast (`open=toast`); and, in an engine that says it reads `#rrggbbaa`
+  * as webOS 3.5's Chromium 38 does, the over-video rule on the page before Chromium 62 and off after.
   *
   * `motionstop` is the demo of motions taken away mid-cycle: each node read from the engine's computed style to be
   * drawn as it has itself, not where its motion stood (a turn, a scale, a fade, a slide, a turn replaced by a fade, and a
@@ -156,27 +158,82 @@ object OldChromeCheck extends RapidApp {
     // A TV player's overlay over a playing video (`demo=playerbar`, nested as NaboTV's player is), in a browser drawing
     // as a TV does, before Chromium 62 under LG's user agent for webOS 3.5: its rounded bar drawn over the picture, the
     // page's picture with the bar and with it hidden differing across the bar's box (each pixel's largest channel
-    // difference, averaged), and no error left uncaught. Then the page again in an engine that says it reads
-    // `#rrggbbaa`, as webOS 3.5's Chromium 38 does (LG's, not upstream's): the over-video rule on the page and a box on
-    // the bar's way up to the app's root given its transform, before Chromium 62 and not after
-    // (`WebFeatures.videoSquashes`, which 64cb2792 asked of `#rrggbbaa` and so left off on the TV).
+    // difference, averaged), and so what is opened over the picture once it plays: a menu dropped from the bar (on the
+    // app's overlay layer, `Modal`, the focus moved in it by a key as a remote's is), a card put up on the player's own
+    // screen after its layers (as NaboTV's sound menu is) and a toast; and no error left uncaught. Then the page again
+    // in an engine that says it reads `#rrggbbaa`, as webOS 3.5's Chromium 38 does (LG's, not upstream's): the
+    // over-video rule on the page and a box on the bar's way up to the app's root given its transform, before Chromium 62
+    // and not after (`WebFeatures.videoSquashes`, which 64cb2792 asked of `#rrggbbaa` and so left off on the TV).
     def playerbar(browser: DevTools): Task[Unit] = {
       val before = browser.lines.size
       def since: List[String] = browser.lines.toArray.drop(before).map(_.toString).toList
-      def ready(from: Int, tries: Int): Task[Unit] =
-        if (tries == 0 || browser.lines.toArray.drop(from).exists(_.toString.contains("playerbar ready"))) Task.unit
-        else Task.sleep(100.millis).flatMap(_ => ready(from, tries - 1))
+      def heard(what: String, from: Int, tries: Int): Task[Unit] =
+        if (tries == 0 || browser.lines.toArray.drop(from).exists(_.toString.contains(what))) Task.unit
+        else Task.sleep(100.millis).flatMap(_ => heard(what, from, tries - 1))
       val video = Paths.get(option("--video").getOrElse("assets/media/bars.webm")).toAbsolutePath
-      val bar = "var bar = document.querySelector('[aria-label=\"player bar\"]'); "
+      val bar = "var el = document.querySelector('[aria-label=\"player bar\"]'); "
       val url = page + "?demo=playerbar&src=" + video.toUri.toString
       // whether the page has the over-video rule, and how many boxes on the bar's way up to the app's root (the bar's
       // own and the root's not counted) are given a transform
-      val layered = bar + "if (!bar) return null; var rule = false; " +
+      val layered = bar + "if (!el) return null; var rule = false; " +
         "for (var i = 0; i < document.styleSheets.length; i++) { var rs = document.styleSheets[i].cssRules || []; " +
         "for (var j = 0; j < rs.length; j++) if ((rs[j].cssText || '').indexOf('everyui-video-path') >= 0) rule = true; } " +
-        "var n = 0; for (var e = bar.parentElement; e && e.id !== 'app'; e = e.parentElement) " +
+        "var n = 0; for (var e = el.parentElement; e && e.id !== 'app'; e = e.parentElement) " +
         "if (getComputedStyle(e).transform !== 'none') n++; return [rule, n]"
+      // what each `open=` puts up, found as `el`: the toast's plate is the box on the app's root holding its words
+      val opened = List(
+        "menu" -> "var el = document.querySelector('[aria-label=\"player menu\"]'); ",
+        "card" -> "var el = document.querySelector('[aria-label=\"player card\"]'); ",
+        "toast" -> ("var el = null, all = document.querySelectorAll('#app *'); for (var i = 0; i < all.length; i++) " +
+          "if (all[i].textContent === 'Audio: English (5.1)') el = all[i]; " +
+          "while (el && el.parentElement && el.parentElement.id !== 'app') el = el.parentElement; "))
       val squashes = browser.major < 62
+      // how far apart the page's pictures with `el` shown and hidden are across its box, a little inside its edges, or
+      // None where it is not laid out
+      def apart(find: String, name: String): Task[Option[Double]] = for {
+        box <- browser.value(find + "if (!el) return null; var r = el.getBoundingClientRect(); " +
+          "return [r.left, r.top, r.width, r.height, innerWidth]")
+        shown <- browser.picture()
+        _ <- shots.map(d => browser.screenshot(d.resolve(name + ".png"))).getOrElse(Task.unit)
+        _ <- browser.value(find + "if (el) el.style.visibility = 'hidden'; return 0")
+        _ <- Task.sleep(700.millis)
+        hidden <- browser.picture()
+        _ <- shots.map(d => browser.screenshot(d.resolve(name + "-hidden.png"))).getOrElse(Task.unit)
+      } yield Option.when(box.isArr) {
+        val b = box.asVector.map(_.asDouble)
+        // the picture's pixels to a CSS pixel as it was taken
+        val k = shown.getWidth / b(4)
+        val (x0, y0) = ((b(0) * k).toInt + 4, (b(1) * k).toInt + 4)
+        val (x1, y1) = (math.min(shown.getWidth, ((b(0) + b(2)) * k).toInt - 4),
+          math.min(shown.getHeight, ((b(1) + b(3)) * k).toInt - 4))
+        val each = for (x <- x0 until x1 by 3; y <- y0 until y1 by 3) yield {
+          val (p, q) = (shown.getRGB(x, y), hidden.getRGB(x, y))
+          List(16, 8, 0).map(s => math.abs(((p >> s) & 0xff) - ((q >> s) & 0xff))).max
+        }
+        if (each.isEmpty) 0.0 else each.sum.toDouble / each.size
+      }
+      def drawn(what: String, mean: Option[Double]): Unit = mean match {
+        case None => check("playerbar: its " + what + " laid out", false)
+        case Some(m) => check("playerbar: its " + what + " drawn over the picture (" + (math.round(m * 10.0) / 10.0) +
+          " apart on average across its box, shown and hidden)", m >= 30.0)
+      }
+      // `open=` put up over the playing picture (a menu with the focus moved in it by a key, as a remote moves it)
+      def over(name: String, find: String): Task[Option[Double]] = {
+        val from = browser.lines.size
+        for {
+          _ <- browser.navigate(url + "&open=" + name)
+          _ <- heard("playerbar opened " + name, from, 100)
+          _ <- Task.sleep(1500.millis)
+          _ <- if (name != "menu") Task.unit else for {
+            _ <- browser.send("Input.dispatchKeyEvent", obj("type" -> str("rawKeyDown"),
+              "windowsVirtualKeyCode" -> num(40), "key" -> str("ArrowDown")))
+            _ <- browser.send("Input.dispatchKeyEvent", obj("type" -> str("keyUp"),
+              "windowsVirtualKeyCode" -> num(40), "key" -> str("ArrowDown")))
+            _ <- Task.sleep(700.millis)
+          } yield ()
+          mean <- apart(find, "playerbar-" + name)
+        } yield mean
+      }
       browser.onLine { line =>
         println(line)
         System.out.flush()
@@ -186,47 +243,38 @@ object OldChromeCheck extends RapidApp {
         _ <- browser.addScript("Error.stackTraceLimit = 50")
         _ <- browser.size(1920, 1080)
         _ <- browser.navigate(url)
-        _ <- ready(before, 100)
+        _ <- heard("playerbar ready", before, 100)
         _ <- Task.sleep(1500.millis)
-        box <- browser.value(bar + "if (!bar) return null; var r = bar.getBoundingClientRect(); " +
-          "return [r.left, r.top, r.width, r.height, innerWidth]")
-        shown <- browser.picture()
-        _ <- shots.map(d => browser.screenshot(d.resolve("playerbar.png"))).getOrElse(Task.unit)
-        _ <- browser.value(bar + "if (bar) bar.style.visibility = 'hidden'; return 0")
-        _ <- Task.sleep(700.millis)
-        hidden <- browser.picture()
-        _ <- shots.map(d => browser.screenshot(d.resolve("playerbar-hidden.png"))).getOrElse(Task.unit)
-        // the engine says it reads `#rrggbbaa` from here on, as webOS 3.5's does
+        barApart <- apart(bar, "playerbar")
+        overs <- opened.foldLeft(Task(List.empty[(String, Option[Double])])) { case (done, (name, find)) =>
+          done.flatMap(d => over(name, find).map(m => d :+ (name -> m)))
+        }
+        // the engine says it reads `#rrggbbaa` from here on, as webOS 3.5's does (Chromium 38 then draws no colour seen
+        // through, which it does not read: nothing is measured after this)
         _ <- browser.addScript("(function () { var s = CSS.supports; CSS.supports = function (p, v) { " +
           "return v === '#00000000' || s.apply(CSS, arguments); }; })()")
         again = browser.lines.size
         _ <- browser.navigate(url)
-        _ <- ready(again, 100)
+        _ <- heard("playerbar ready", again, 100)
         _ <- Task.sleep(500.millis)
         lg <- browser.value(layered)
+        // the video's source let go, as a player closing lets it go: its boxes unmarked, and what follows them no layer
+        _ <- browser.value("var v = document.querySelector('video'); window.__marked = " +
+          "document.querySelectorAll('.everyui-video-path').length; v.removeAttribute('src'); v.load(); return 0")
+        _ <- Task.sleep(800.millis)
+        unmarked <- browser.value("return [window.__marked, document.querySelectorAll('.everyui-video-path').length]")
       } yield {
         check("playerbar: the video playing", since.exists(_.contains("playerbar ready")))
-        check("playerbar: its bar laid out", box.isArr)
-        if (box.isArr) {
-          val b = box.asVector.map(_.asDouble)
-          // the picture's pixels to a CSS pixel as it was taken, and the bar's box a little inside its edges
-          val k = shown.getWidth / b(4)
-          val (x0, y0) = ((b(0) * k).toInt + 4, (b(1) * k).toInt + 4)
-          val (x1, y1) = (math.min(shown.getWidth, ((b(0) + b(2)) * k).toInt - 4),
-            math.min(shown.getHeight, ((b(1) + b(3)) * k).toInt - 4))
-          val apart = for (x <- x0 until x1 by 3; y <- y0 until y1 by 3) yield {
-            val (p, q) = (shown.getRGB(x, y), hidden.getRGB(x, y))
-            List(16, 8, 0).map(s => math.abs(((p >> s) & 0xff) - ((q >> s) & 0xff))).max
-          }
-          val mean = if (apart.isEmpty) 0.0 else apart.sum.toDouble / apart.size
-          check("playerbar: its bar drawn over the picture (" + (math.round(mean * 10.0) / 10.0) +
-            " apart on average across its box, shown and hidden)", mean >= 30.0)
-        }
+        drawn("bar", barApart)
         val (rule, boxes) = if (lg.isArr) (lg.asVector(0).asBoolean, lg.asVector(1).asInt) else (false, -1)
         check("playerbar: where the engine reads #rrggbbaa, the over-video rule " + (if (squashes) "on" else "off") +
           " in Chrome " + browser.major + " (the rule " + (if (rule) "found" else "not found") + ", " + boxes +
           " box(es) on the bar's way up given a transform)",
           lg.isArr && rule == squashes && (boxes > 0) == squashes)
+        val (held, left) = if (unmarked.isArr) (unmarked.asVector(0).asInt, unmarked.asVector(1).asInt) else (-1, -1)
+        check("playerbar: the boxes holding the video marked while it has a source and not after (" + held + " then " +
+          left + ")", (held > 0) == squashes && left == 0)
+        overs.foreach { case (name, mean) => drawn(name, mean) }
         val errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
         check("playerbar: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
       }

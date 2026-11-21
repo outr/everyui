@@ -3,6 +3,8 @@ package everyui.app
 import everyui.{Color, Gradient}
 import everyui.component.*
 import everyui.component.types.FontWeight
+import everyui.kit.Toast
+import everyui.menu.{Menu, MenuItem}
 import everyui.render.Platform
 import everyui.ui
 
@@ -12,7 +14,8 @@ import everyui.ui
   * top left, a clock at the top right, and at the bottom a rounded bar cut to its box: a gradient seen through, an
   * edge, a scrubber with its time, and the transport, a box holding a row of round buttons), then the layers a player
   * keeps over those (its pills, its flashes, the keys' layer). The bar is labelled "player bar" for a check to find.
-  * Logs `playerbar ready` once the video plays. */
+  * Logs `playerbar ready` once the video plays; then `open=menu` drops a menu from the bar's last button (labelled
+  * "player menu"), as a player's sound menu is, and `open=toast` shows a toast, each on the app's overlay layer. */
 object PlayerBarDemo {
   def run(): Unit = {
     val (width, height) = (ui.size.width(), ui.size.height())
@@ -115,5 +118,53 @@ object PlayerBarDemo {
     screen.children ++= List(video, art, shade, dim, controls, layer(), layer(), layer())
     host.children += screen
     ui.children += host
+    // once it plays, what `open=` names over the picture, once: a menu dropped from the bar's last button, or a toast
+    var opened = false
+    video.events(e => if (!opened && e.toString.toLowerCase.contains("ready")) {
+      opened = true
+      open(Platform.launchArg("open"), row.children().last, screen)
+    })
+  }
+
+  // what `open=` names, over the picture
+  private def open(what: String, button: Component, screen: Container): Unit = what match {
+    case "menu" =>
+      val tracks = List("English (5.1)", "English (Stereo)", "Commentary", "Español", "Français")
+      val menu = Menu.below(button, tracks.map(t => MenuItem(t, () => ())))
+      menu.semantics @= types.Semantics("menu", label = "player menu")
+      Platform.log("playerbar opened menu")
+    case "toast" =>
+      Toast.show("Audio: English (5.1)", seconds = 60.0, top = false, margin = 200.0)
+      Platform.log("playerbar opened toast")
+    case "card" =>
+      // as NaboTV's player puts its menus up: a card of its own on the screen, after the video and its layers, a
+      // column of rows in a scroll
+      val column = Column(4.0)(List("English (5.1)", "English (Stereo)", "Commentary").map(t =>
+        TextView.line(t, 16.0, Color.White))*)
+      val title = TextView.line("Audio", 18.0, Color.White, FontWeight.Bold)
+      title.position.left @= 14.0
+      title.position.top @= 16.0
+      val scroll = new ScrollContainer
+      scroll.position.left @= 12.0
+      scroll.position.top @= 52.0
+      scroll.size.width @= 356.0
+      scroll.size.height := column.size.height()
+      scroll.content.size.height := column.size.height()
+      scroll.content.children += column
+      val card = new Container {
+        size.width @= 380.0
+        size.height := scroll.position.top() + scroll.size.height() + 16.0
+        radius @= 14.0
+        backgroundColor @= Color.fromRGB(0.08, 0.09, 0.14).withAlpha(0.96)
+        borderWidth @= 1.5
+        borderColor @= Color.White.withAlpha(0.2)
+        semantics @= types.Semantics(label = "player card")
+        children ++= List(title, scroll)
+      }
+      card.position.left := screen.size.width() / 2.0
+      card.position.top := (screen.size.height() - card.size.height()) / 2.0
+      screen.children += card
+      Platform.log("playerbar opened card")
+    case _ => ()
   }
 }
