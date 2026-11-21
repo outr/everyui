@@ -67,5 +67,5 @@ object QuickReplyChip {
   val padX: Double = 16.0
   val padY: Double = 6.0
   /** How opaque a chip is while another of its group is pressed. */
-  val faint: Double = 0.5
+  val faint: Double = 0.7
 }
