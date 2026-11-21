@@ -2216,15 +2216,21 @@ func uiClipboardGet() -> V {
 
 /// `url` opened by the system: the browser, or the app that owns the address. Where nothing opens it (an Apple TV has
 /// no browser, so a web address opens nothing there) it is logged and nothing happens, as a link that cannot open
-/// does nothing elsewhere.
-func uiOpenUrl(_ url: V) -> V {
+/// does nothing elsewhere. `done` is told whether it opened, on the main queue.
+func uiOpenUrl(_ url: V, _ done: V) -> V {
     let s = rtS(url)
     guard let u = URL(string: s), u.scheme != nil else {
         print("[ui] openUrl: not an address: " + s)
+        RtGuard("an address opened", done, [.vBool(false)])
         return .vNull
     }
+    let held = RtHeld.hold(done)
     UIApplication.shared.open(u, options: [:]) { opened in
         print("[ui] openUrl: " + (opened ? "opened " : "nothing opens ") + s)
+        DispatchQueue.main.async {
+            RtHeld.release(held)
+            RtGuard("an address opened", done, [.vBool(opened)])
+        }
     }
     return .vNull
 }

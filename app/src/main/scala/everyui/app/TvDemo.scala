@@ -18,6 +18,7 @@ import everyui.ui
   *   [ui] tv: launch open=/title/7
   *   [ui] tv: installed netflix true, tv: launched netflix true (a launch with other=netflix, and
   *       target= as its contentTarget, uri= or intent=)
+  *   [ui] tv: opened https://example.com/ true (a launch with url=: `Platform.openUrl`, the TV's browser on webOS)
   *   [ui] tv: away, tv: resumed
   *   [ui] tv: screen 960x540 at 2 (as Home shows, and as the window changes size)
   *
@@ -58,6 +59,8 @@ object TvDemo extends ScreenManager {
       val target = params.get("target").fold(Map.empty[String, String])(t => Map("contentTarget" -> t))
       params.get("other").foreach(id => open(AppLink(id, target, uri = params.getOrElse("uri", ""),
         intent = params.getOrElse("intent", ""))))
+      params.get("url").foreach(url =>
+        Platform.openUrl(url, opened => Platform.log("tv: opened " + url + " " + opened.toString)))
     }
     Platform.onAway(() => Platform.log("tv: away"))
     Platform.onResume(() => Platform.log("tv: resumed"))

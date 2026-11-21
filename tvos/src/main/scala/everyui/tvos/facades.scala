@@ -415,9 +415,10 @@ class SGNode
 @native object uiClipboardGet {
   def apply(): String = native.value
 }
-/** `url` opened by the system (the browser, or the app that owns the address), logged where nothing opens it. */
+/** `url` opened by the system (the browser, or the app that owns the address), logged where nothing opens it, and
+  * `done` told whether it was. */
 @native object uiOpenUrl {
-  def apply(url: String): Unit = native.value
+  def apply(url: String, done: Boolean => Unit): Unit = native.value
 }
 /** The text size the person chose (Dynamic Type) as a scale of the default, and `f` told it each time it changes: on
   * an iPhone or an iPad; 1 on an Apple TV. */

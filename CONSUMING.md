@@ -6501,7 +6501,9 @@ task fails with App Transport Security's reason. demo=net checks the files and t
 
 The system's services, as Android's are: `Platform.openUrl` (and `navigate`) asks the system to open the address (the
 browser, or the app that owns its scheme); an Apple TV has no browser, so a web address opens nothing there, and what
-nothing opens is logged (`[ui] openUrl: nothing opens …`) and otherwise ignored. On an iPhone or an iPad the clipboard
+nothing opens is logged (`[ui] openUrl: nothing opens …`) and otherwise ignored (`openUrl(url, done)` tells `done`
+the system's answer, as on every platform: true where something took it; a Roku, which has no browser, says false). On
+an iPhone or an iPad the clipboard
 is the general pasteboard (`Clipboard.copy`, `copyRich` and `copyMarkdown` with their HTML beside the text, `read`);
 an Apple TV has none. `Platform.systemTextScale()` is the text size the person chose (Larger Text, Dynamic Type) as a
 scale of the default, body text's size at it over its size at Large (1.1 at Extra Large, 2.8 at the largest
@@ -6691,6 +6693,16 @@ asks of an app:
   `webOSRelaunch` is back (`AppHost.hearPresence`), each said once. The TV's keyboard takes no focus from the page.
 - **Its server**: the page comes from no server, so, as on a Roku, `Platform.origin()` is the setting
   "everyui.origin" the app saves (else "") and `webSocketOrigin()` is "": the app names its server.
+- **Addresses and links**: the app's window never goes to another site, which on a TV has no way back to the app.
+  `Platform.openUrl(url, done)` launches the TV's own browser through the Application Manager, as LG's webOSTV.js does
+  for `webOSDev.APP.BROWSER` (`luna://com.webos.applicationManager/launch` with `{"id": "com.webos.app.browser",
+  "params": {"target": url, "fullMode": true}}`, by webOSTV.js's `webOS.service` or the runtime's PalmServiceBridge;
+  `application.launcher` in `requiredACG` from webOS TV 26, `WebOSApp.appsACG`), and `done` is told whether the TV
+  took it: false for an address other than http(s) (a `mailto:`, a path), where the page has no way onto the Luna bus,
+  or where the launch is refused, each logged. `Platform.navigate` does the same, and so does a link: a `Link`, a link
+  in Markdown or a `RichText`, an `<a>` of the page's own, whatever its target and the keys held. `openWindow` opens
+  none, `openUrlLater`'s target holds none (`go` is `openUrl`) and `SignIn.supported` is false. Any host (`AppHost`:
+  Tizen's and Vega's next) opens an address through its own `openUrl`, which opens nothing (false) until it has one.
 - **Its screen**: 540 units tall, as on Android TV and a Roku, so a screen designed for one TV is the same size on
   all of them: at 1080p (1920 by 1080 CSS pixels) `Platform.screenWidth()` and `screenHeight()` are 960 and 540, and a
   unit is two CSS pixels (`TvUnits`: CSS pixels over `innerHeight / 540`). The app's root is drawn at that scale, as a
@@ -7084,7 +7096,9 @@ Each streaming app takes its own parameters (Netflix's `contentTarget` on webOS,
 The example's `demo=tv` opens another app on a launch with `other=<id>` (and `target=` as its `contentTarget`, `uri=`,
 `intent=`), logging
 `[ui] tv: installed netflix true` and `[ui] tv: launched netflix true`; webcheck's WebOSCheck checks it through a
-stubbed `PalmServiceBridge` and `webOS.service`.
+stubbed `PalmServiceBridge` and `webOS.service`. With `url=<address>` it opens the address (`Platform.openUrl`), logging
+`[ui] tv: opened <address> true`; WebOSCheck checks that the TV's browser is launched for it, and for an `<a>` of the
+page's clicked, and that the page stays where it is.
 
 ## Away and back (`Platform.onAway`, `Platform.onResume`)
 

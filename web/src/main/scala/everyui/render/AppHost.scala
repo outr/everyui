@@ -55,6 +55,11 @@ trait AppHost {
     * AppControl, Vega's linking). False by default. */
   def launchApp(link: everyui.apps.AppLink, done: Boolean => Unit): Unit = done(false)
 
+  /** Open `url` in the system's browser (`Platform.openUrl`), and whether the system took it: never in the app's own
+    * window, which has no way back from another site on a TV (webOS's Application Manager launching its browser;
+    * Tizen's and Vega's next). False by default: a host with no browser to open it opens nothing. */
+  def openUrl(url: String, done: Boolean => Unit): Unit = done(false)
+
   /** Whether the app `id` is installed, None where the host cannot say (the default). */
   def appInstalled(id: String, done: Option[Boolean] => Unit): Unit = done(None)
 

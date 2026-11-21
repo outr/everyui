@@ -785,8 +785,9 @@ object Platform {
   def nativeScroll(): Boolean = false
   /** The browser (or the app that owns the address) at `url`, by the system (UIApplication.open). An Apple TV has no
     * browser, so a web address opens nothing there, and an app's own scheme only where that app is installed: what
-    * nothing opens is logged and nothing happens, as a link that cannot open does nothing elsewhere. */
-  def openUrl(url: String): Unit = uiOpenUrl(url)
+    * nothing opens is logged and nothing happens, as a link that cannot open does nothing elsewhere. `done` is told the
+    * system's answer. */
+  def openUrl(url: String, done: Boolean => Unit = _ => ()): Unit = uiOpenUrl(url, done)
   /** An app has no page to leave: the system opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** An Apple TV app has no title bar. */

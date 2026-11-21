@@ -2726,10 +2726,15 @@ object Platform {
   def nativeScroll(): Boolean = false
   /** The browser (or the app that owns the address) at `url`. A television may have no browser at all, and then there
     * is nothing to open it with: nothing happens, as a link that cannot open does nothing elsewhere, rather than the
-    * app coming down. */
-  def openUrl(url: String): Unit =
-    try Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-    catch { case t: Throwable => log("openUrl: nothing opens " + url + " (" + t.toString + ")") }
+    * app coming down. `done` is told whether something took it. */
+  def openUrl(url: String, done: Boolean => Unit = _ => ()): Unit = {
+    val opened = try {
+      Host.activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+      true
+    }
+    catch { case t: Throwable => log("openUrl: nothing opens " + url + " (" + t.toString + ")"); false }
+    done(opened)
+  }
   /** An app has no page to leave: the browser opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** The activity's title (what the recents screen calls it). */

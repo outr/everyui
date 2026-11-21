@@ -20,6 +20,8 @@ import scala.concurrent.duration.*
   *  - what the TV shows (HDR10, Dolby Vision, Atmos: `Platform.decodes`) is asked of its configuration service, once;
   *  - another app is asked for (`getAppLoadStatus`) and launched (`launch`) through the runtime's PalmServiceBridge,
   *    and through webOSTV.js's `webOS.service.request` where the app has it, one not installed read so;
+  *  - an address opened (`Platform.openUrl`), and an `<a>` of the page's clicked, launch the TV's browser through the
+  *    Application Manager, the page staying where it is and no window opened (`window.open` stubbed to record);
   *  - the Magic Remote's pointer focuses what it comes onto while it shows (`cursorStateChange`), and not while hidden;
   *  - the page hidden and shown again is away and resumed, and so is the window's focus lost (to the launcher, over
   *    the page still shown, as Back at the root leaves it before webOS 6) and had again;
@@ -104,6 +106,8 @@ object WebOSCheck extends RapidApp {
       |  var key = { Back: "GoBack", Up: "ArrowUp", Down: "ArrowDown" }[name];
       |  ["keydown", "keyup"].forEach(function (t) { everyuiKey(document.activeElement, t, key, code); });
       |};
+      |window.everyuiOpened = [];
+      |window.open = function (u) { window.everyuiOpened.push(String(u)); return null; };
       |window.everyuiLuna = [];
       |var everyuiAnswer = function (uri, params) {
       |  window.everyuiLuna.push(uri + " " + params);
@@ -307,6 +311,20 @@ object WebOSCheck extends RapidApp {
             bridgeCalls.asVector.map(_.asString).filterNot(configs.contains) == asked("netflix") :+
             "luna://com.webos.applicationManager/launch {\"id\":\"netflix\",\"params\":" +
               "{\"contentTarget\":\"https://www.netflix.com/watch/80100172\"}}")
+        // an address opened (`Platform.openUrl`, a launch with url=), then an `<a>` of the page's own clicked: each the
+        // TV's browser, launched by the Application Manager, the page left where it is and no window opened
+        start <- value("window.everyuiLuna = []; return location.href")
+        _ <- event("webOSRelaunch", """{ url: "https://www.hulu.com/series/x" }""")
+        opened <- heard("tv: opened https://www.hulu.com/series/x true")
+        _ <- browser.eval("""var a = document.createElement("a"); a.href = "https://example.com/away";
+          |a.textContent = "away"; document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
+          |return 0""".stripMargin)
+        _ <- Task.sleep(500.millis)
+        stayed <- value("return [window.everyuiLuna, location.href, window.everyuiOpened]")
+        _ = check("an address opened, and a link clicked, launch the TV's browser, the page staying where it is",
+          opened && stayed.asVector(0).asVector.map(_.asString) == Vector("https://www.hulu.com/series/x",
+            "https://example.com/away").map(u => "luna://com.webos.applicationManager/launch " + WebOSCheck.browser(u)) &&
+            stayed.asVector(1).asString == start.asString && stayed.asVector(2).asVector.isEmpty)
         _ <- browser.eval("everyuiService(); window.everyuiLuna = []; return 0")
         _ <- event("webOSRelaunch", """{ other: "missing" }""")
         refused <- heard("tv: launched missing false")
@@ -424,6 +442,10 @@ object WebOSCheck extends RapidApp {
       |  var r = e.getBoundingClientRect(), c = getComputedStyle(e).backgroundColor.match(/\d+/g);
       |  return [r.left + r.height / 2, r.top + r.height / 2, +c[0], +c[1], +c[2]]; });
       |return [all.length, seen, lefts.length, Math.round((left + right) / 2 - innerWidth / 2), points, innerWidth]""".stripMargin
+
+  /** What the Application Manager's `launch` is sent for the TV's browser at `url`, as webOSTV.js sends it. */
+  def browser(url: String): String =
+    "{\"id\":\"com.webos.app.browser\",\"params\":{\"target\":\"" + url + "\",\"fullMode\":true}}"
 
   /** `devicePixelRatio` saying twice what the page is drawn at, as webOS 3's Chromium 38 says 2 on its 1:1 web plane (the
     * resolution query, `screen` and its screenshots all 1). */

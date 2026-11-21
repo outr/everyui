@@ -5,7 +5,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
 /** Opening another app (`everyui.apps.Apps`): what an LG TV's Application Manager is sent and what its answers say
-  * (WebOSApps), the intent Android starts (IntentPlan), and the desktop, which opens none. */
+  * (WebOSApps), where an address goes (HostUrls: a tab, or a TV's browser), the intent Android starts (IntentPlan),
+  * and the desktop, which opens none. */
 class AppsSpec extends AnyWordSpec with Matchers {
   private val title = "https://www.netflix.com/watch/80100172"
 
@@ -35,12 +36,59 @@ class AppsSpec extends AnyWordSpec with Matchers {
       WebOSApps.launched("""{"returnValue":false,"errorCode":-101,"errorText":"no such app"}""") shouldBe false
       WebOSApps.launched("") shouldBe false
     }
+    "launch the TV's browser at an address, as webOSTV.js does" in {
+      WebOSApps.browser("https://www.hulu.com/series/x") shouldBe
+        """{"id":"com.webos.app.browser","params":{"target":"https://www.hulu.com/series/x","fullMode":true}}"""
+      WebOSApps.browser(" https://a.b/?q=\"x\" ") shouldBe
+        """{"id":"com.webos.app.browser","params":{"target":"https://a.b/?q=\"x\"","fullMode":true}}"""
+    }
+    "open only web addresses in the browser" in {
+      List("https://hulu.com", "HTTP://a.b/c", " http://x").foreach(u => WebOSApps.browsable(u) shouldBe true)
+      List("mailto:a@b.c", "tel:123", "/title/7", "", "javascript:alert(1)")
+        .foreach(u => WebOSApps.browsable(u) shouldBe false)
+    }
     "read an app there, not there, or a status that could not be had" in {
       WebOSApps.exists("""{"returnValue":true,"exist":true}""") shouldBe Some(true)
       WebOSApps.exists("""{"returnValue":true,"exist":false}""") shouldBe Some(false)
       WebOSApps.exists("""{"returnValue":false,"errorCode":-1,"errorText":"Denied method call"}""") shouldBe None
       WebOSApps.exists("""{"returnValue":true}""") shouldBe None
       WebOSApps.exists("") shouldBe None
+    }
+  }
+
+  "HostUrls" should {
+    "open an address in a tab where the page is no installed app" in {
+      var tabs = List.empty[String]
+      var told = List.empty[Boolean]
+      HostUrls.open("https://everyui.com", None, u => tabs :+= u, ok => told :+= ok)
+      tabs shouldBe List("https://everyui.com")
+      told shouldBe List(true)
+    }
+    "hand it to the host, never the tab, on a TV, and tell its answer" in {
+      List(true, false).foreach { answer =>
+        var tabs = List.empty[String]
+        var asked = List.empty[String]
+        var told = List.empty[Boolean]
+        HostUrls.open("https://www.hulu.com/series/x", Some(host(Some(u => { asked :+= u; answer }))), u => tabs :+= u,
+          ok => told :+= ok)
+        tabs shouldBe Nil
+        asked shouldBe List("https://www.hulu.com/series/x")
+        told shouldBe List(answer)
+      }
+    }
+    "open nothing on a host that has no browser (the default), and not the tab" in {
+      var tabs = List.empty[String]
+      var told = List.empty[Boolean]
+      HostUrls.open("https://everyui.com", Some(host(None)), u => tabs :+= u, ok => told :+= ok)
+      tabs shouldBe Nil
+      told shouldBe List(false)
+    }
+    "open no address that no platform opens" in {
+      var tabs = List.empty[String]
+      var told = List.empty[Boolean]
+      List("javascript:alert(1)", "").foreach(u => HostUrls.open(u, None, t => tabs :+= t, ok => told :+= ok))
+      tabs shouldBe Nil
+      told shouldBe List(false, false)
     }
   }
 
@@ -81,5 +129,21 @@ class AppsSpec extends AnyWordSpec with Matchers {
       opened shouldBe Some(false)
       found shouldBe Some(None)
     }
+  }
+
+  // a TV's host whose browser answers `browse` (none: the trait's own `openUrl`, which opens nothing)
+  private def host(browse: Option[String => Boolean]): AppHost = new AppHost {
+    def kind: everyui.PlatformKind = everyui.PlatformKind.WebOS
+    def osVersion: String = "3"
+    def deviceName: String = "a TV"
+    def keyName(keyCode: Int): Option[String] = None
+    def pointerKey(keyCode: Int): Option[Boolean] = None
+    def exit(): Unit = ()
+    def quit(): Unit = ()
+    def launchParams(): Map[String, String] = Map.empty
+    def listen(relaunched: Map[String, String] => Unit, pointer: Boolean => Unit): Unit = ()
+    def nativeHls: Boolean = true
+    override def openUrl(url: String, done: Boolean => Unit): Unit =
+      browse.fold(super.openUrl(url, done))(b => done(b(url)))
   }
 }

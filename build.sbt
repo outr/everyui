@@ -548,11 +548,11 @@ lazy val desktop = (project in file("desktop"))
     // the web's choice of which faces words wait for (FaceWait), plain Scala, checked here with the rest
     Test / unmanagedSources += (file("web") / "src" / "main" / "scala" / "everyui" / "render" / "FaceWait.scala").getAbsoluteFile,
     // and what an LG TV's runtime says of itself and launches the app with (WebOSFacts, LaunchParams), what it
-    // asks its Application Manager (WebOSApps), when its keyboard on the screen lets a field go (SystemKeyboard) and its
-    // units (TvUnits), a key named by its code where the engine names none (KeyCodes), and whether its engine is a
-    // slow one (TvEngine), plain Scala too
+    // asks its Application Manager (WebOSApps), where an address goes (HostUrls, AppHost), when its keyboard on the
+    // screen lets a field go (SystemKeyboard) and its units (TvUnits), a key named by its code where the engine names
+    // none (KeyCodes), and whether its engine is a slow one (TvEngine), plain Scala too
     Test / unmanagedSources ++= Seq("WebOSFacts.scala", "WebOSApps.scala", "LaunchParams.scala", "SystemKeyboard.scala", "TvUnits.scala",
-      "KeyCodes.scala", "TvEngine.scala")
+      "KeyCodes.scala", "TvEngine.scala", "HostUrls.scala", "AppHost.scala")
       .map(n => (file("web") / "src" / "main" / "scala" / "everyui" / "render" / n).getAbsoluteFile),
     // and the player's: the MIME types codecs are asked as (CodecMime), what a TV says it shows (WebOSDisplay), an HLS
     // playlist's renditions (HlsRenditions) and WebVTT subtitles (HlsVtt), SubRip as WebVTT (SubRipVtt), the seeks that

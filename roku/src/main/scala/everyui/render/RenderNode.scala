@@ -1075,8 +1075,8 @@ object Platform {
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
-  /** No browser, no clipboard. */
-  def openUrl(url: String): Unit = ()
+  /** No browser, no clipboard: `done` is told false. */
+  def openUrl(url: String, done: Boolean => Unit = _ => ()): Unit = done(false)
   /** A channel has no browser to go to. */
   def navigate(url: String): Unit = ()
   /** A channel has no title bar. */

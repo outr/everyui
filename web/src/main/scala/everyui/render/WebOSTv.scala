@@ -89,6 +89,16 @@ object WebOSTv extends AppHost {
       done(WebOSApps.launched(reply))
     })
 
+  /** The TV's browser at `url`, launched by the Application Manager as webOSTV.js launches it (`WebOSApps.browser`), as
+    * `launchApp` launches an app (`application.launcher` from webOS TV 26): the page itself never goes there. False for
+    * an address the browser does not open (`WebOSApps.browsable`), or where the page has no way onto the Luna bus. */
+  override def openUrl(url: String, done: Boolean => Unit): Unit =
+    if (!WebOSApps.browsable(url) || !luna) done(false)
+    else call(WebOSApps.service, "launch", WebOSApps.browser(url), reply => {
+      if (!WebOSApps.launched(reply)) Platform.log("webOS: the browser was not launched: " + reply)
+      done(WebOSApps.launched(reply))
+    })
+
   /** The Application Manager's `getAppLoadStatus` (webOS 4 and later; `application.query` in `requiredACG` from
     * webOS TV 26); None on webOS 3, which has no such call. `listApps` is not one a store app may call. */
   override def appInstalled(id: String, done: Option[Boolean] => Unit): Unit =

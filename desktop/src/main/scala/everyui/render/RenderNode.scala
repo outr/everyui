@@ -1730,7 +1730,16 @@ object Platform {
 
   /** The shared ScrollContainer scrolls. */
   def nativeScroll(): Boolean = false
-  def openUrl(url: String): Unit = java.awt.Desktop.getDesktop.browse(new java.net.URI(url))
+  /** The system's browser (or the app that owns the address) at `url`, and `done` told whether it was opened: what
+    * nothing opens (no browser, an address it cannot read) is logged, as on Android. */
+  def openUrl(url: String, done: Boolean => Unit = _ => ()): Unit = {
+    val opened = try {
+      java.awt.Desktop.getDesktop.browse(new java.net.URI(url))
+      true
+    }
+    catch { case t: Throwable => log("openUrl: nothing opens " + url + " (" + t.toString + ")"); false }
+    done(opened)
+  }
   /** A window has no page to leave: the browser opens `url`. */
   def navigate(url: String): Unit = openUrl(url)
   /** The window's title. */

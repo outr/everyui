@@ -571,7 +571,8 @@ class RenderNode(val el: html.Element) {
       }
       span.addEventListener("click", (e: dom.MouseEvent) => {
         e.stopPropagation()
-        if (!RenderNode.modified(e)) {
+        // in an app on a TV (`AppHost`), always followed by the app: the page never goes, nor opens a window
+        if (!RenderNode.modified(e) || AppHosts.current.nonEmpty) {
           e.preventDefault()
           follow(run.href)
         }
@@ -2257,7 +2258,8 @@ object Nodes {
   }
 
   /** A link — an absolutely positioned `<a>` holding other nodes. A plain click is the app's (`Link` follows it); one
-    * with a modifier, another button, or on a link to a new tab is the browser's, and the app never hears of it. */
+    * with a modifier, another button, or on a link to a new tab is the browser's, and the app never hears of it. In an
+    * app on a TV every click is the app's. */
   def link(): RenderNode = {
     val el = dom.document.createElement("a").asInstanceOf[html.Element]
     el.style.position = "absolute"
@@ -2267,7 +2269,10 @@ object Nodes {
     el.style.color = "inherit"
     el.style.textDecoration = "none"
     el.addEventListener("click", (e: dom.MouseEvent) => {
-      if (RenderNode.modified(e) || el.getAttribute("target") == "_blank") e.stopImmediatePropagation()
+      // in an app on a TV (`AppHost`), every click the app's to follow (`Platform.openUrl` for another site): the page
+      // never goes, nor opens a window, which there has no way back
+      if (AppHosts.current.nonEmpty) e.preventDefault()
+      else if (RenderNode.modified(e) || el.getAttribute("target") == "_blank") e.stopImmediatePropagation()
       else e.preventDefault()
     })
     new RenderNode(el)
@@ -2590,11 +2595,15 @@ object Platform {
 
   /** The DOM scrolls a scrollable node itself. */
   def nativeScroll(): Boolean = true
-  /** `url` in a new tab. */
-  def openUrl(url: String): Unit =
-    if (everyui.component.NavigationUrl.safe(url)) { dom.window.open(url, "_blank", "noopener,noreferrer"); () }
-  /** Leave for `url`, in this tab. */
-  def navigate(url: String): Unit = if (everyui.component.NavigationUrl.safe(url)) dom.window.location.assign(url)
+  /** `url` in a new tab; in an app on a TV (`AppHost`), the system's browser, never this window (`HostUrls`). `done` is
+    * told whether it was opened: false for an address no platform opens, and on a TV one its browser does not open,
+    * or where it has none or refused it (logged). */
+  def openUrl(url: String, done: Boolean => Unit = _ => ()): Unit =
+    HostUrls.open(url, AppHosts.current, u => { dom.window.open(u, "_blank", "noopener,noreferrer"); () }, done)
+  /** Leave for `url`, in this tab; in an app on a TV, which has no way back from another site, `openUrl`. */
+  def navigate(url: String): Unit =
+    if (AppHosts.current.nonEmpty) openUrl(url)
+    else if (everyui.component.NavigationUrl.safe(url)) dom.window.location.assign(url)
   /** What the tab is called. */
   def setTitle(title: String): Unit = dom.document.title = title
   /** A count of what is new (the unread), on the tab's icon: a red circle with the count over the page's own icon
@@ -2847,9 +2856,10 @@ object Platform {
 
   /** A new window of this app at `path` (in the app: `/w/3`, never another site), the size of this one and just
     * below and to the right of it. False where it was not opened: refused by the browser (best from a click or a key),
-    * or a path that is not the app's. */
+    * or a path that is not the app's; never in an app on a TV (`AppHost`), which has the one window. */
   def openWindow(path: String): Boolean =
     if (!path.startsWith("/") || path.startsWith("//")) false
+    else if (AppHosts.current.nonEmpty) false
     else {
       val w = dom.window
       val features = "popup,width=" + w.outerWidth.toString + ",height=" + w.outerHeight.toString + ",left=" +
@@ -2862,9 +2872,10 @@ object Platform {
     * nothing after it (an OAuth address the server answers with): blank until `go`, closed by `cancel`. Kept apart
     * from the app (no `opener`) before it goes anywhere, showing `waiting` (its title and words) until then. Where the
     * browser would not open one, the target says so (`held` false), and `go` opens the address as `openUrl` does,
-    * which it will likely refuse in turn: offer a link to press instead. */
+    * which it will likely refuse in turn: offer a link to press instead. An app on a TV (`AppHost`) holds no window:
+    * `go` is `openUrl`, its browser. */
   def openUrlLater(waiting: String = ""): everyui.app.UrlTarget = {
-    val held = dom.window.open("", "_blank")
+    val held = if (AppHosts.current.nonEmpty) null else dom.window.open("", "_blank")
     if (held == null || js.isUndefined(held)) new everyui.app.UrlTarget(url => openUrl(url), () => (), held = false)
     else {
       if (waiting.nonEmpty) try {
@@ -3404,6 +3415,19 @@ object Platform {
 
   private var launchers: List[Map[String, String] => Unit] = Nil
   private var linkers: List[(String, String) => Unit] = Nil
+
+  // on a TV, any other `<a>` (a guest's, a page's HTML) that a click would follow is opened by `openUrl` instead: the
+  // app's own window never goes to another site, which has no way back there (by its parents: Chromium 38 has no
+  // `closest`)
+  AppHosts.current.foreach(_ => dom.window.addEventListener("click", (e: dom.MouseEvent) => if (!e.defaultPrevented) {
+    var at = e.target.asInstanceOf[dom.Node]
+    while (at != null && !(at.isInstanceOf[dom.Element] && at.asInstanceOf[dom.Element].tagName == "A" &&
+      at.asInstanceOf[dom.Element].hasAttribute("href"))) at = at.parentNode
+    if (at != null) {
+      e.preventDefault()
+      openUrl(at.asInstanceOf[dom.Element].getAttribute("href"))
+    }
+  }))
 
   // the TV's launches while the app runs, and its remote's pointer showing and hiding
   AppHosts.current.foreach(_.listen(params => if (params.nonEmpty) {

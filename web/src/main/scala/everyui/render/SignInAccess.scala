@@ -20,58 +20,61 @@ object SignInAccess {
   private val pendingKey = "everyui-signin-from"
   private val endedKey = "everyui-signin-ended"
 
-  def supported(): Boolean = true
+  /** Not in an app on a TV (`AppHost`): its one window would go to the provider, with no way back. */
+  def supported(): Boolean = AppHosts.current.isEmpty
 
   def start(callback: SignInCallback, minutes: Double, authorize: String => Task[String],
-            done: Option[String] => Unit): Unit = {
-    val redirect = dom.window.location.origin + callback.web
-    val w = dom.window
-    val features = "popup,width=520,height=700,left=" + (w.screenX + math.max(0.0, (w.outerWidth - 520) / 2.0)).toInt +
-      ",top=" + (w.screenY + math.max(0.0, (w.outerHeight - 700) / 2.0)).toInt
-    // a popup tells the page where it ended on a BroadcastChannel (Chromium 54); without one the page itself goes
-    val held = if (WebFeatures.has("BroadcastChannel")) w.open("", "everyui-signin", features) else null
-    if (held == null || js.isUndefined(held)) authorize(redirect).map { url =>
-      if (!everyui.component.NavigationUrl.safe(url) || url.isEmpty) done(None)
-      else {
-        session(_.setItem(pendingKey, Platform.path()))
-        w.location.assign(url)
-      }
-    }.start()
+            done: Option[String] => Unit): Unit =
+    if (!supported()) done(None)
     else {
-      held.asInstanceOf[js.Dynamic].opener = null
-      val heard = js.Dynamic.newInstance(js.Dynamic.global.BroadcastChannel)(channel)
-      var finished = false
-      var watch = 0
-      var closedSeen = false
-      var stopFocus: () => Unit = () => ()
-      def end(result: Option[String]): Unit = if (!finished) {
-        finished = true
-        heard.close()
-        w.clearInterval(watch)
-        stopFocus()
-        try held.close() catch { case _: Throwable => () }
-        done(result)
-      }
-      heard.onmessage = (e: dom.MessageEvent) => {
-        val m = e.data.asInstanceOf[js.Dynamic]
-        if (!js.isUndefined(m) && m != null && (m.everyui: Any) == "signin") {
-          val url = m.url.asInstanceOf[String]
-          if (url != null && url.startsWith(redirect)) end(Some(url))
+      val redirect = dom.window.location.origin + callback.web
+      val w = dom.window
+      val features = "popup,width=520,height=700,left=" + (w.screenX + math.max(0.0, (w.outerWidth - 520) / 2.0)).toInt +
+        ",top=" + (w.screenY + math.max(0.0, (w.outerHeight - 700) / 2.0)).toInt
+      // a popup tells the page where it ended on a BroadcastChannel (Chromium 54); without one the page itself goes
+      val held = if (WebFeatures.has("BroadcastChannel")) w.open("", "everyui-signin", features) else null
+      if (held == null || js.isUndefined(held)) authorize(redirect).map { url =>
+        if (!everyui.component.NavigationUrl.safe(url) || url.isEmpty) done(None)
+        else {
+          session(_.setItem(pendingKey, Platform.path()))
+          w.location.assign(url)
         }
-      }
-      // closed and the person back: given a moment for the callback's word, which may still be on its way
-      def judge(): Unit = if (closedSeen && dom.document.hasFocus()) w.setTimeout(() => end(None), 1500)
-      watch = w.setInterval(() => if (!closedSeen && held.closed) {
-        closedSeen = true
-        judge()
-      }, 500)
-      stopFocus = Platform.onFocus(() => judge())
-      w.setTimeout(() => end(None), minutes * 60000.0)
-      authorize(redirect).map { url =>
-        if (url.isEmpty || !everyui.component.NavigationUrl.safe(url)) end(None) else held.location.href = url
       }.start()
+      else {
+        held.asInstanceOf[js.Dynamic].opener = null
+        val heard = js.Dynamic.newInstance(js.Dynamic.global.BroadcastChannel)(channel)
+        var finished = false
+        var watch = 0
+        var closedSeen = false
+        var stopFocus: () => Unit = () => ()
+        def end(result: Option[String]): Unit = if (!finished) {
+          finished = true
+          heard.close()
+          w.clearInterval(watch)
+          stopFocus()
+          try held.close() catch { case _: Throwable => () }
+          done(result)
+        }
+        heard.onmessage = (e: dom.MessageEvent) => {
+          val m = e.data.asInstanceOf[js.Dynamic]
+          if (!js.isUndefined(m) && m != null && (m.everyui: Any) == "signin") {
+            val url = m.url.asInstanceOf[String]
+            if (url != null && url.startsWith(redirect)) end(Some(url))
+          }
+        }
+        // closed and the person back: given a moment for the callback's word, which may still be on its way
+        def judge(): Unit = if (closedSeen && dom.document.hasFocus()) w.setTimeout(() => end(None), 1500)
+        watch = w.setInterval(() => if (!closedSeen && held.closed) {
+          closedSeen = true
+          judge()
+        }, 500)
+        stopFocus = Platform.onFocus(() => judge())
+        w.setTimeout(() => end(None), minutes * 60000.0)
+        authorize(redirect).map { url =>
+          if (url.isEmpty || !everyui.component.NavigationUrl.safe(url)) end(None) else held.location.href = url
+        }.start()
+      }
     }
-  }
 
   def finish(callback: SignInCallback): Boolean =
     if (dom.window.location.pathname != callback.web) false

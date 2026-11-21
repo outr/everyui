@@ -12,6 +12,21 @@ object WebOSApps {
   def launch(link: AppLink): String =
     "{\"id\":" + quote(link.id) + ",\"params\":" + (if (link.json.trim.nonEmpty) link.json.trim else strings(link.params)) + "}"
 
+  /** The TV's own web browser: the id LG's webOSTV.js launches for `webOSDev.APP.BROWSER`. */
+  val browserId: String = "com.webos.app.browser"
+
+  /** `launch`'s parameters for the browser at `url`, as webOSTV.js 1.2 sends them: the address as its `target`, the
+    * browser full screen (`fullMode`). */
+  def browser(url: String): String =
+    "{\"id\":" + quote(browserId) + ",\"params\":{\"target\":" + quote(url.trim) + ",\"fullMode\":true}}"
+
+  /** Whether the TV's browser is the one to open `url`: an http(s) address; mailto, tel and the rest have nothing on a
+    * TV to open them, and a path has no site of its own (the app is loaded from its files). */
+  def browsable(url: String): Boolean = {
+    val lower = url.trim.toLowerCase
+    lower.startsWith("http://") || lower.startsWith("https://")
+  }
+
   /** `getAppLoadStatus`'s parameters (webOS 4 and later). */
   def loadStatus(id: String): String = "{\"appId\":" + quote(id) + "}"
 
