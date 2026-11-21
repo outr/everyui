@@ -1,6 +1,6 @@
 package everyui.focus
 
-import everyui.component.{Component, Container}
+import everyui.component.{Component, Container, ScrollContainer}
 import everyui.event.{Key, KeyEvent, Keys, PointerEvent, PointerKind}
 import everyui.keymap.Keymap
 import everyui.render.Platform
@@ -27,11 +27,13 @@ import reactify.*
   * the other way.
   *
   * The candidates are the focusable components under `ui` (or under an open dialog: `scope`) at the time of the key,
-  * found by walking the tree: no registry, so a list rebuilt under the focus needs no bookkeeping. A container arrived at
-  * is entered at its stated entry, else the part of it that last had the focus, else its first. The focused component
-  * taken off the screen (a card gone from a row read again, a list built over, a dialog's sheet) hands the focus to
-  * what took its place ([[successor]]); with nothing to take it, or nothing focused, it goes to the screen's
-  * `defaultFocus` ([[home]]), or a dialog's first.
+  * nothing hidden among them ([[navigable]]), found by walking the tree: no registry, so a list rebuilt under the focus
+  * needs no bookkeeping. A container arrived at is entered at its stated entry, else the part of it that last had the
+  * focus, else its first. The focused component taken off the screen (a card gone from a row read again, a list built
+  * over, a dialog's sheet) hands the focus to what took its place ([[successor]]); with nothing to take it, or nothing
+  * focused, it goes to the screen's `defaultFocus` ([[home]]), or a dialog's first; and with nothing there to take it
+  * yet (results still loading), it is held on the screen itself, which takes no focus, until something can
+  * ([[onHolder]]).
   *
   * A coach mark holds the focus in one part of the screen ([[confine]]): the arrows move only among what is in it,
   * and from outside it they land in it; and it can hold back OK, a click and a tap, or OK held and a long press, so
@@ -236,7 +238,8 @@ object Focus {
     * a press would go, and the only way back is a guess at an arrow. What takes the focus off the screen moves it on
     * itself (`offScreen`); this watch is the net under that, for a focus lost some other way. When it has been on
     * nothing, or on something no longer on the screen, for two checks in a row, it goes to what took the place of
-    * what it was on, else to where the screen starts. */
+    * what it was on, else to where the screen starts. A focus held on the screen ([[onHolder]]) goes to where the screen
+    * starts as soon as that can take it. */
   private def watch(): Unit = {
     if (focused().forall(c => !showing(c))) {
       if (lost) {
@@ -245,21 +248,55 @@ object Focus {
       }
       else lost = true
     }
-    else lost = false
+    else {
+      lost = false
+      resume()
+    }
     Platform.after(WatchSeconds, () => watch())
   }
 
   /** The focus onto what took the place of what it was on, else where the screen starts, else the first part of the
-    * screen that can be seen: never left on nothing because the first choice happens to be out of sight. */
+    * screen that can be seen: never left on nothing because the first choice happens to be out of sight; and with
+    * nothing at all to take it, held on the screen ([[onHolder]]). */
   private def recover(): Unit = {
     val was = focused()
     val found = was.flatMap(successor).orElse(start().filter(shown)).orElse(candidates(area()).find(shown))
-    found.foreach { c =>
-      // said, so a focus lost where nothing moved it on is found by reading the log rather than by a viewer stuck
-      Platform.log("[focus] lost from " + was.map(_.kind).getOrElse("nothing") + ", now on " + c.kind)
-      focused @= Some(c)
+    found match {
+      case Some(c) =>
+        // said, so a focus lost where nothing moved it on is found by reading the log rather than by a viewer stuck
+        Platform.log("[focus] lost from " + was.map(_.kind).getOrElse("nothing") + ", now on " + c.kind)
+        focused @= Some(c)
+      case None => holder().filterNot(h => was.exists(_ eq h)).foreach { h =>
+        Platform.log("[focus] lost from " + was.map(_.kind).getOrElse("nothing") + ", held on the screen")
+        focused @= Some(h)
+      }
     }
   }
+
+  /** Whether the focus is held on where it may go — the showing screen, the open dialog, the confined region — for want
+    * of anything there to take it yet (a grid whose results are still loading): something has the focus, as on a
+    * remote something must, but nobody navigates from it, and it is not `focusable`, so an app asking whether the focus
+    * is somewhere a remote can use is told it is not. Anything put on the screen, the remote's watch and the next
+    * arrow put it where the screen starts. */
+  private def onHolder: Boolean = focused().exists(f => !f.focusable() && isHolder(f))
+
+  // what the focus is held on: where it may go, as a whole
+  private def isHolder(c: Component): Boolean =
+    (c eq ui) || page()().exists(_ eq c) || dialog().exists(_ eq c) || fence().exists(_.region eq c)
+
+  /** What the focus is held on where nothing can take it: the confined region, else the open dialog, else the showing
+    * screen. */
+  private def holder(): Option[Component] =
+    fence().map(_.region).orElse(dialog()).orElse(page()().filter(p => showing(p)))
+
+  /** A focus held on the screen ([[onHolder]]) onto where the screen starts, once that can take it. */
+  private def resume(): Unit = if (onHolder) resumed().foreach { to =>
+    Platform.log("[focus] held on the screen, now on " + to.kind)
+    focused @= Some(to)
+  }
+
+  // whether a look at a focus held on the screen is waiting for its turn
+  private var resuming = false
 
   /** The open dialog the focus is kept inside, while it is on the screen: a sheet taken off it by something else (a
     * screen shown in its place) holds the focus nowhere. */
@@ -359,23 +396,59 @@ object Focus {
     }
     // (under a confinement, where it starts at once, whether the region is still there or not: a tour never leaves it
     // on what is gone)
-    else successor(gone).orElse(if (anywhere || confined.nonEmpty) start() else None) match {
-      case Some(to) =>
-        Platform.log("[focus] " + gone.kind + " left the screen, the focus goes to " + to.kind)
-        focused @= Some(to)
-      case None => ()
+    // otherwise to what took its place; else, where it left the screen that still shows (not with a whole screen gone,
+    // whose successor says where the focus starts), to where the screen starts; and with nothing there to take it yet,
+    // held on the screen ([[onHolder]]) until there is
+    else {
+      val here = leftHere(gone)
+      successor(gone).orElse(if (here) resumed() else None)
+        .orElse(if (anywhere || confined.nonEmpty) start() else None) match {
+        case Some(to) =>
+          Platform.log("[focus] " + gone.kind + " left the screen, the focus goes to " + to.kind)
+          focused @= Some(to)
+        case None => if (here || anywhere) holder().foreach { h =>
+          Platform.log("[focus] " + gone.kind + " left the screen, nothing to take the focus yet: held on the screen")
+          focused @= Some(h)
+        }
+      }
     }
+  }
+
+  /** Whether `gone` left the screen from where the focus may go now (the showing screen, the open dialog, the confined
+    * region), rather than with the whole of it. */
+  private def leftHere(gone: Component): Boolean = holder() match {
+    case Some(top) =>
+      var at: Option[Component] = Some(gone)
+      var found = false
+      var steps = 0
+      while (!found && at.nonEmpty && steps < 64) {
+        if (at.exists(_ eq top)) found = true
+        else at = at.get.parent().orElse(at.get.leftParent)
+        steps += 1
+      }
+      found
+    case None => false
   }
 
   /** Something was put on the screen. Where a pointer is used, a field the focus left the screen with, put back with
     * nothing focused since, has the focus again, and the platform's (`Component.refocus`): the field that moved, a
-    * conversation's composer put into the view of another, is still the one being written in. */
-  private[everyui] def placed(): Unit = parked.foreach { case (field, at) =>
-    if (moves != at || field.takenApart) parked = None
-    else if (showing(field)) {
-      parked = None
-      focused @= Some(field)
-      field.refocus()
+    * conversation's composer put into the view of another, is still the one being written in. A focus held on the
+    * screen ([[onHolder]]) goes, a turn later, to where the screen starts, if that can take it by then. */
+  private[everyui] def placed(): Unit = {
+    parked.foreach { case (field, at) =>
+      if (moves != at || field.takenApart) parked = None
+      else if (showing(field)) {
+        parked = None
+        focused @= Some(field)
+        field.refocus()
+      }
+    }
+    if (!resuming && onHolder) {
+      resuming = true
+      Platform.later(() => {
+        resuming = false
+        resume()
+      })
     }
   }
 
@@ -417,11 +490,12 @@ object Focus {
         // than whichever part of the screen sits next in its tree
         // (a confined region is looked in, though: what took the place of a row of it rebuilt is the one to have it)
         if (fence().exists(f => (f.region eq box.get) && showing(box.get))) {
-          found = around(box.get, index, child)
+          found = around(box.get, index, child, true)
           steps = 64
         }
         else if ((box.get eq reach) || page()().exists(_ eq box.get) || box.get.parent().exists(_ eq ui)) steps = 64
-        else if (showing(box.get) && within(box.get, reach)) found = around(box.get, index, child)
+        else if (showing(box.get) && unhidden(box.get) && within(box.get, reach))
+          found = around(box.get, index, child, laid(box.get))
         child = box.get
       }
       steps += 1
@@ -429,35 +503,77 @@ object Focus {
     found
   }
 
-  // In `box`, where `gone` was at `index`: the part now there, else the next, else the one before; or the entry the
-  // box states. Nothing when nothing in it takes the focus.
-  private def around(box: Component, index: Int, gone: Component): Option[Component] = {
-    val parts = box.childComponents.filterNot(_ eq gone)
-    val at = math.max(0, math.min(index, parts.length))
-    val order = parts.drop(at) ++ parts.take(at).reverse
-    order.find(p => hasCandidate(p)).flatMap(pick).orElse(entered(box).flatMap(pick))
+  // whether `box` lays its parts out, which ties them together for the arrows: a container that lays nothing out
+  // states no relation between them, and one of them is no more what took the place of another than any part of the
+  // screen is (a button only a phone shows, beside a television's grid)
+  private def laid(box: Component): Boolean = box match {
+    case c: Container => c.laidBy.nonEmpty
+    case _ => false
   }
 
-  /** Where the focus starts over: the confined region's entry or its first, else an open dialog's, else the screen's
-    * `defaultFocus`, else the first of all. */
-  private def start(): Option[Component] = fence() match {
+  // In `box`, where `gone` was at `index`: the part now there, else the next, else the one before, where `among` (the
+  // box lays them out, or is the confined region); or the entry the box states. Nothing when nothing in it takes the
+  // focus.
+  private def around(box: Component, index: Int, gone: Component, among: Boolean): Option[Component] = {
+    var found: Option[Component] = None
+    if (among) {
+      val parts = box.childComponents.filterNot(_ eq gone)
+      val at = math.max(0, math.min(index, parts.length))
+      val order = parts.drop(at) ++ parts.take(at).reverse
+      var i = 0
+      while (found.isEmpty && i < order.length) {
+        if (hasCandidate(order(i))) found = pick(order(i))
+        i += 1
+      }
+    }
+    found.orElse(entered(box).flatMap(pick))
+  }
+
+  /** Where the screen (or the open dialog, or the confined region) says the focus starts, where something there can
+    * take it now: the region's entry or its first, the dialog's first, the screen's `defaultFocus` — but not the
+    * screen itself, which is what a screen names that has nothing to start at yet. */
+  private def resumed(): Option[Component] = fence() match {
     case Some(f) => pick(f.region)
     case None => dialog() match {
       case Some(sheet) => pick(sheet)
-      case None => home()().filter(c => showing(c) && hasCandidate(c)).flatMap(pick).orElse(pick(ui))
+      case None => home()().filter(c => !page()().exists(_ eq c) && showing(c) && hasCandidate(c)).flatMap(pick)
     }
   }
 
+  /** Where the focus starts over: where the screen says ([[resumed]]), else, with no dialog nor region to keep it in,
+    * the first of all. */
+  private def start(): Option[Component] =
+    resumed().orElse(if (fence().isEmpty && dialog().isEmpty) pick(ui) else None)
+
   /** Whether `c` is on the screen to be seen: under `ui`, and neither it nor anything it is inside hidden. */
-  private def shown(c: Component): Boolean = {
+  private def shown(c: Component): Boolean =
+    unhidden(c) && showing(c) && c.size.width() > 0.0 && c.size.height() > 0.0
+
+  /** Whether neither `c` nor anything it is in is hidden (`visible` false). */
+  private def unhidden(c: Component): Boolean = {
     var at: Option[Component] = Some(c)
     var seen = true
     while (seen && at.nonEmpty) {
-      if (!at.get.visible()) seen = false
+      if (hidden(at.get)) seen = false
       at = at.flatMap(_.parent())
     }
-    seen && showing(c) && c.size.width() > 0.0 && c.size.height() > 0.0
+    seen
   }
+
+  /** Whether the app hid `c` (`visible` false): not a scroll's part out of its view, which it hides only to draw less
+    * (a rail's cards out of sight), and which an arrow still reaches, the rail gliding to it. */
+  private def hidden(c: Component): Boolean = !c.notHidden && !(c.parent().flatMap(_.parent()) match {
+    case Some(scroll: ScrollContainer) => scroll.outOfView(c)
+    case _ => false
+  })
+
+  // on the screen, and neither it nor anything it is in hidden
+  private def seen(c: Component): Boolean = unhidden(c) && showing(c)
+
+  /** Whether the focus can be moved onto `c` now, by an arrow or by Tab: it takes the focus (`focusable`), it is on
+    * the screen, and neither it nor anything it is in is hidden. What the focus is held on while nothing can take it
+    * (the screen itself) is not, nor is anything else an app focused that takes no focus. */
+  def navigable(c: Component): Boolean = c.focusable() && seen(c)
 
   private var marked: Option[Component] = None
 
@@ -717,14 +833,27 @@ object Focus {
           case Some(next) =>
             next.focus()
             true
+          // from where nobody navigates (the screen the focus is held on, something hidden): where the screen
+          // starts, else the first that takes the focus, as with nothing focused
+          case None if onHolder || !unhidden(was) => start().filterNot(_ eq was) match {
+            case Some(to) =>
+              to.focus()
+              true
+            case None =>
+              stuck(was, direction)
+              false
+          }
           case None =>
-            // said, so a hand-off nobody has stated yet is found by using the app rather than by a viewer stuck
-            Platform.log("[focus] no way " + (if (direction == Key.ArrowUp) "up" else if (direction == Key.ArrowDown) "down"
-              else if (direction == Key.ArrowLeft) "left" else "right") + " from " + was.kind)
+            stuck(was, direction)
             false   // left to the platform: a page scrolls, say
         }
     }
   }
+
+  // said, so a hand-off nobody has stated yet is found by using the app rather than by a viewer stuck
+  private def stuck(was: Component, direction: Key): Unit =
+    Platform.log("[focus] no way " + (if (direction == Key.ArrowUp) "up" else if (direction == Key.ArrowDown) "down"
+      else if (direction == Key.ArrowLeft) "left" else "right") + " from " + was.kind)
 
   /** From `was` up to `root`, the first container with somewhere to go `direction`'s way. */
   private def travel(was: Component, root: Component, direction: Key, dry: Boolean = false): Option[Component] = {
@@ -809,12 +938,13 @@ object Focus {
   /** Where the focus lands in `target`: itself if it takes the focus; else the entry it states; else the part of it
     * that last had the focus; else its first. Never by where anything is on the screen. */
   private def pick(target: Component): Option[Component] =
-    if (target.focusable()) Some(target)
+    if (!seen(target)) None
+    else if (target.focusable()) Some(target)
     else if (entered(target).nonEmpty) entered(target).flatMap(e => pick(e))
     else {
       // (what it remembers, if that still takes the focus and is still in it, before it walks what it holds for its first)
       val kept = target match {
-        case box: Container => box.remembered.filter(r => r.focusable() && within(r, target))
+        case box: Container => box.remembered.filter(r => r.focusable() && within(r, target) && seen(r))
         case _ => None
       }
       kept.orElse(candidates(target).headOption)
@@ -975,14 +1105,16 @@ object Focus {
     while (depth > 0) {
       depth -= 1
       val c = stack(depth)
-      if (c.focusable()) {
+      // nothing hidden, nor anything in it: it cannot be seen to have the focus
+      val open = !hidden(c) && !c.takenApart
+      if (open && c.focusable()) {
         if (count == found.length) found = grown(found, count)
         found(count) = c
         count += 1
         if (c.tabFirst) first = true
       }
       val kids = c.childComponents
-      var i = kids.length - 1
+      var i = if (open) kids.length - 1 else -1
       while (i >= 0) {
         if (depth == stack.length) stack = grown(stack, depth)
         stack(depth) = kids(i)
@@ -1004,7 +1136,8 @@ object Focus {
     while (depth > 0 && !found) {
       depth -= 1
       val c = stack(depth)
-      if (c.focusable()) found = true
+      if (hidden(c) || c.takenApart) ()
+      else if (c.focusable()) found = true
       else {
         val kids = c.childComponents
         var i = kids.length - 1

@@ -96,6 +96,8 @@ import everyui.render.Platform
   *              and one in English, each logging its laid-out size
   *   dispose    home, then a theatre guide shown once, then a calendar over home, which disposes of the guide: nothing
   *              that made it up is left reachable afterwards (DisposeSpec; `sgnodes all` on a Roku)
+  *   browse     a kept Browse whose grid is read again on each visit, the focused card gone: words for loading, then new
+  *              cards a second later; OK opens another screen, Back comes back; each focus move logged (BrowseDemo)
   *   textcut    words cut short to fit (maxWidth, maxLines) that were made before they were on the screen, and in a face
   *              still loading
   *   textmeasure wrapped words over a box as tall as their measured height: a question at 26 bold in 560 and sizes 18
@@ -287,6 +289,7 @@ import everyui.render.Platform
   else if (demo == "captions") CaptionsDemo.run()
   else if (demo == "trickplay") TrickPlayDemo.run()
   else if (demo == "dispose") DisposeDemo.run()
+  else if (demo == "browse") BrowseDemo.run()
   else if (demo == "textcut") TextCutDemo.run()
   else if (demo == "spinner") SpinnerDemo.run()
   else if (demo == "ambient") AmbientDemo.run()

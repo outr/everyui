@@ -35,7 +35,11 @@ class SplitKeysSpec extends FxSpec {
   "A split's handle" should {
     "come between its sides in Tab's order" in {
       val (a, b) = fx((card(), card()))
-      val split = fx(new SplitPane(a, b))
+      // given room, so both sides show: a side with none is hidden, and takes no focus
+      val split = fx(new SplitPane(a, b) {
+        size.width @= 800.0
+        size.height @= 400.0
+      })
       onScreen(split) {
         fx(Focus.candidates(split).toList) shouldBe List(a, split.handle, b)
       }

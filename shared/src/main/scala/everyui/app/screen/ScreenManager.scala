@@ -415,7 +415,7 @@ trait ScreenManager extends TaskSupport {
     var step: Option[Component] = Some(root)
     place._2.foreach(i =>
       step = step.flatMap(c => if (i >= 0 && i < c.childComponents.length) Some(c.childComponents(i)) else None))
-    step.filter(c => c.kind == place._1 && c.focusable() && Focus.showing(c))
+    step.filter(c => c.kind == place._1 && Focus.navigable(c))
   }
 
   override def update(delta: Double): Unit = {
@@ -425,8 +425,9 @@ trait ScreenManager extends TaskSupport {
     pendingFocus.foreach { (screen, target) =>
       if (!active().exists(_ eq screen)) pendingFocus = None
       else if (Focus.showing(target)) {
-        // unless the person has already put the focus somewhere on this screen
-        if (Focus.focused().forall(f => !Focus.showing(f))) target.focus()
+        // unless the person has already put the focus somewhere on this screen (not where it is only held, the screen
+        // itself, for want of anywhere to be)
+        if (Focus.focused().forall(f => !Focus.navigable(f))) target.focus()
         pendingFocus = None
       }
     }
