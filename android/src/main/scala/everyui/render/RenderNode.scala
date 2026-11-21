@@ -481,6 +481,13 @@ class RenderNode(val view: View) {
   def setRadius(r: Double): Unit = if (Hop.needed(this)) Hop(() => setRadius(r)) else {
     radius = r.toFloat
     paintBackground()
+    // a picture is cut to its rounded box, as the web's border-radius cuts an <img>: to the outline of its ground,
+    // whose corners are rounded with it, which the GPU clips to as it draws, cheaply. Its ground alone was rounded, and
+    // the picture drawn square over it (Voidcraft's menu pictures, `MenuPictureView`, on a phone)
+    view match {
+      case i: ImageView => i.setClipToOutline(radius > 0f)
+      case _ => ()
+    }
   }
   /** An edge `width` pixels wide, inside the box. */
   def setBorder(width: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setBorder(width, hex)) else {

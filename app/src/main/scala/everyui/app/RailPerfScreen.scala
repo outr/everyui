@@ -27,6 +27,8 @@ class RailPerfScreen extends UIScreen {
     case "drawn" => "/images/poster.jpg"
     case _ => ""
   }
+  // the picture rounded by its own corners (`round=1`), the card letting it hang out of it, as a poster that rounds itself
+  private val roundPictures: Boolean = Platform.launchArg("round") == "1"
   private val blurPx: Double = Platform.launchArg("blur").toDoubleOption.getOrElse(0.0)
   /** The card the focus is on, which the hero tells of. */
   private val chosen: Var[Int] = Var(0)
@@ -95,8 +97,10 @@ class RailPerfScreen extends UIScreen {
     radius @= 10.0
     backgroundColor @= Color.fromHex(if (i % 2 == 0) "#2a3d5c" else "#4a2a4c")
     focusable @= true
+    if (roundPictures) clipsToBox @= Some(false)
     if (posterSource.nonEmpty) children += new ImageView {
       sizedByPicture @= false
+      if (roundPictures) radius @= 10.0
       size.width @= 120.0
       size.height @= 180.0
       everyui.image.Image(posterSource + "?card=" + i.toString).map(loaded => image @= loaded).startUnit()

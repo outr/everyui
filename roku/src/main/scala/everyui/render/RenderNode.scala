@@ -392,7 +392,10 @@ class RenderNode(val sg: SGNode) {
     fillHex = hex
     paint()
   }
-  /** Rounded corners, which a SceneGraph Rectangle does not have: see `paint`. */
+  /** Rounded corners, which a SceneGraph Rectangle does not have: see `paint`. A picture (a Poster) is drawn square: a
+    * Poster holds no children to mask, and a MaskGroup over every rounded picture, a rail of posters, would cost the
+    * device too much; a picture is rounded here only inside a container that clips with its own rounded clip
+    * (`setClip`, `roundClip`). */
   def setRadius(radius: Double): Unit = {
     cornerRadius = radius
     paint()

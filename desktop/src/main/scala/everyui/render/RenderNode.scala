@@ -197,6 +197,7 @@ class RenderNode(val fx: Node) {
       case _: Text => applyAlign()
       case i: ImageView =>
         i.setFitWidth(width)
+        roundPicture()
         sharpen(i)
       case _ => ()
     }
@@ -211,6 +212,7 @@ class RenderNode(val fx: Node) {
         r.setMaxHeight(height)
       case i: ImageView =>
         i.setFitHeight(height)
+        roundPicture()
         sharpen(i)
       case _ => ()
     }
@@ -229,6 +231,7 @@ class RenderNode(val fx: Node) {
     radius = r
     paintBackground()
     roundClip()
+    roundPicture()
   }
   /** An edge `width` pixels wide, inside the box. */
   def setBorder(width: Double, hex: String): Unit = if (Hop.needed(this)) Hop(() => setBorder(width, hex)) else {
@@ -575,6 +578,24 @@ class RenderNode(val fx: Node) {
     case r: Rectangle if !(r eq boxClip) =>
       r.setArcWidth(radius * 2.0)
       r.setArcHeight(radius * 2.0)
+    case _ => ()
+  }
+  // a picture cut to its rounded box, as the web's border-radius cuts an <img>: a picture has no ground to round, and
+  // was drawn square (`MenuPictureView`). Only a rounded one is clipped, a mask JavaFX draws through
+  private var cornerClip: Rectangle = null
+  private def roundPicture(): Unit = fx match {
+    case i: ImageView if radius > 0.0 =>
+      if (cornerClip == null) {
+        cornerClip = new Rectangle()
+        i.setClip(cornerClip)
+      }
+      cornerClip.setWidth(i.getFitWidth)
+      cornerClip.setHeight(i.getFitHeight)
+      cornerClip.setArcWidth(radius * 2.0)
+      cornerClip.setArcHeight(radius * 2.0)
+    case i: ImageView if cornerClip != null =>
+      i.setClip(null)
+      cornerClip = null
     case _ => ()
   }
   def setTooltip(text: String): Unit = if (Hop.needed(this)) Hop(() => setTooltip(text)) else if (text.nonEmpty) Tooltip.install(fx, new Tooltip(text)) else Tooltip.uninstall(fx, null)

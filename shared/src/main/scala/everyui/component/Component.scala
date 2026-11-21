@@ -358,7 +358,8 @@ class Component(val node: RenderNode) {
   }
   /** It has drawn a box, or stopped: a container clips what it holds to one (`Container.clipsToBox`). */
   private[everyui] def boxDrawn(): Unit = ()
-  /** Rounded corners, in pixels (the Roku's Rectangle has none). */
+  /** Rounded corners, in pixels: a box's, and a picture cut to them (an `ImageView`), but on a Roku, whose pictures
+    * are drawn square. */
   lazy val radius: Prop[Double] = own(new Prop[Double](0.0, r => node.setRadius(r)))
   /** In turns, as youi has it (1.0 is a full revolution). */
   lazy val rotation: Prop[Double] = own(new Prop[Double](0.0, turns => node.setRotation(turns * 2.0 * math.Pi)))

@@ -8,7 +8,8 @@ import everyui.render.Platform
   * each ringed as the focus lands on it, the rail gliding to keep the focus in the middle; with `rails=<k>`, k such
   * rails one above the next, scrolling up and down under the hero, as a Home of many rails; with `posters=1`, a picture
   * on each card (each its own to decode; `posters=drawn` one at the size drawn on a 1080p TV, as NaboTV asks its own),
-  * with `blur=<px>` a picture behind it all blurred, and with `level=Reduced` (or `Minimal`) run at that
+  * with `round=1` each picture rounded by its own corners rather than its card's clip, with `blur=<px>` a
+  * picture behind it all blurred, and with `level=Reduced` (or `Minimal`) run at that
   * level (`everyui.perf.Quality`). Each move is logged, and every frame of 50 ms or more, with how much of it was the
   * app's own update:
   *
