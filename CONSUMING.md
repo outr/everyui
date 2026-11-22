@@ -399,6 +399,12 @@ plugin the build writes the faces into the page (see [The faces](#the-faces-ever
 </html>
 ```
 
+The viewport is what lays the page out at a phone's own width: without one it is 980 pixels wide, and the app is laid
+out for a laptop at under half its size. `everyuiWebScripts`' `writeTo` writes `width=device-width, initial-scale=1` at
+the top of the page's head where it has none, and moves one that comes after a script ahead of them. One the browser
+reads only after the app's script has started still gives a single first screen at the phone's width: the first
+screen is built once the page has been painted.
+
 On a phone the app is laid out in what the on-screen keyboard leaves showing: `ui` is as tall as the browser's visual
 viewport (`window.visualViewport`), so what sits at its bottom (a chat's composer) stays just above the keyboard, and a
 field being written in is brought into view in whatever scrolls it as the keyboard opens. The page is kept at its top,

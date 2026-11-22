@@ -15,15 +15,17 @@ import java.security.MessageDigest
   *
   * The page loads the app with `<script src="main.js"></script>` (any directory before it, `/main.js` too, and any
   * other attributes, such as `defer`, which the tag that replaces it keeps). Each script is named by a hash of its
-  * contents, so a new build is a new URL no browser serves from its cache. Plain Scala, for an sbt build to compile in
-  * (CONSUMING.md). */
+  * contents, so a new build is a new URL no browser serves from its cache. The page's viewport (`<meta
+  * name="viewport">`) is moved ahead of its scripts, and `WebScripts.viewport` written at the top of its head where it
+  * has none: a phone lays a page out 980 pixels wide until it has read one, and an app started on that width is laid
+  * out for a laptop. Plain Scala, for an sbt build to compile in (CONSUMING.md). */
 case class WebScripts(js: Option[File], jsModule: Boolean, wasm: Option[File]) {
   /** Writes the scripts into `out` and `page` as `out/index.html`, its main.js script replaced by what loads them:
     * main.js itself for JS alone, `everyui-loader.js` (WasmLoader) for WebAssembly, with or without main.js to fall
     * down to. Answers a hash of what the page now loads, which names this build (`WebApp.write`'s `version`). */
   def writeTo(out: File, page: File): String = {
     out.mkdirs()
-    val html = new String(Files.readAllBytes(page.toPath), UTF_8)
+    val html = WebScripts.viewportFirst(new String(Files.readAllBytes(page.toPath), UTF_8))
     val m = WebScripts.mainScript.findFirstMatchIn(html)
       .getOrElse(sys.error(s"$page has no <script src=\".../main.js\"></script> to load the app with"))
     val prefix = m.group(2)
@@ -58,6 +60,27 @@ object WebScripts {
   /** main.js's script tag: its URL may carry a directory and a query (`/main.js?v=…`), and the tag's other
     * attributes before and after it. */
   private val mainScript = """<script([^>]*?)\s+src="([^"]*?)main\.js(?:\?[^"]*)?"([^>]*)>\s*</script>""".r
+
+  /** The viewport written into a page that has none: the device's own width, at its own scale. */
+  val viewport: String = """<meta name="viewport" content="width=device-width, initial-scale=1">"""
+  private val viewportTag = """(?i)<meta\s[^>]*name\s*=\s*["']?viewport(?=["'\s/>])[^>]*>""".r
+  private val headTag = """(?i)<head(\s[^>]*)?>""".r
+  private val scriptTag = """(?i)<script\b""".r
+
+  /** `html` with its viewport ahead of every script: as it is where it already is, else its own (or `viewport`, where
+    * it has none) moved to the top of its head, or where it has no head, just before its first script. */
+  def viewportFirst(html: String): String = {
+    val found = viewportTag.findFirstMatchIn(html)
+    val firstScript = scriptTag.findFirstMatchIn(html).fold(html.length)(_.start)
+    if (found.exists(_.start < firstScript)) html
+    else {
+      val rest = found.fold(html)(m => html.substring(0, m.start) + html.substring(m.end))
+      val meta = found.fold(viewport)(_.matched)
+      val at = headTag.findFirstMatchIn(rest).map(_.end)
+        .getOrElse(scriptTag.findFirstMatchIn(rest).fold(rest.length)(_.start))
+      rest.substring(0, at) + "\n  " + meta + rest.substring(at)
+    }
+  }
 
   /** The first twelve hex digits of a SHA-1. */
   def hash(bytes: Array[Byte]): String =
