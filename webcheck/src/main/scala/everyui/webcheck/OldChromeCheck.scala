@@ -14,9 +14,10 @@ import scala.concurrent.duration.*
 /** The example app's demos in an old TV's engine (Chromium 38, webOS 3's; 53, webOS 4's; 56, Tizen 4's), or any
   * Chrome: each loaded from its files at 1920 by 1080, given a few of the remote's keys and the pointer's moves and
   * clicks, and checked to have drawn its screen and left no error uncaught. `--shots` keeps a picture of each, for a
-  * look at what it drew. Prints the page's console and each check; exits 1 where one fails. With WebOSCheck (its
-  * `--chrome`), the check that a change still runs on the oldest TV EveryUI supports (Chromium 38, on the app linked
-  * as ES 5.1). What it runs in the page is ES 5.1 too.
+  * look at what it drew. Prints the page's console and each check; exits 1 where one fails. Each check waits for the
+  * state it looks for, up to a deadline (`DevTools.until`), not a fixed time: a loaded machine slows it, and fails none.
+  * With WebOSCheck (its `--chrome`), the check that a change still runs on the oldest TV EveryUI supports (Chromium 38,
+  * on the app linked as ES 5.1). What it runs in the page is ES 5.1 too.
   *
   * `net` is the net demo making a request through Spice's client (`Network.http`) to a server of the check's own, on
   * 127.0.0.1: answered, and heard by the server. An HTTP request is where a regex needing ECMAScript 2018 (a
@@ -99,29 +100,33 @@ object OldChromeCheck extends RapidApp {
         println(line)
         System.out.flush()
       }
+      // the card's box and a picture of the page, and the green at the card's corner and on its edge (None with no card)
+      val drawnCard = for {
+        box <- browser.value(card + "if (!card) return null; var r = card.getBoundingClientRect(); " +
+          "return [r.left, r.top, r.width, r.height, innerWidth, getComputedStyle(card).overflow]")
+        shot <- browser.picture()
+      } yield Option.when(box.isArr) {
+        val b = box.asVector
+        val (left, top, width, across) = (b(0).asDouble, b(1).asDouble, b(2).asDouble, b(4).asDouble)
+        // the picture's pixels to a CSS pixel as it was taken (an engine with no headless mode takes its window's)
+        val k = shot.getWidth / across
+        def green(x: Double, y: Double): Int = (shot.getRGB((x * k).toInt, (y * k).toInt) >> 8) & 0xff
+        // 2.5 CSS pixels in from both edges is well outside a corner rounded 20 across (the card's 10 at scale 2)
+        (b(5).asString, green(left + 2.5, top + 2.5), green(left + width / 2.0, top + 3.0))
+      }
+      def cut(seen: (String, Int, Int)): Boolean = seen._2 < 45 && seen._3 > 60
       for {
         _ <- browser.addScript("Error.stackTraceLimit = 50")
         _ <- browser.size(1920, 1080)
         _ <- browser.navigate(page + "?demo=railperf&rails=3&n=12&posters=drawn")
-        _ <- Task.sleep(4.seconds)
-        box <- browser.value(card + "if (!card) return null; var r = card.getBoundingClientRect(); " +
-          "return [r.left, r.top, r.width, r.height, innerWidth, getComputedStyle(card).overflow]")
-        shot <- browser.picture()
+        // (the poster loaded and drawn, however long that takes)
+        seen <- DevTools.until(drawnCard, 20.0)(_.exists(cut))
         _ <- shots.map(d => browser.screenshot(d.resolve("corners.png"))).getOrElse(Task.unit)
         _ = {
-          val found = box.isArr
-          check("corners: a card with its poster drawn", found)
-          if (found) {
-            val b = box.asVector
-            val (left, top, width, across) = (b(0).asDouble, b(1).asDouble, b(2).asDouble, b(4).asDouble)
-            // the picture's pixels to a CSS pixel as it was taken (an engine with no headless mode takes its window's)
-            val k = shot.getWidth / across
-            def green(x: Double, y: Double): Int = (shot.getRGB((x * k).toInt, (y * k).toInt) >> 8) & 0xff
-            // 2.5 CSS pixels in from both edges is well outside a corner rounded 20 across (the card's 10 at scale 2)
-            val corner = green(left + 2.5, top + 2.5)
-            val edge = green(left + width / 2.0, top + 3.0)
-            check("corners: the poster cut to the card's rounded corner (" + b(5).asString + "; green " + corner +
-              " at the corner, the page's, " + edge + " on the edge, the poster's)", corner < 45 && edge > 60)
+          check("corners: a card with its poster drawn", seen.nonEmpty)
+          seen.foreach { case s @ (overflow, corner, edge) =>
+            check("corners: the poster cut to the card's rounded corner (" + overflow + "; green " + corner +
+              " at the corner, the page's, " + edge + " on the edge, the poster's)", cut(s))
           }
         }
         // something to focus out of the card's box, as a row of a panel lower in it is (still in the rails' view, so
@@ -132,13 +137,13 @@ object OldChromeCheck extends RapidApp {
           "card.appendChild(d); " +
           "window.__cardAt = card.firstChild.getBoundingClientRect().top; d.focus(); " +
           "window.__shifted = card.scrollTop; return 0")
-        _ <- Task.sleep(500.millis)
-        held <- browser.value(card + "var low = document.getElementById('everyui-check-low'); " +
-          "var at = card.firstChild.getBoundingClientRect().top; card.removeChild(low); " +
+        // put back as soon as the box hears its scroll: waited for, then the element let go
+        held <- DevTools.until(browser.value(card + "var at = card.firstChild.getBoundingClientRect().top; " +
           "return [window.__shifted, card.scrollTop, card.scrollLeft, at - window.__cardAt]")
+          .map(_.asVector.map(_.asDouble)))(h => h(1) == 0.0 && h(2) == 0.0 && h(3) == 0.0)
+        _ <- browser.value(card + "card.removeChild(document.getElementById('everyui-check-low')); return 0")
         _ = {
-          val h = held.asVector.map(_.asDouble)
-          val (shifted, scrollTop, scrollLeft, moved) = (h(0), h(1), h(2), h(3))
+          val (shifted, scrollTop, scrollLeft, moved) = (held(0), held(1), held(2), held(3))
           check("corners: a cut box shifted by nothing as the focus goes into it (the browser moved it " + shifted +
             ", put back to " + scrollTop + ", " + scrollLeft + "; its poster moved " + moved + ")",
             scrollTop == 0.0 && scrollLeft == 0.0 && moved == 0.0)
@@ -188,34 +193,47 @@ object OldChromeCheck extends RapidApp {
           "if (all[i].textContent === 'Audio: English (5.1)') el = all[i]; " +
           "while (el && el.parentElement && el.parentElement.id !== 'app') el = el.parentElement; "))
       val squashes = browser.major < 62
+      // how far apart, on average, shown and hidden must be for `el` to be drawn over the picture
+      val enough = 30.0
       // how far apart the page's pictures with `el` shown and hidden are across its box, a little inside its edges, or
-      // None where it is not laid out
-      def apart(find: String, name: String): Task[Option[Double]] = for {
-        box <- browser.value(find + "if (!el) return null; var r = el.getBoundingClientRect(); " +
-          "return [r.left, r.top, r.width, r.height, innerWidth]")
-        shown <- browser.picture()
-        _ <- shots.map(d => browser.screenshot(d.resolve(name + ".png"))).getOrElse(Task.unit)
-        _ <- browser.value(find + "if (el) el.style.visibility = 'hidden'; return 0")
-        _ <- Task.sleep(700.millis)
-        hidden <- browser.picture()
-        _ <- shots.map(d => browser.screenshot(d.resolve(name + "-hidden.png"))).getOrElse(Task.unit)
-      } yield Option.when(box.isArr) {
-        val b = box.asVector.map(_.asDouble)
-        // the picture's pixels to a CSS pixel as it was taken
-        val k = shown.getWidth / b(4)
-        val (x0, y0) = ((b(0) * k).toInt + 4, (b(1) * k).toInt + 4)
-        val (x1, y1) = (math.min(shown.getWidth, ((b(0) + b(2)) * k).toInt - 4),
-          math.min(shown.getHeight, ((b(1) + b(3)) * k).toInt - 4))
-        val each = for (x <- x0 until x1 by 3; y <- y0 until y1 by 3) yield {
-          val (p, q) = (shown.getRGB(x, y), hidden.getRGB(x, y))
-          List(16, 8, 0).map(s => math.abs(((p >> s) & 0xff) - ((q >> s) & 0xff))).max
-        }
-        if (each.isEmpty) 0.0 else each.sum.toDouble / each.size
+      // None where it is not laid out: taken again (shown, then hidden) until they are as far apart as `drawn` asks, so
+      // a slow paint is waited for, and failed only where `el` is never drawn over the picture
+      def apart(find: String, name: String): Task[Option[Double]] = {
+        val once = for {
+          _ <- browser.value(find + "if (el) el.style.visibility = ''; return 0")
+          box <- browser.value(find + "if (!el) return null; var r = el.getBoundingClientRect(); " +
+            "return [r.left, r.top, r.width, r.height, innerWidth]")
+          shown <- browser.picture()
+          _ <- browser.value(find + "if (el) el.style.visibility = 'hidden'; return 0")
+          _ <- Task.sleep(300.millis)
+          hidden <- browser.picture()
+        } yield (Option.when(box.isArr) {
+          val b = box.asVector.map(_.asDouble)
+          // the picture's pixels to a CSS pixel as it was taken
+          val k = shown.getWidth / b(4)
+          val (x0, y0) = ((b(0) * k).toInt + 4, (b(1) * k).toInt + 4)
+          val (x1, y1) = (math.min(shown.getWidth, ((b(0) + b(2)) * k).toInt - 4),
+            math.min(shown.getHeight, ((b(1) + b(3)) * k).toInt - 4))
+          val each = for (x <- x0 until x1 by 3; y <- y0 until y1 by 3) yield {
+            val (p, q) = (shown.getRGB(x, y), hidden.getRGB(x, y))
+            List(16, 8, 0).map(s => math.abs(((p >> s) & 0xff) - ((q >> s) & 0xff))).max
+          }
+          if (each.isEmpty) 0.0 else each.sum.toDouble / each.size
+        }, shown, hidden)
+        for {
+          last <- DevTools.until(once, 15.0)(_._1.exists(_ >= enough))
+          _ <- shots.map { d =>
+            Task {
+              javax.imageio.ImageIO.write(last._2, "png", d.resolve(name + ".png").toFile)
+              javax.imageio.ImageIO.write(last._3, "png", d.resolve(name + "-hidden.png").toFile)
+            }.unit
+          }.getOrElse(Task.unit)
+        } yield last._1
       }
       def drawn(what: String, mean: Option[Double]): Unit = mean match {
         case None => check("playerbar: its " + what + " laid out", false)
         case Some(m) => check("playerbar: its " + what + " drawn over the picture (" + (math.round(m * 10.0) / 10.0) +
-          " apart on average across its box, shown and hidden)", m >= 30.0)
+          " apart on average across its box, shown and hidden)", m >= enough)
       }
       // `open=` put up over the playing picture (a menu with the focus moved in it by a key, as a remote moves it)
       def over(name: String, find: String): Task[Option[Double]] = {
@@ -256,13 +274,16 @@ object OldChromeCheck extends RapidApp {
         again = browser.lines.size
         _ <- browser.navigate(url)
         _ <- heard("playerbar ready", again, 100)
-        _ <- Task.sleep(500.millis)
-        lg <- browser.value(layered)
+        lg <- DevTools.until(browser.value(layered))(lg =>
+          lg.isArr && lg.asVector(0).asBoolean == squashes && (lg.asVector(1).asInt > 0) == squashes)
         // the video's source let go, as a player closing lets it go: its boxes unmarked, and what follows them no layer
+        // (each waited for, as the page hears the video playing and then let go)
+        _ <- DevTools.until(browser.value("return document.querySelectorAll('.everyui-video-path').length"))(n =>
+          (n.asInt > 0) == squashes)
         _ <- browser.value("var v = document.querySelector('video'); window.__marked = " +
           "document.querySelectorAll('.everyui-video-path').length; v.removeAttribute('src'); v.load(); return 0")
-        _ <- Task.sleep(800.millis)
-        unmarked <- browser.value("return [window.__marked, document.querySelectorAll('.everyui-video-path').length]")
+        unmarked <- DevTools.until(browser.value(
+          "return [window.__marked, document.querySelectorAll('.everyui-video-path').length]"))(_.asVector(1).asInt == 0)
       } yield {
         check("playerbar: the video playing", since.exists(_.contains("playerbar ready")))
         drawn("bar", barApart)
@@ -300,9 +321,10 @@ object OldChromeCheck extends RapidApp {
           .filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR")).toList
         for {
           _ <- browser.navigate(page + "?demo=" + name)
-          _ <- Task.sleep(3.seconds)
-          drawn <- browser.value("var n = 0; [].forEach.call(document.querySelectorAll('#app *'), function (e) { " +
-            "var r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0) n++; }); return n")
+          // (its screen drawn, however long that takes)
+          drawn <- DevTools.until(browser.value("var n = 0; " +
+            "[].forEach.call(document.querySelectorAll('#app *'), function (e) { " +
+            "var r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0) n++; }); return n"))(_.asInt >= 5)
           _ <- shots.map(d => browser.screenshot(d.resolve(name + ".png"))).getOrElse(Task.unit)
           _ = check(name + ": its screen drawn (" + drawn.asInt + " boxes shown)", drawn.asInt >= 5)
           _ <- key(40, "ArrowDown")
@@ -368,13 +390,8 @@ object OldChromeCheck extends RapidApp {
           "Math.round(+s.opacity * 1000) / 1000 + ' rotate=' + (s.rotate || 'none') + ' scaled=' + (s.scale || 'none') + " +
           "' translate=' + (s.translate || 'none'); } " +
           "return ['motion-tick', 'motion-turn', 'motion-scale', 'motion-fade', 'motion-slide', 'motion-swap'].map(look).join('\\n')"
-        for {
-          _ <- browser.navigate(page + "?demo=motionstop")
-          _ <- done(100)
-          _ <- Task.sleep(400.millis)
-          read <- browser.value(look)
-          _ <- shots.map(d => browser.screenshot(d.resolve("motionstop.png"))).getOrElse(Task.unit)
-        } yield {
+        // each verdict on what was read
+        def verdicts(read: Json): List[(String, Boolean)] = {
           val drawn = read.asString.split("\n").toList.map { line =>
             val words = line.split(" ").toList
             words.head -> words.tail.flatMap(w => w.split("=", 2).toList match {
@@ -382,25 +399,34 @@ object OldChromeCheck extends RapidApp {
               case _ => None
             }).toMap
           }.toMap
-          println("[old chrome] motionstop: " + read.asString.replace("\n", "; "))
           def of(name: String, key: String): String = drawn.get(name).flatMap(_.get(key)).getOrElse("?")
           def near(name: String, key: String, want: Double): Boolean =
             of(name, key).toDoubleOption.exists(v => math.abs(v - want) < 0.01)
           // nothing an animation moves left on the node itself
           def unmoved(name: String): Boolean = List("rotate", "scaled", "translate").forall(k => of(name, k) == "none")
+          List(
+            "the done tick upright and whole" -> (near("motion-tick", "turn", 0.0) &&
+              near("motion-tick", "opacity", 1.0) && unmoved("motion-tick")),
+            "the turn back to its own 18 degrees" -> (near("motion-turn", "turn", 18.0) &&
+              near("motion-turn", "scale", 1.0) && unmoved("motion-turn")),
+            "the scale back to its own half" -> (near("motion-scale", "scale", 0.5) && unmoved("motion-scale")),
+            "the fade back to its own 0.8" -> near("motion-fade", "opacity", 0.8),
+            "the slide back to where it is placed" -> (near("motion-slide", "x", 0.0) &&
+              near("motion-slide", "y", 0.0) && unmoved("motion-slide")),
+            "the turn replaced by a fade at no tilt, fading" -> (near("motion-swap", "turn", 0.0) &&
+              unmoved("motion-swap") && of("motion-swap", "opacity").toDoubleOption.exists(_ < 0.99)))
+        }
+        for {
+          _ <- browser.navigate(page + "?demo=motionstop")
+          _ <- done(100)
+          // (each node's style as the engine next draws it, waited for)
+          read <- DevTools.until(browser.value(look))(r => verdicts(r).forall(_._2))
+          _ <- shots.map(d => browser.screenshot(d.resolve("motionstop.png"))).getOrElse(Task.unit)
+        } yield {
+          println("[old chrome] motionstop: " + read.asString.replace("\n", "; "))
           check("motionstop: taken away (" + since.exists(_.contains("motionstop taken away")) + ")",
             since.exists(_.contains("motionstop taken away")))
-          check("motionstop: the done tick upright and whole", near("motion-tick", "turn", 0.0) &&
-            near("motion-tick", "opacity", 1.0) && unmoved("motion-tick"))
-          check("motionstop: the turn back to its own 18 degrees", near("motion-turn", "turn", 18.0) &&
-            near("motion-turn", "scale", 1.0) && unmoved("motion-turn"))
-          check("motionstop: the scale back to its own half", near("motion-scale", "scale", 0.5) &&
-            unmoved("motion-scale"))
-          check("motionstop: the fade back to its own 0.8", near("motion-fade", "opacity", 0.8))
-          check("motionstop: the slide back to where it is placed", near("motion-slide", "x", 0.0) &&
-            near("motion-slide", "y", 0.0) && unmoved("motion-slide"))
-          check("motionstop: the turn replaced by a fade at no tilt, fading", near("motion-swap", "turn", 0.0) &&
-            unmoved("motion-swap") && of("motion-swap", "opacity").toDoubleOption.exists(_ < 0.99))
+          verdicts(read).foreach { case (what, ok) => check("motionstop: " + what, ok) }
           val errors = since.filter(l => l.toLowerCase.contains("uncaught") || l.contains("ERROR"))
           check("motionstop: no error left uncaught" + errors.headOption.map(": " + _).getOrElse(""), errors.isEmpty)
         }

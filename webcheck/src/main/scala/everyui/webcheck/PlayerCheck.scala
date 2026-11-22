@@ -308,7 +308,8 @@ object PlayerCheck extends RapidApp {
             // with the sound track chosen still heard, and still no text shown
             still <- value(showing + ".length == 0").map(_.asBoolean)
             chosenKept = still && (audio.size < 2 || afterLine.exists(_.contains(audio(1)(2) + "*")))
-            marked <- value(marks).map(_.asString)
+            // (marked as the page hears the move, waited for)
+            marked <- DevTools.until(value(marks).map(_.asString))(m => !m.startsWith("missing"))
             leftLine <- line(p + "left held=")
             empty <- becomes("var h = (function () { " + held + " })(); " +
               "return h[0] <= 1 && h[1] == 0 && h[2] == 0 && h[3] == 0", 3.0)

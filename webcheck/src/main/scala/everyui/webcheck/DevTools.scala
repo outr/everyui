@@ -155,6 +155,17 @@ final class DevTools private (process: Option[Process], profile: Option[Path], v
 }
 
 object DevTools {
+  /** `read` again every 100 ms until `ok` holds of what it reads, for at most `seconds`: what it last read either way.
+    * A check waits for the state it looks for rather than a fixed time, so a loaded machine slows it but never fails
+    * it; it fails only where the state never comes. */
+  def until[A](read: Task[A], seconds: Double = 10.0)(ok: A => Boolean): Task[A] = Task.defer {
+    val deadline = System.nanoTime() + (seconds * 1e9).toLong
+    def look: Task[A] = read.flatMap { a =>
+      if (ok(a) || System.nanoTime() > deadline) Task.pure(a) else Task.sleep(100.millis).flatMap(_ => look)
+    }
+    look
+  }
+
   /** The Chrome found on the path, where none is named. */
   def defaultChrome: String = {
     val path = sys.env.getOrElse("PATH", "").split(java.io.File.pathSeparator).toList

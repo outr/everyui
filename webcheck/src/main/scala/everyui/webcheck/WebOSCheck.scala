@@ -43,7 +43,8 @@ import scala.concurrent.duration.*
   * from it but Enter, Left and Right (stopped at the window, as the Simulator stops it), and the remote's Back, or Up or
   * Down off its edge, put it away, the field still focused (`everyuiRemote`).
   *
-  * Prints the page's console and each check; exits 1 where one fails.
+  * Prints the page's console and each check; exits 1 where one fails. Each check waits for the state it looks for, up
+  * to a deadline (`DevTools.until`), not a fixed time: a loaded machine slows it, and fails none.
   *
   *   WebOSCheck <page dir> [--palm | --simulator] [--chrome <binary>]
   *
@@ -218,6 +219,9 @@ object WebOSCheck extends RapidApp {
         value("return document.querySelector('#app input[type=email], #app input[type=text]').value")
         .map(_.asString)
       def exits: Task[Int] = browser.eval("return window.everyuiExits.length").map(_("result")("value").asInt)
+      // what has the page's focus and the keyboard, once `ok` holds of them (within ten seconds, else as they are)
+      def settled(ok: ((String, (Boolean, Int))) => Boolean): Task[(String, (Boolean, Int))] =
+        DevTools.until(active.flatMap(a => keyboard.map(k => (a, k))))(ok)
       def visible(state: String): Task[Unit] = browser.eval(
         s"""window.everyuiVisible = "$state"; document.dispatchEvent(new Event("visibilitychange")); return 0""").unit
       // the page hidden and shown, then left shown under the launcher with the window's focus gone and had again (as
@@ -240,16 +244,20 @@ object WebOSCheck extends RapidApp {
       def languageGrid: Task[Unit] = for {
         _ <- browser.navigate(page + "?screen=language")
         _ <- heard("tv: focus Container \"English\"")
-        _ <- Task.sleep(1.second)
-        grid <- value(WebOSCheck.languages)
-        shot <- browser.picture()
+        // (laid out and drawn as the overlay goes, waited for)
+        seen <- DevTools.until(for {
+          grid <- value(WebOSCheck.languages)
+          shot <- browser.picture()
+          // (nothing to measure until the buttons are laid out)
+        } yield if (!grid.isArr || grid.asVector.exists(_.isNull)) (Vector.empty[Int], 0) else {
+          // the picture's pixels to a CSS pixel, as it was taken: the emulated ratio in today's headless engine, 1 in
+          // an old one, which captures its window as it is (the Simulator's 1.1667 in Chromium 38 and 53 sampled amiss)
+          val scale = shot.getWidth.toDouble / grid.asVector(5).asDouble
+          (grid.asVector.take(4).map(_.asInt), WebOSCheck.drawn(shot, grid.asVector(4).asVector
+            .map(_.asVector.map(_.asDouble)).map(p => p.take(2).map(_ * scale) ++ p.drop(2))))
+        })(g => g._1 == Vector(11, 11, 3, 0) && g._2 == 11)
       } yield {
-        val laid = grid.asVector.take(4).map(_.asInt)
-        // the picture's pixels to a CSS pixel, as it was taken: the emulated ratio in today's headless engine, 1 in an
-        // old one, which captures its window as it is (the Simulator's 1.1667 in Chromium 38 and 53 sampled amiss)
-        val scale = shot.getWidth.toDouble / grid.asVector(5).asDouble
-        val drawn = WebOSCheck.drawn(shot, grid.asVector(4).asVector.map(_.asVector.map(_.asDouble)).map(p =>
-          p.take(2).map(_ * scale) ++ p.drop(2)))
+        val (laid, drawn) = seen
         check("the language screen shows its 11 buttons in 3 columns, centred, each drawn (" + laid.mkString(", ") +
           ", " + drawn.toString + " drawn)", laid == Vector(11, 11, 3, 0) && drawn == 11)
       }
@@ -277,9 +285,9 @@ object WebOSCheck extends RapidApp {
           bars.asVector(0).asBoolean && bars.asVector(1).asInt == 0 && bars.asVector(2).asBoolean)
         // words drawn in Open Sans measure apart from the fallback's (the set's word is not to be trusted: Chromium
         // 53's can call a face unloaded that the words are drawn in)
-        faces <- value("var w = function (f) { var s = document.createElement('span'); s.style.font = '24px ' + f; " +
+        faces <- DevTools.until(value("var w = function (f) { var s = document.createElement('span'); s.style.font = '24px ' + f; " +
           "s.textContent = 'Hamburgefonstiv 0123'; document.body.appendChild(s); var x = s.offsetWidth; " +
-          "s.parentNode.removeChild(s); return x; }; return w(\"'Open Sans', monospace\") != w('monospace')")
+          "s.parentNode.removeChild(s); return x; }; return w(\"'Open Sans', monospace\") != w('monospace')"))(_.asBoolean)
         _ = check("the page's faces load from its own files", faces.asBoolean)
         _ <- heard("tv: focus Container \"Open details\"")
         _ <- key(13, "Enter")
@@ -293,7 +301,7 @@ object WebOSCheck extends RapidApp {
         _ <- Task.sleep(300.millis)
         _ <- key(461, "Unidentified")
         _ <- heard("webOS: leaving by " + system)
-        once <- exits
+        once <- DevTools.until(exits)(_ >= 1)
         _ = check("Back at Home leaves by " + system + ".platformBack(), once", once == 1)
         _ <- event("webOSRelaunch", """{ open: "/title/7", contentId: "7" }""")
         relaunch <- heard("tv: launch contentId=7 open=/title/7")
@@ -319,8 +327,8 @@ object WebOSCheck extends RapidApp {
         _ <- browser.eval("""var a = document.createElement("a"); a.href = "https://example.com/away";
           |a.textContent = "away"; document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
           |return 0""".stripMargin)
-        _ <- Task.sleep(500.millis)
-        stayed <- value("return [window.everyuiLuna, location.href, window.everyuiOpened]")
+        stayed <- DevTools.until(value("return [window.everyuiLuna, location.href, window.everyuiOpened]"))(
+          _.asVector(0).asVector.size >= 2)
         _ = check("an address opened, and a link clicked, launch the TV's browser, the page staying where it is",
           opened && stayed.asVector(0).asVector.map(_.asString) == Vector("https://www.hulu.com/series/x",
             "https://example.com/away").map(u => "luna://com.webos.applicationManager/launch " + WebOSCheck.browser(u)) &&
@@ -359,31 +367,29 @@ object WebOSCheck extends RapidApp {
         _ = check("the arrows pass over a field, its input unfocused and no keyboard up",
           form && down && up && passed == "BODY" && before == ((false, 0)))
         _ <- press(13, "Enter")
-        editing <- active
-        raised <- keyboard
+        raised <- settled(s => s._1 == "field" && s._2._1)
         _ = check("OK on a field puts its input in the page's focus, the TV's keyboard up, and submits nothing",
-          editing == "field" && raised == ((true, 1)) && count("tv: signed in") == 0 &&
+          raised == (("field", (true, 1))) && count("tv: signed in") == 0 &&
             count("tv: focus Container \"Password\"") == 1)
         _ <- browser.insertText("ada@example.com")
         _ <- press(37, "ArrowLeft")
-        words <- typed
-        caret <- value("return document.activeElement.selectionStart").map(_.asInt)
-        _ = check("what is typed arrives, and Left moves the caret in it", words == "ada@example.com" && caret == 14)
+        entered <- DevTools.until(typed.flatMap(w =>
+          value("return document.activeElement.selectionStart").map(c => (w, c.asInt))))(_ == (("ada@example.com", 14)))
+        _ = check("what is typed arrives, and Left moves the caret in it", entered == (("ada@example.com", 14)))
         homes = count("tv: home shown")
         _ <- remote("Back")
-        put <- keyboard
-        still <- active
+        put <- settled(!_._2._1)
         _ = check("the remote's Back while typing puts the keyboard away and goes nowhere",
-          !put._1 && count("tv: home shown") == homes && still == "field")
+          !put._2._1 && count("tv: home shown") == homes && put._1 == "field")
         _ <- press(13, "Enter")
-        again <- keyboard
+        again <- settled(_._2._1)
         _ = check("OK once the keyboard is away starts the typing again, and submits nothing",
-          again == ((true, 2)) && count("tv: signed in") == 0 && count("tv: focus Container \"Password\"") == 1)
+          again._2 == ((true, 2)) && count("tv: signed in") == 0 && count("tv: focus Container \"Password\"") == 1)
         _ <- remote("Back")
         _ <- press(40, "ArrowDown")
         leaves <- heard("tv: focus Container \"Password\"", 2)
-        gone <- active
-        _ = check("an arrow once the keyboard is away leaves the field", leaves && gone == "BODY")
+        gone <- settled(_._1 == "BODY")
+        _ = check("an arrow once the keyboard is away leaves the field", leaves && gone._1 == "BODY")
         _ <- press(13, "Enter")
         _ <- browser.insertText("secret")
         _ <- remote("Up")
@@ -393,10 +399,9 @@ object WebOSCheck extends RapidApp {
         // a Back that reaches the page while a field is typed in, the keyboard saying nothing
         _ <- press(13, "Enter")
         _ <- press(461, "GoBack")
-        let <- active
-        quiet <- keyboard
+        let <- settled(s => s._1 == "BODY" && !s._2._1)
         _ = check("a Back that reaches the page while typing lets the field go and goes nowhere",
-          let == "BODY" && !quiet._1 && count("tv: home shown") == homes && count("tv: focus Container \"Email\"") == 3)
+          let._1 == "BODY" && !let._2._1 && count("tv: home shown") == homes && count("tv: focus Container \"Email\"") == 3)
         _ <- press(40, "ArrowDown")
         on <- heard("tv: focus Container \"Password\"", 3)
         _ = check("and Down then moves on", on)
@@ -404,10 +409,9 @@ object WebOSCheck extends RapidApp {
         moves = count("tv: focus")
         _ <- press(13, "Enter")
         signed <- heard("tv: signed in as ada@example.com (password 6 characters)")
-        done <- keyboard
-        ended <- active
+        done <- settled(s => s._1 == "BODY" && !s._2._1)
         _ = check("the keyboard's Enter ends the typing and submits, the focus kept",
-          signed && !done._1 && ended == "BODY" && count("tv: focus") == moves)
+          signed && !done._2._1 && done._1 == "BODY" && count("tv: focus") == moves)
         _ <- press(13, "Enter")
         _ <- remote("Back")
         _ <- press(461, "GoBack")
