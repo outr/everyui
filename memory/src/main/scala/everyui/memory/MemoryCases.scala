@@ -5,8 +5,8 @@ import everyui.chart.{BarChart, DonutChart, Heatmap, LineChart, Meter, Series, S
 import everyui.chat.{ActivityStatus, ChatEntry, ChatTime, Participant, Transcript}
 import everyui.component.{Button, Component, Container, ImageView, ScrollContainer, TextView, VideoView}
 import everyui.kit.TabGroups
-import everyui.layout.VerticalLayout
-import everyui.list.VirtualList
+import everyui.layout.{HorizontalLayout, VerticalLayout}
+import everyui.list.{LazyColumn, LazyItem, LazyRail, VirtualList}
 import everyui.render.Platform
 import everyui.table.{DataCell, DataColumn, DataTable}
 import reactify.*
@@ -26,6 +26,8 @@ object MemoryCases {
     MemoryCase("VideoView, playing a clip", "video", 4, () => stacked(_ => video())),
     MemoryCase("ScrollContainer of cards", "card", 100, () => cards()),
     MemoryCase("VirtualList of 1,000 rows", "list", 4, () => stacked(_ => list())),
+    MemoryCase("Home of 22 rails of 10 cards, all made", "home", 2, () => stacked(_ => home(lazily = false))),
+    MemoryCase("Home of 22 rails of 10 cards, made near the view", "home", 2, () => stacked(_ => home(lazily = true))),
     MemoryCase("DataTable of 100 rows", "table", 4, () => stacked(_ => table())),
     MemoryCase("DataTable of 100 rows in a page", "table", 4, () => pageOfTables()),
     MemoryCase("TabGroups", "tab group", 10, () => stacked(i => tabGroups(i))),
@@ -159,6 +161,47 @@ object MemoryCases {
     c.backgroundColor @= Color.fromHex("33669922")
     c.children ++= List(words("Card " + i.toString), words("From someone about something, number " + i.toString),
       words("A line of what it says, long enough to be a line of a preview of a message"))
+    c
+  }
+
+  // a TV's or a phone's Home: a scroll a screen tall of 22 rails of 10 cards of words, each rail a ScrollContainer of
+  // every card in a column of every rail, or made as they near the view (a LazyColumn of LazyRails)
+  private def home(lazily: Boolean): ScrollContainer = {
+    val s = new ScrollContainer
+    s.size.width @= 400.0
+    s.size.height @= 600.0
+    def rail(r: Int): ScrollContainer = {
+      val strip =
+        if (lazily) new LazyRail(Var(Vector.tabulate(10)(i => r * 10 + i)), (i: Int) => i.toString, 100.0, 8.0)(homeCard)
+        else {
+          val all = new ScrollContainer(horizontal = true)
+          all.content.layout @= Some(HorizontalLayout(8.0))
+          all.content.children @= Vector.tabulate(10)(i => homeCard(r * 10 + i))
+          all.size.height @= 150.0
+          all
+        }
+      strip.size.width @= 400.0
+      strip
+    }
+    if (lazily) {
+      val column = new LazyColumn(gap = 16.0)
+      column.size.width @= 400.0
+      column.items @= Vector.tabulate(22)(r => LazyItem("rail" + r.toString, 150.0, () => rail(r)))
+      s.content.children += column
+    }
+    else {
+      s.content.layout @= Some(VerticalLayout(16.0))
+      s.content.children @= Vector.tabulate(22)(rail)
+    }
+    s
+  }
+
+  private def homeCard(i: Int): Component = {
+    val c = new Container
+    c.size.width @= 100.0
+    c.size.height @= 150.0
+    c.backgroundColor @= Color.fromHex("33669922")
+    c.children += words("Title " + i.toString)
     c
   }
 

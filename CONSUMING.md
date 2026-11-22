@@ -3767,7 +3767,7 @@ What EveryUI's own parts do:
 | a pane of frosted glass (`backdropBlur`) | nothing behind blurred; its fill made at least `frostedFill` opaque (0.9) | as Reduced |
 | a text's `textShadow`, `motion` run by the platform | as at Full | none |
 | pictures | Android's downloads in 16 bits a pixel where they have no transparency, its picture cache and the pictures kept out of sight (`ImageBudget`) at half; never decoded smaller than drawn | the cache and those kept at a quarter |
-| built beyond what shows | a ScrollContainer's slack a quarter of a viewport each way (half at Full); a VirtualList's `overscan` halved | a tenth; one row |
+| built beyond what shows | a ScrollContainer's slack a quarter of a viewport each way (half at Full); a VirtualList's `overscan` halved; a LazyColumn's `ahead` a quarter of a view (half at Full), a LazyRail's one card (two) | a tenth; one row; a tenth; one card |
 
 What was drawn before a change is drawn again: what is on the screen at once, and what was made before and put on the
 screen later as it goes on. A level that lowers mid-session takes effect where the app's own parts follow `level`.
@@ -6166,6 +6166,14 @@ shown, and takes them up as it is shown again; what is hidden under it (a tab ke
 `showBytes(bytes, mime)` shows a picture from bytes through a source made for the view alone (`Files.source`), which
 it lets go (`Files.release`) as another picture takes its place or the view is disposed of.
 
+**A picture not yet near.** On the web every `ImageView`'s `<img>` is `loading="lazy"` and `decoding="async"`, its
+box's width and height stated on it as well: one built ahead of the view, or culled out of it, asks for nothing until
+the browser sees it near the view, and decodes off the page's thread. An engine without them (Chromium 38, webOS 3)
+fetches at once; the box is EveryUI's either way, sized before the picture comes, so nothing moves as it does. Other
+platforms ask for a picture as its view is given it, so on every platform a picture is asked for once its card is
+made: in a `LazyColumn`, `LazyRail` or `VirtualGrid` (under Collections) that is as the card comes near the view, and
+what is made there is within what is drawn, so its picture is asked for once and then let go and kept as above.
+
 **Pictures kept out of sight (`ImageBudget`).** A picture going out of sight is kept, its source still set, while the
 pictures so kept fit in `ImageBudget.megabytes` (each counted as decoded: 4 bytes a pixel at its own size); past it,
 the one longest out of sight is let go as above, and drawn again from its source as it comes back. A kept one comes
@@ -8199,7 +8207,8 @@ there before still runs first. Keep each web build's source maps by its `build`,
 
 Long lists and trees, in packages of their own (`everyui.list`, `everyui.tree`). Each takes the focus as one component
 with a cursor among its rows, so the arrows, a remote's d-pad and the pointer all move the same cursor. At either end an
-arrow leaves it as the focus layer says (`exitFocus` on a container around it).
+arrow leaves it as the focus layer says (`exitFocus` on a container around it). A content home's rows, rails and grids
+(`LazyColumn`, `LazyRail`, `VirtualGrid`, below) are the other kind: their cards take the focus themselves.
 
 ### VirtualList (`everyui.list`)
 
@@ -8295,6 +8304,83 @@ goes with `host`; `made` is the part while it is there.
 A list keeps a row's height for each item it has drawn only while the item is in `items`: a transcript switched from
 one conversation to another lets the first's go. A plain text row (`VirtualList.text`) is three components; its icon,
 badge and badge tail are made only once a row's decoration has them.
+
+### A content home: rows, rails and grids made as they near the view (`LazyColumn`, `LazyRail`, `VirtualGrid`)
+
+A Home of rails, a page of sections or a catalogue's grid is built a part at a time, as it comes near the view, rather
+than all at once: twenty rails of ten cards is a thousand and more nodes and two hundred pictures before anything
+settles, where a phone or a TV shows three rails. Each of the three makes only what is near the view and places what it
+has not made at an estimate, so the scroll is as long as it will be; what is made is placed at the size it draws, and
+the focus moves into what is not made yet by the order of the items, never by what sits nearest.
+
+- **`LazyColumn`** is a column of rows of any kind, each a `LazyItem(key, estimate, build)`. A row is made as the view
+  comes within `ahead` views of it (a half at Full, as far as a `ScrollContainer` draws beside its view; a quarter at
+  Reduced, a tenth at Minimal), and placed as tall as it draws, the rows after it moving with it; one above the view
+  that comes out taller or shorter than its estimate moves the view with it, so what shows stays still. A made row
+  out of sight is not drawn and lets its pictures go, as a `ScrollContainer`'s children do (on the web it is hidden
+  from the page and still found by its find in page). The view is the nearest `ScrollContainer` scrolling up and down
+  that it is in, anywhere in its content (a header above it, a footer below), or the screen. Up and Down go from row
+  to row, making the next first; Left and Right are the rows' own. A row whose key stays among `items` stays as it was
+  made; one whose key goes is taken apart. `releaseBeyond` (views; 0, by default, keeps every made row) takes apart a
+  row that far away, to be made again from its item as it comes back, never the one the focus is in. Its width,
+  unless given one, is its widest made row's; off the web it sets its rows' `visible`.
+- **`LazyRail`** is a `ScrollContainer` along its length whose cards, all `cardWidth` wide and `gap` apart, are made
+  only in its view and `ahead` cards beyond each end (2 at Full, 1 below), more as it scrolls; it is as long as every
+  card would make it, and as tall as its tallest made card with the content's padding, unless given a height. Left and
+  Right make the next card before the focus moves onto it, so the cards run on under the focus, and the focus landing
+  on a card any other way scrolls it into view, which makes those beside it. Right to left it runs from the right, as
+  any rail does. `releaseBeyond` (cards) and `nearEnd` as for the column; `make(i)` is card `i`, made now (to focus it).
+- **`VirtualGrid`** is a `LazyColumn` of rows of cells: `GridColumns.fixed(n)` across, or `GridColumns.adaptive(min)`
+  as many as fit at `min` wide, the cells sharing the width the gaps leave and made by `cell(item, width)`. A row is
+  taken to be `estimate(width)` tall (a poster's 1.5) until one is made, and as tall as the last made one after. Give
+  it a width. Up and Down go to the same place in the next row (its last where that row is shorter), making it first;
+  `makeCell(i)` is cell `i`, its row made now. Appending to `cells` keeps every full row as it was made.
+
+Each has `nearEnd`, told with the count as what is made reaches the last item, once for each count: read the next page
+there and append it. What each makes is the app's own components, made by its function.
+
+#### Building a content home
+
+```scala
+import everyui.list.{GridColumns, LazyColumn, LazyItem, LazyRail, VirtualGrid}
+
+// the page scrolls; a header, the rails, a footer
+val page = new ScrollContainer
+page.size.width := ui.size.width()
+page.size.height := ui.size.height()
+page.content.layout @= Some(VerticalLayout(24.0))
+
+val rails = new LazyColumn(gap = 24.0)
+rails.size.width := page.size.width()
+rails.items @= home.rails.map(r => LazyItem(r.id, 240.0, () => Column(10.0)(heading(r.title), rail(r))))
+page.content.children @= Vector(hero, rails, footer)
+
+def rail(r: Rail): LazyRail[Title] = {
+  val strip = new LazyRail(Var(r.titles), (t: Title) => t.id, cardWidth = 110.0, gap = 12.0)(t => new PosterCard(t))
+  strip.size.width := page.size.width()
+  strip.nearEnd.attach(_ => more(r).foreach(next => strip.items @= strip.items() ++ next))   // a rail that pages
+  strip
+}
+
+// a catalogue: as many across as fit at 110, the page paging on as its end comes near
+val grid = new VirtualGrid(titles, (t: Title) => t.id, GridColumns.adaptive(110.0), 12.0)((t, w) => new PosterCard(t, w))
+grid.size.width := page.size.width()
+grid.estimate = w => w * 1.5 + 40.0            // the poster and its two lines of words
+grid.nearEnd.attach(_ => nextPage())
+```
+
+- Give each item a key that stays the same for the same thing: a rail read again with the same titles keeps its cards.
+- Estimate a row near what it draws (a rail's heading, its cards, the gaps): the closer, the fewer moves as rows are
+  measured, and the truer the scrollbar.
+- Give a card its size before its picture comes (an `ImageView` with `sizedByPicture @= false`, its width and height
+  set), and a picture its own colour or gradient underneath: nothing moves as pictures arrive, and a card reads before
+  its picture does. Ask for the picture at the size it is drawn (`ImageBudget`).
+- A screen's `defaultFocus` names a card that is made: `rail.make(0).get`, or a part of a row made with
+  `column.make(i)`. The always-focused guard holds as before: the row or card holding the focus is never let go.
+- On a TV set `releaseBeyond` (a column's 2 views, a rail's 10 cards) where a Home is long and memory short (a Roku):
+  what is far away is taken apart and made again as it comes back, a rail's scroll starting again at its start.
+- `demo=home` in the example is a phone's Home of 22 rails of 10 cards, lazily or with `lazy=0` all at once;
+  `demo=railperf lazy=1` a TV's.
 
 ### Tree (`everyui.tree`)
 

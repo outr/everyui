@@ -6,6 +6,7 @@ import everyui.async.Task
 import everyui.component.{Component, Container, ImageView, ProgressBar, ScrollContainer, TextView, VideoView}
 import everyui.component.types.{FontWeight, WhiteSpace}
 import everyui.layout.HorizontalLayout
+import everyui.list.{LazyColumn, LazyItem, LazyRail}
 import everyui.net.*
 import everyui.render.Platform
 import reactify.*
@@ -30,6 +31,8 @@ class RailPerfScreen extends UIScreen {
   // the picture rounded by its own corners (`round=1`), the card letting it hang out of it, as a poster that rounds itself
   private val roundPictures: Boolean = Platform.launchArg("round") == "1"
   private val blurPx: Double = Platform.launchArg("blur").toDoubleOption.getOrElse(0.0)
+  // the rails and their cards made as they come near the view (`lazy=1`)
+  private val lazily: Boolean = Platform.launchArg("lazy") == "1"
   /** The card the focus is on, which the hero tells of. */
   private val chosen: Var[Int] = Var(0)
 
@@ -76,18 +79,27 @@ class RailPerfScreen extends UIScreen {
     content.layout @= Some(everyui.layout.VerticalLayout(8.0))
   }
   private var rail: ScrollContainer = makeRail(0)
+  // the rails, made as they come near the view (`lazy=1`), the first of them `rail`
+  private lazy val column: LazyColumn = new LazyColumn(gap = 8.0) {
+    size.width @= 896.0
+  }
+  private def railItem(row: Int, made: => ScrollContainer): LazyItem =
+    LazyItem("rail" + row.toString + "-" + Platform.ticks().toString, 210.0, () => made)
   private var video: Option[VideoView] = None
 
   private def makeRail(row: Int): ScrollContainer = {
-    val r = new ScrollContainer(horizontal = true) {
-      size.width @= 896.0
-      size.height @= 210.0
-      revealAlign @= Some(0.5)
-      revealGlide @= 0.22
-      content.layout @= Some(HorizontalLayout(16.0))
-      content.padding @= 12.0
+    val r =
+      if (lazily) new LazyRail(Var(Vector.tabulate(count)(i => row * count + i)), (i: Int) => i.toString, 120.0, 16.0)(card)
+      else new ScrollContainer(horizontal = true)
+    r.size.width @= 896.0
+    r.size.height @= 210.0
+    r.revealAlign @= Some(0.5)
+    r.revealGlide @= 0.22
+    r.content.padding @= 12.0
+    if (!lazily) {
+      r.content.layout @= Some(HorizontalLayout(16.0))
+      r.content.children @= Vector.tabulate(count)(i => card(row * count + i))
     }
-    r.content.children @= Vector.tabulate(count)(i => card(row * count + i))
     r
   }
 
@@ -161,8 +173,15 @@ class RailPerfScreen extends UIScreen {
       val old = rail
       val start = Platform.ticks()
       rail = makeRail(0)
-      rows.content.children @= rows.content.children().map(c => if (c eq old) rail else c)
-      Component.disposeGradually(List(old), () => Platform.collect(), "rail")
+      if (lazily) {
+        // (the column takes the old apart, as its item goes)
+        val made = rail
+        column.items @= column.items().updated(0, railItem(0, made))
+      }
+      else {
+        rows.content.children @= rows.content.children().map(c => if (c eq old) rail else c)
+        Component.disposeGradually(List(old), () => Platform.collect(), "rail")
+      }
       rail.content.children().headOption.foreach(_.focus())
       Platform.log("railperf rail rebuilt in " + math.round(Platform.ticks() - start).toString + " ms")
     }
@@ -181,7 +200,12 @@ class RailPerfScreen extends UIScreen {
       blur @= blurPx
       everyui.image.Image("/images/logo.png?behind").map(loaded => image @= loaded).startUnit()
     }
-    rows.content.children @= rail +: Vector.tabulate(railCount - 1)(k => makeRail(k + 1))
+    if (lazily) {
+      val first = rail
+      column.items @= railItem(0, first) +: Vector.tabulate(railCount - 1)(k => railItem(k + 1, makeRail(k + 1)))
+      rows.content.children @= Vector(column)
+    }
+    else rows.content.children @= rail +: Vector.tabulate(railCount - 1)(k => makeRail(k + 1))
     container.children ++= List(name, about, synopsis, progress, rows)
   }
 }

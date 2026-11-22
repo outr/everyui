@@ -159,7 +159,10 @@ import everyui.render.Platform
   *              `cycle=<seconds>` lets one go mid-playback and opens another, again and again (PlayerDemo)
   *   railperf   a Home cut down to a move of the focus along a rail: a hero of words over `rails=<k>` rails of `n=<cards>`
   *              ringed cards that glide with the focus; OK takes the rail apart and builds it again, or starts `video=`;
-  *              each move and each frame of 50 ms or more logged, `rokuperf=1` for a Roku's own counts (RailPerfDemo)
+  *              each move and each frame of 50 ms or more logged, `rokuperf=1` for a Roku's own counts, `lazy=1` the
+  *              rails and their cards made as they come near the view (RailPerfDemo)
+  *   home       a content site's Home on a phone: words over `rails=` rails (22) of `n=` poster cards (10), made lazily
+  *              (LazyColumn, LazyRail) or with `lazy=0` all at once, to compare nodes, pictures and time (HomeDemo)
   *   pageopen   a title's page of about 200 components (a hero, tabs, `rails=` rails of `n=` cards) opened on OK and
   *              timed, taken apart after Back; `auto=<opens>` opens and closes it by itself (PageOpenDemo)
   *   dialogclose a menu of about 25 components over a title closed as a player opens in its place, the close and its
@@ -281,6 +284,7 @@ import everyui.render.Platform
   else if (demo == "typing") TypingDemo.run()
   else if (demo == "keyboard") KeyboardDemo.run()
   else if (demo == "railperf") RailPerfDemo.run()
+  else if (demo == "home") HomeDemo.run()
   else if (demo == "playerbar") PlayerBarDemo.run()
   else if (demo == "httpperf") HttpPerfDemo.run()
   else if (demo == "pageopen") PageOpenDemo.run()

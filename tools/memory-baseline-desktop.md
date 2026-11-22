@@ -11,6 +11,8 @@
 | VideoView, playing a clip | video | 1.0 | 1.0 | 0.0 | 6732 |
 | ScrollContainer of cards | card | 4.0 | 4.0 | 0.0 | 24920 |
 | VirtualList of 1,000 rows | list | 81.0 | 81.0 | 0.0 | 645162 |
+| Home of 22 rails of 10 cards, all made | home | 486.0 | 486.0 | 0.0 | 2926360 |
+| Home of 22 rails of 10 cards, made near the view | home | 101.0 | 101.0 | 0.0 | 633344 |
 | DataTable of 100 rows | table | 148.0 | 254.0 | 0.0 | 1476202 |
 | DataTable of 100 rows in a page | table | 88.0 | 144.0 | 0.0 | 932230 |
 | TabGroups | tab group | 20.0 | 19.0 | 0.0 | 125933 |
