@@ -234,14 +234,19 @@ class RenderNode(val el: html.Element) {
     WebHover.changed()
   }
 
+  // whether it is an `img` (`Nodes.image`)
+  private def isImage: Boolean = el.tagName == "IMG"
   def setWidth(width: Double): Unit = {
     counted("width", width.toString)
     el.style.width = width.toString + "px"
+    // a picture's size stated on the `img` too, as the browser's lazy loading and its layout like it before it comes
+    if (isImage) el.setAttribute("width", math.round(width).toString)
     WebHover.changed()
   }
   def setHeight(height: Double): Unit = {
     counted("height", height.toString)
     el.style.height = height.toString + "px"
+    if (isImage) el.setAttribute("height", math.round(height).toString)
     WebHover.changed()
   }
 
@@ -2369,9 +2374,15 @@ object Nodes {
     new RenderNode(el)
   }
 
-  /** An image node — an `<img>`. */
+  /** An image node — an `<img>`, asked for only as the browser sees it near the view (`loading="lazy"`: a card built
+    * ahead of the view, or culled out of it, fetches nothing yet) and decoded off the page's thread (`decoding="async"`),
+    * with its box's width and height stated as well (`setWidth`, `setHeight`). An older engine (Chromium 38) passes over
+    * both and fetches at once; the box is EveryUI's, sized before the picture comes either way, so nothing moves. */
   def image(uri: String, width: Double, height: Double): RenderNode = {
     val el = dom.document.createElement("img").asInstanceOf[html.Image]
+    // (before the source: set after it, a picture is already on its way)
+    el.setAttribute("loading", "lazy")
+    el.setAttribute("decoding", "async")
     el.src = uri
     // decoration until the app says what it shows (`ImageView.alt`): a picture with no alt at all is read out by its file name
     el.setAttribute("alt", "")
