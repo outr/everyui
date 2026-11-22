@@ -8,13 +8,17 @@ import everyui.ui
   * seeking and going back does (PlayerDemo with `rounds=<n>`): each round a screen with a VideoView is put up, the
   * sidecars in `side=` given (`url|label|language`, comma separated), `src=` opened `start=` seconds in (a resume),
   * and once it is ready, a step (`step=` seconds, 2) apart: the second sound track chosen where there is one, each
-  * text track shown in turn, then none, a seek 10 s on, a step for it to land, and the screen left and taken apart.
+  * text track shown in turn, then none, a seek 10 s on, a step for it to land, the video moved into a mini player's
+  * box (built off the page and put on it, as NaboTV's picture-in-picture is), a step for it to play on there, and the
+  * screen and the box left and taken apart.
   * Logs, for a check to follow (webcheck's PlayerCheck):
   *
   *   player round <n> ready at <playhead> tracks=<kind:id:language:label|...>
   *   player round <n> audio <id> heard <diagnostics' audio tracks>
   *   player round <n> text <id> <label>          and   player round <n> text off
   *   player round <n> sought <playhead>
+  *   player round <n> moved at <playhead>
+  *   player round <n> after move <playhead> heard <diagnostics' audio tracks>
   *   player round <n> left held=<MediaSupport.held>
   *   player rounds done held=<MediaSupport.held> */
 object PlayerRounds {
@@ -41,14 +45,33 @@ object PlayerRounds {
       ui.children += screen
       var ready = false
       var left = false
+      var mini: Option[Container] = None
       def later(steps: Double, f: () => Unit): Unit = Platform.after(step * steps, () => if (!left) f())
       def leave(): Unit = if (!left) {
         left = true
         ui.children -= screen
         screen.dispose()
+        mini.foreach { box =>
+          ui.children -= box
+          box.dispose()
+        }
         say(n, "left held=" + MediaSupport.held.toString)
         if (n >= rounds) Platform.log("player rounds done held=" + MediaSupport.held.toString)
         else Platform.after(0.5, () => round(n + 1))
+      }
+      // the picture moved into a small box in the corner, the box made off the page and then put on it
+      def move(): Unit = {
+        val box = new Container
+        box.size.width @= 480.0
+        box.size.height @= 270.0
+        box.position.left := ui.size.width() - 500.0
+        box.position.top @= 20.0
+        say(n, "moved at " + tenths(video.playhead()))
+        video.size.width @= 480.0
+        video.size.height @= 270.0
+        box.children += video
+        ui.children += box
+        mini = Some(box)
       }
       video.events { e =>
         if (e == "error") say(n, "error " + video.diagnostics.failure)
@@ -74,7 +97,10 @@ object PlayerRounds {
           })
           later(3.0 + texts.size, () => video.seek(start + 10.0))
           later(4.0 + texts.size, () => say(n, "sought " + tenths(video.playhead())))
-          later(5.0 + texts.size, () => leave())
+          later(5.0 + texts.size, () => move())
+          later(7.0 + texts.size, () => say(n, "after move " + tenths(video.playhead()) + " heard " +
+            video.diagnostics.audioTracks))
+          later(7.5 + texts.size, () => leave())
         }
       }
       video.sidecars @= sides

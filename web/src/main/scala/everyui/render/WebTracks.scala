@@ -40,6 +40,8 @@ final class WebTracks(el: html.Element) {
   private var shown = ""
   // the element's own text track chosen ("" none), once one is
   private var ownText: Option[String] = None
+  // the element's own sound track to hear once it lists it again (`restoreOwn`), -1 none
+  private var ownAudio = -1
   // each source a new round, so what an older one's fetch answers late is let go
   private var round = 0
 
@@ -80,6 +82,7 @@ final class WebTracks(el: html.Element) {
     renditions = Map.empty
     playlist = ""
     ownText = None
+    ownAudio = -1
     if (shown.startsWith("hls")) shown = ""
     unmake(_ => true)
   }
@@ -90,6 +93,17 @@ final class WebTracks(el: html.Element) {
   /** The element's own tracks of `kind`. */
   def own(kind: String): List[MediaTrack] = ownList(kind).zipWithIndex.map { case (t, i) =>
     MediaTrack(i.toString, kind, text(t.language), text(t.label), if (text(t.kind) == "captions") "CC" else "")
+  }
+
+  /** The element's own text track chosen ("" none), once one is. */
+  def ownChosen: Option[String] = ownText
+
+  /** The element's own sound track `audio` (its place, -1 to leave it) heard, and text track `text` shown, once the
+    * element lists them again: a source opened again as it was (`WebMedia`, after a move). */
+  def restoreOwn(audio: Int, text: Option[String]): Unit = {
+    ownAudio = audio
+    ownText = text
+    enforce()
   }
 
   /** The place of the element's own sound track heard, -1 for none. */
@@ -170,6 +184,10 @@ final class WebTracks(el: html.Element) {
     }
     ownText.foreach { id =>
       ownList(MediaTrack.Text).zipWithIndex.foreach { case (t, i) => mode(t, if (id == i.toString) "showing" else "disabled") }
+    }
+    if (ownAudio >= 0 && ownList(MediaTrack.Audio).size > ownAudio) {
+      selectOwn(MediaTrack.Audio, ownAudio.toString)
+      ownAudio = -1
     }
   }
   private def mode(t: js.Dynamic, to: String): Unit =

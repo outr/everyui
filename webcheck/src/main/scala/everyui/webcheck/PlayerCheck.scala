@@ -29,6 +29,10 @@ import scala.concurrent.duration.*
   *  - no text track shows before one is chosen;
   *  - each text track chosen is the one the element shows (its `textTracks`, by label), and then none is;
   *  - the seek landed at 30 (or a little on, played since), said and on the element;
+  *  - moved into a mini player's box (made off the page, then put on it), it plays on in its new place from where it
+  *    was, said and on the element, the sound track chosen still heard and no text shown; before Chromium 62 every
+  *    box holding it up to the app's root is marked `everyui-video-path`, and no box is marked that holds no video
+  *    with a source (`VideoPath`);
   *  - left, nothing is held: `MediaSupport.held` 0, at most one `<video>` on the page and none with a source, no
   *    sidecar `<track>`, and no MediaSource open (each the page makes counted by a stand-in for the constructor).
   *
@@ -44,8 +48,13 @@ import scala.concurrent.duration.*
   * (a TV's, `http://<tv>:9998`) rather than starting one, its media served on `--host <address>` (the server's
   * address as the browser reaches it, 127.0.0.1 else); the stubs are not put in it.
   *
+  * `--drop` stands in for webOS 3.5's Chromium 38, which lets a video's source go as the element is moved (nothing
+  * loaded, no source, the playhead at 0): each loaded `<video>` put on the page has its source taken away and given
+  * back, and each move must be heard opened again where it was (`MoveReset`). Without it, no move may open a source
+  * again.
+  *
   *   PlayerCheck <page dir> <media dir> [--chrome <binary> | --attach <inspector> --host <address>] [--webos [--tv]]
-  *     [--rounds <n>] [--src <path under media>]
+  *     [--rounds <n>] [--src <path under media>] [--drop]
   *
   * The page dir is the example's web build with hls.js beside it (`everyui-hls/<version>/`); the media dir holds
   * `hls/master.m3u8` (H.264 with two AAC renditions and two WebVTT subtitle renditions), `clip.webm` (VP8 and Opus),
@@ -132,9 +141,36 @@ object PlayerCheck extends RapidApp {
       |  }, true);
       |})();""".stripMargin
 
+  // webOS 3.5's Chromium 38 as a move finds it (`--drop`): a loaded video put on the page (itself, or in a box) has its
+  // source taken away and given back, which leaves it with nothing loaded and its playhead at 0
+  private val drop =
+    """(function () {
+      |  window.everyuiDrops = 0;
+      |  var set = Element.prototype.setAttribute;
+      |  function dropped(node) {
+      |    var all = node.tagName == "VIDEO" ? [node] : node.querySelectorAll ? [].slice.call(node.querySelectorAll("video")) : [];
+      |    all.forEach(function (v) {
+      |      if (!document.contains(v) || v.readyState == 0 || !v.hasAttribute("src")) return;
+      |      var src = v.getAttribute("src");
+      |      window.everyuiDrops++;
+      |      v.removeAttribute("src");
+      |      v.load();
+      |      set.call(v, "src", src);
+      |    });
+      |  }
+      |  ["appendChild", "insertBefore"].forEach(function (name) {
+      |    var put = Node.prototype[name];
+      |    Node.prototype[name] = function (child) {
+      |      var made = put.apply(this, arguments);
+      |      dropped(child);
+      |      return made;
+      |    };
+      |  });
+      |})();""".stripMargin
+
   override def run(args: List[String]): Task[Unit] = {
     val usage = "usage: PlayerCheck <page dir> <media dir> [--chrome <binary> | --attach <inspector> --host <address>] " +
-      "[--webos [--tv]] [--rounds <n>] [--src <path>]"
+      "[--webos [--tv]] [--rounds <n>] [--src <path>] [--drop]"
     def option(name: String): Option[String] = args.dropWhile(_ != name).drop(1).headOption
     val page = Paths.get(args.headOption.getOrElse(sys.error(usage))).toAbsolutePath.normalize()
     val media = Paths.get(args.lift(1).getOrElse(sys.error(usage))).toAbsolutePath.normalize()
@@ -144,6 +180,7 @@ object PlayerCheck extends RapidApp {
     val tvPlayer = args.contains("--tv") && attach.isEmpty
     val webos = args.contains("--webos") || tvPlayer
     val rounds = option("--rounds").map(_.toInt).getOrElse(20)
+    val dropping = args.contains("--drop") && attach.isEmpty
     val server = serve(page, media, host)
     val origin = "http://" + host + ":" + server.getAddress.getPort
     def browsing[A](f: DevTools => Task[A]): Task[A] = attach match {
@@ -194,6 +231,14 @@ object PlayerCheck extends RapidApp {
         "document.querySelectorAll('track[id^=everyui-side-]').length, " +
         "(window.everyuiSources || []).filter(function (s) { return s.readyState != 'closed'; }).length, " +
         "(window.everyuiSources || []).length]"
+      // before Chromium 62, every box from the video up to the app's root marked, and none marked holding no video with
+      // a source; elsewhere nothing to mark
+      val marks = "var m = /Chrome\\/(\\d+)/.exec(navigator.userAgent); if (!m || +m[1] > 61) return 'unmarked engine'; " +
+        "var v = document.querySelector('video'), missing = 0; " +
+        "for (var b = v.parentNode; b && b.id != 'app'; b = b.parentNode) if (!b.classList.contains('everyui-video-path')) missing++; " +
+        "var stale = [].slice.call(document.querySelectorAll('.everyui-video-path'))" +
+        ".filter(function (b) { return !b.querySelector('video[src]'); }).length; " +
+        "return missing == 0 && stale == 0 ? 'marked' : 'missing ' + missing + ' stale ' + stale"
       def number(text: String, after: String): Double =
         text.split(after).lift(1).flatMap(_.trim.split(' ').headOption).flatMap(_.toDoubleOption).getOrElse(-1.0)
       val h264 = value("return !!window.MediaSource && " +
@@ -201,7 +246,8 @@ object PlayerCheck extends RapidApp {
       for {
         playsH264 <- h264
         _ <- if (attach.nonEmpty) Task.unit else browser.addScript(counting + (if (webos) "\n" + webOS else "") +
-          (if (tvPlayer) "\n" + tv + (if (playsH264) "" else "\nwindow.everyuiStandIn = '/media/clip.webm';") else ""))
+          (if (tvPlayer) "\n" + tv + (if (playsH264) "" else "\nwindow.everyuiStandIn = '/media/clip.webm';") else "") +
+          (if (dropping) "\n" + drop else ""))
         // ---- what it decodes ----
         _ <- browser.navigate(origin + "/app/index.html?demo=decodes")
         last <- line("decodes: atmos = ")
@@ -252,6 +298,17 @@ object PlayerCheck extends RapidApp {
             sought <- line(p + "sought ")
             // on the element too, at its segment's start or on from there (a TV's player sprang back once)
             landed <- becomes("return " + at + " >= 28 && " + at + " < 40", 1.0)
+            movedLine <- line(p + "moved at ")
+            was = movedLine.map(number(_, "moved at ")).getOrElse(-1.0)
+            // in the box, playing on from where it was (a little on, played since)
+            playsOn <- becomes("var v = document.querySelector('video'); return !!v && v.parentNode.offsetWidth == 480 && " +
+              "!v.paused && v.readyState >= 2 && v.currentTime >= " + (was - 2.0) + " && v.currentTime < " + (was + 8.0), 4.0)
+            afterLine <- line(p + "after move ")
+            said = afterLine.exists(l => number(l, "after move ") >= was - 2.0 && number(l, "after move ") < was + 8.0)
+            // with the sound track chosen still heard, and still no text shown
+            still <- value(showing + ".length == 0").map(_.asBoolean)
+            chosenKept = still && (audio.size < 2 || afterLine.exists(_.contains(audio(1)(2) + "*")))
+            marked <- value(marks).map(_.asString)
             leftLine <- line(p + "left held=")
             empty <- becomes("var h = (function () { " + held + " })(); " +
               "return h[0] <= 1 && h[1] == 0 && h[2] == 0 && h[3] == 0", 3.0)
@@ -260,11 +317,11 @@ object PlayerCheck extends RapidApp {
             val ok = (resumed, heard && kept, shown.forall(identity), off,
               landed && sought.exists(s => number(s, "sought ") >= 29.0 && number(s, "sought ") <= 34.0),
               leftLine.exists(_.endsWith("held=0")),
-              empty, unasked)
+              empty, unasked, playsOn && said && chosenKept && marked != "" && !marked.startsWith("missing"))
             println("[player] round " + n + ": tracks " + tracks.map(t => t(0) + ":" + t(3)).mkString(", ") +
               "; resumed " + ok._1 + ", sound " + heard + " kept " + kept + ", unasked none " + unasked + ", text " +
-              shown.mkString("/") + ", off " + ok._4 + ", seek " + ok._5 + ", let go " + ok._6 + ", page " +
-              counts.toString)
+              shown.mkString("/") + ", off " + ok._4 + ", seek " + ok._5 + ", moved at " + was + " plays on " + playsOn +
+              " said " + said + " tracks kept " + chosenKept + " " + marked + ", let go " + ok._6 + ", page " + counts.toString)
             System.out.flush()
             (ok, texts.size, audio.size)
           }
@@ -273,6 +330,7 @@ object PlayerCheck extends RapidApp {
         end <- becomes("var h = (function () { " + held + " })(); return h[0] == 0 && h[3] == 0", 5.0)
         made <- value(held)
         stubbed <- value("return [window.everyuiResets, window.everyuiSprings, window.everyuiShownUnasked]")
+        drops <- value("return window.everyuiDrops || 0")
       } yield {
         check("every round opened where it was asked to (20 s): " + results.count(_._1._1) + " of " + rounds,
           results.forall(_._1._1))
@@ -283,6 +341,12 @@ object PlayerCheck extends RapidApp {
           results.forall(r => r._1._3 && r._2 > 0))
         check("and then none", results.forall(_._1._4))
         check("each seek landed", results.forall(_._1._5))
+        check("each move into another box played on from where it was, its tracks as chosen, its boxes marked where they are to be",
+          results.forall(_._1._9))
+        val reopened = all.count(_.contains("media: the source was let go as the element moved"))
+        if (dropping) check("each move's source let go (" + drops.asInt + ") was opened again where it was (" + reopened +
+          ")", drops.asInt >= rounds && reopened >= rounds)
+        else check("no move opened a source again (" + reopened + ")", reopened == 0)
         check("each round left with nothing held (MediaSupport.held 0, no source, track or open MediaSource; " +
           "one <video> at most)", results.forall(r => r._1._6 && r._1._7))
         check("at the end no <video> and no MediaSource open (" + made.asVector(4).asInt + " made in all)",

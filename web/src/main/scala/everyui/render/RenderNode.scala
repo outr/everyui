@@ -223,6 +223,8 @@ class RenderNode(val el: html.Element) {
         case _: Throwable => false
       })
     if (!moved) el.insertBefore(child, before)
+    // a video moved with its source, itself or in a box moved, looked at where an engine lets the source go (MoveReset)
+    WebMedia.placed(child)
     WebHover.changed()
   }
 
@@ -959,7 +961,9 @@ class RenderNode(val el: html.Element) {
   private def media: Option[js.Dynamic] =
     if (el.tagName == "VIDEO" || el.tagName == "AUDIO") Some(el.asInstanceOf[js.Dynamic]) else None
   // the playing itself, the browser's own or hls.js's (WebMedia)
-  private lazy val webMedia = new WebMedia(el)
+  private lazy val webMedia = new WebMedia(el, Option(videoPath))
+  // a video's boxes marked before Chromium 62 (VideoPath, `Nodes.media`), null elsewhere
+  private[render] var videoPath: VideoPath = null
 
   /** Sent with every request an HLS stream makes through hls.js; the browser's own player sends none, so a plain
     * file's token must ride in its address. */
@@ -2196,25 +2200,20 @@ object Nodes {
     el.style.setProperty("object-fit", "cover")
     el.setAttribute("playsinline", "")
     el.setAttribute("preload", "auto")
-    if (tag == "video" && WebFeatures.videoSquashes) overVideo(el)
-    new RenderNode(el)
+    val node = new RenderNode(el)
+    if (tag == "video" && WebFeatures.videoSquashes) node.videoPath = overVideo(el)
+    node
   }
 
-  // each box holding a video, up to the app's root, marked once it is on the page and loading, so what comes after any
-  // of them is a layer of its own too (`overVideoStyle`); and unmarked as its source is let go (`emptied`), where it
-  // holds no other video with one, so what comes after it costs no layer once the picture has gone
-  private def overVideo(el: html.Element): Unit = {
-    def path(f: html.Element => Unit): Unit = {
-      var at = el.parentNode
-      while (at != null && at.nodeType == dom.Node.ELEMENT_NODE && at.asInstanceOf[html.Element].id != "app") {
-        f(at.asInstanceOf[html.Element])
-        at = at.parentNode
-      }
-    }
-    val mark: js.Function1[dom.Event, Unit] = _ => path(_.classList.add("everyui-video-path"))
-    List("loadstart", "playing").foreach(el.addEventListener(_, mark))
-    el.addEventListener("emptied", (_: dom.Event) => path(box =>
-      if (box.querySelector("video[src]") == null) box.classList.remove("everyui-video-path")))
+  // each box holding a video, up to the app's root, marked once it is on the page and loading, and as it is moved with
+  // a source (WebMedia), so what comes after any of them is a layer of its own too (`overVideoStyle`); and unmarked as
+  // its source is let go (`emptied`), or as it leaves the box, where the box holds no other video with one, so what
+  // comes after it costs no layer once the picture has gone
+  private def overVideo(el: html.Element): VideoPath = {
+    val path = new VideoPath(el)
+    List("loadstart", "playing").foreach(el.addEventListener(_, (_: dom.Event) => path.mark()))
+    el.addEventListener("emptied", (_: dom.Event) => path.clear())
+    path
   }
 
   /** A form (`everyui.form.Form`), a real `<form>` placed as a container is, so the browser and password managers see

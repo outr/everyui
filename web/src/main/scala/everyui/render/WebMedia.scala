@@ -15,8 +15,14 @@ import scala.scalajs.js
   * HLS but lists no tracks (recent Chrome), where it has none (Firefox), and wherever there are [[headers]] to send,
   * hls.js plays it: it sends them with every playlist, segment and key it asks for. The browser's own player sends
   * none, so a plain file (an `.mp4`) can carry what it needs only in its address. hls.js is loaded the first time a
-  * source needs it, and each source's player is destroyed when the source changes or goes. */
-final class WebMedia(el: html.Element) {
+  * source needs it, and each source's player is destroyed when the source changes or goes.
+  *
+  * Moved on the page (put in another box, or a box holding it moved: `RenderNode.place`), it is looked at at once and
+  * a moment after ([[MoveReset]]): where the engine let the source go in the move (webOS 3.5), it is opened again where
+  * it was, with its tracks, its sound and its rate as they were, playing or paused as it was (a brief wait, then
+  * playing); where the engine only paused it (Chromium 38 pauses an element taken off the page, and nothing starts it
+  * again), it plays on; and its boxes are marked again ([[VideoPath]]). */
+final class WebMedia(private[render] val el: html.Element, path: Option[VideoPath] = None) {
   private val m = el.asInstanceOf[js.Dynamic]
 
   /** Sent with every request hls.js makes for the next source. */
@@ -52,8 +58,17 @@ final class WebMedia(el: html.Element) {
   // where the source opened is to start, set again until the player has played on from there (ResumeSeek)
   private var landing = new ResumeSeek(0.0)
   // a track chosen from the playlist where the element plays it without listing it: the source is opened again through
-  // hls.js, there, with it (kind, place)
-  private var pick: Option[(String, Int)] = None
+  // hls.js, there, with it (its kind to its place); and after a move let its source go, hls.js's own choices
+  private var pick: Map[String, Int] = Map.empty
+  // whether the source opened has loaded (its metadata in), and where it was last heard to be while it had
+  private var loaded = false
+  private var known = 0.0
+  // each move a new one, and each seek or track chosen: a look after a move made before it is let go
+  private var moves = 0
+  // the volume, muting and rate to put back as a source opened again after a move loads (`restore`), and how many
+  // times one has been (on the element as `data-everyui-restores`, for a look from a TV's inspector)
+  private var kept: Option[(Double, Boolean, Double)] = None
+  private var restores = 0
 
   el.addEventListener("error", (_: dom.Event) => refused())
   // the browser pausing it of itself while it is meant to play: taken off the page (a media element is paused as it is
@@ -69,6 +84,11 @@ final class WebMedia(el: html.Element) {
   // timeupdate), and the text tracks' modes set again as it loads
   for (event <- List("loadedmetadata", "canplay", "playing", "timeupdate"))
     el.addEventListener(event, (_: dom.Event) => resumed(event))
+  el.addEventListener("loadedmetadata", (_: dom.Event) => if (url.nonEmpty) {
+    loaded = true
+    kept.foreach(put)
+    kept = None
+  })
 
   /** Hear `error`, and `retry` while hls.js retries a load; the element's own events are heard where they happen. */
   def listen(f: String => Unit): Unit = listeners = listeners :+ f
@@ -80,7 +100,7 @@ final class WebMedia(el: html.Element) {
       tell("mixing")
     }
     else if (!url.contains(to)) {
-      pick = None
+      pick = Map.empty
       val at = start
       start = 0.0
       open(to, at, through = false)
@@ -113,6 +133,8 @@ final class WebMedia(el: html.Element) {
     placed(seconds)
     landing = new ResumeSeek(seconds)
     keeping = false
+    known = seconds
+    moves += 1
   }
 
   // the playhead set to `seconds`, and whether the engine took it: before Chromium 39 or so, and on a TV, a time set
@@ -127,6 +149,7 @@ final class WebMedia(el: html.Element) {
   // after a sound track chosen, playing or paused as it was
   private def resumed(event: String): Unit = if (url.nonEmpty) {
     if (event != "timeupdate") extra.enforce()
+    if (m.readyState.asInstanceOf[Int] > 0 && !m.seeking.asInstanceOf[Boolean]) known = position
     landing.heard(event, m.currentTime.asInstanceOf[Double], m.seeking.asInstanceOf[Boolean]).foreach { at =>
       if (event != "loadedmetadata") everyui.scribe.info("media: landing at " + at.toInt + " s again, the player at " +
         m.currentTime.asInstanceOf[Double].toInt + " s (" + event + ")")
@@ -211,6 +234,7 @@ final class WebMedia(el: html.Element) {
     * loaded (the element's own source kept until then, and kept where it cannot be). */
   def select(kind: String, id: String): Unit = {
     val audio = kind == MediaTrack.Audio
+    moves += 1
     if (!audio) extra.show(if (id.startsWith("side")) id else "")
     val i = if (id.startsWith("side")) -1 else id.toIntOption.getOrElse(-1)
     hls match {
@@ -257,7 +281,7 @@ final class WebMedia(el: html.Element) {
             everyui.scribe.info("media: " + kind + " track " + i + " of the playlist chosen: opening it again " +
               "through hls.js at " + position.toInt + " s")
             open(to, position, through = true)
-            pick = Some(kind -> i)
+            pick += kind -> i
           }
         }
       }
@@ -464,11 +488,11 @@ final class WebMedia(el: html.Element) {
   private def read(h: js.Dynamic): Unit = js.timers.setTimeout(0) {
     if (hls.exists(_ eq h)) picked(MediaTrack.Text).orElse(chosen(h.subtitleTracks, wanted._2)).foreach { i =>
       h.subtitleTrack = i
-      h.subtitleDisplay = true
+      h.subtitleDisplay = i >= 0
     }
   }
 
-  private def picked(kind: String): Option[Int] = pick.filter(_._1 == kind).map(_._2)
+  private def picked(kind: String): Option[Int] = pick.get(kind)
 
   // a failed load hls.js will try again is a retry; a media error is recovered from once; anything else fatal ends it
   private def error(h: js.Dynamic, data: js.Dynamic): Unit = if (hls.exists(_ eq h)) {
@@ -529,6 +553,8 @@ final class WebMedia(el: html.Element) {
     landing = new ResumeSeek(0.0)
     keeping = false
     played = false
+    loaded = false
+    kept = None
     url = None
     tries = 0
     allowed = false
@@ -554,6 +580,63 @@ final class WebMedia(el: html.Element) {
     }
   }
 
+  // ---- moved ----
+
+  /** It, or a box holding it, put somewhere on the page (`RenderNode.place`), with a source: its boxes marked again,
+    * and it looked at at once and a moment after ([[MoveReset.checks]]), each look let go once another move, a seek or
+    * a track chosen has come, or another source. */
+  def moved(): Unit = if (url.nonEmpty) {
+    path.foreach(_.mark())
+    moves += 1
+    val move = moves
+    val source = opened
+    val was = known
+    def look(): Unit = if (move == moves && source == opened && WebFeatures.connected(el)) after(was)
+    look()
+    MoveReset.checks.foreach(ms => dom.window.setTimeout(() => look(), ms))
+  }
+
+  // after a move: opened again where it was if the engine let the source go, else started again if it paused it
+  private def after(was: Double): Unit = {
+    val ready = m.readyState.asInstanceOf[Int]
+    val network = m.networkState.asInstanceOf[Int]
+    val now = m.currentTime.asInstanceOf[Double]
+    if (MoveReset.dropped(loaded, was, ready, network, now, m.seeking.asInstanceOf[Boolean], m.loop.asInstanceOf[Boolean])) {
+      everyui.scribe.warn("media: the source was let go as the element moved (ready " + ready + ", network " + network +
+        ", at " + now.toInt + " s): opening it again at " + was.toInt + " s")
+      restore(was)
+    }
+    else if (meantToPlay) {
+      everyui.scribe.info("media: paused as the element moved: playing on at " + now.toInt + " s")
+      resume()
+    }
+  }
+
+  // the source opened again `at` seconds in, as it was: through hls.js where it played through it, with its tracks
+  // (hls.js's choice, the element's own, the sidecar shown), the volume, muting and rate, playing or paused as asked
+  private def restore(at: Double): Unit = url.foreach { to =>
+    val sound = (m.volume.asInstanceOf[Double], m.muted.asInstanceOf[Boolean], m.playbackRate.asInstanceOf[Double])
+    val chosen = hls.map(h => Map(MediaTrack.Audio -> h.audioTrack.asInstanceOf[Int],
+      MediaTrack.Text -> h.subtitleTrack.asInstanceOf[Int]).filter(c => c._1 == MediaTrack.Text || c._2 >= 0))
+    val own = (extra.ownHeard, extra.ownChosen)
+    val was = played
+    open(to, at, through = hls.nonEmpty)
+    chosen.foreach(c => pick = c)
+    extra.restoreOwn(own._1, own._2)
+    played = was
+    known = at
+    put(sound)
+    kept = Some(sound)
+    restores += 1
+    el.setAttribute("data-everyui-restores", restores.toString)
+  }
+
+  private def put(sound: (Double, Boolean, Double)): Unit = {
+    m.volume = sound._1
+    m.muted = sound._2
+    m.playbackRate = sound._3
+  }
+
   /** Its end, as the element says it: the end where the source played, and otherwise an error, as on every platform
     * (a source that never played has not been watched). */
   def ended(f: String => Unit): Unit = if (played) f("ended") else fail("ended without playing")
@@ -574,6 +657,11 @@ object WebMedia {
   // the players holding a source, and hls.js's players (each with its MediaSource) not yet destroyed
   private[render] var holding: Set[WebMedia] = Set.empty
   private[render] var scripts: Int = 0
+  /** `child` put on the page (`RenderNode.place`): each player holding a source in it (it, or one inside it) told it
+    * moved. */
+  def placed(child: dom.Element): Unit =
+    if (holding.nonEmpty && WebFeatures.connected(child))
+      holding.toList.filter(w => (w.el eq child) || child.contains(w.el)).foreach(_.moved())
 
   /** What the page's media elements hold now: how many have a source open, and how many hls.js players (each with
     * its MediaSource and buffers) are alive. Both 0 once every player is let go: a check of teardown, for a spec,
