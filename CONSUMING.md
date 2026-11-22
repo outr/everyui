@@ -5918,32 +5918,45 @@ the original's `Content-Type`, and `Vary: Accept-Encoding`; `web-assets.json`'s 
 
 The full link runs Scala.js's minifier on both builds: `everyuiWebMinify`, true by default (sbt-scalajs already
 turns it on for `fullLinkJS`, so `withMinify(true)` in a build changes nothing, and `show` reports it on because it
-is). `everyuiWebMinify := false` turns it off, for a readable release build. Closure (`withClosureCompilerIfAvailable`,
-deprecated in Scala.js since 1.21 and to be removed) goes further on the JavaScript build only; the WebAssembly link
-ignores it. Measured with Scala.js 1.22.0, NoModule, ES2021 (brotli -q 11, gzip -9):
+is). `everyuiWebMinify := false` turns it off, for a readable release build.
+
+**Closure is on by default since 0.1.45** (`everyuiWebClosure`, true): the JavaScript build's `fullLinkJS` runs Closure
+Compiler after the minifier, which takes about a third more off main.js over the wire, and so changes every app's
+release main.js. Turn it off with
+
+```scala
+everyuiWebClosure := false
+```
+
+It never reaches `fastLinkJS` (`WebStage.Fast`) or the WebAssembly build, which Closure cannot read, and is left off
+where Scala.js refuses it: an ES module (`ModuleKind.ESModule`, and so any split into modules) and Longs as BigInts
+(`allowBigIntsForLongs`). It works with the ES 5.1 link for webOS 3, whose `language_out` it follows; EveryUI's
+OldChromeCheck and WebOSCheck run the example so linked in Chromium 38. Scala.js has deprecated Closure since 1.21 (the
+plugin turns it on without the warning). A build that sets `withClosureCompilerIfAvailable` itself on
+`Compile / fullLinkJS / scalaJSLinkerConfig` keeps what it sets. Closure takes 16 to 18 seconds to link where the
+minified link takes one or two. Measured with Scala.js 1.22.0, NoModule, ES2021 (brotli -q 11, gzip -9):
 
 | Build | DataWrangler dashboard: raw / gzip / brotli | EveryUI example app: raw / gzip / brotli |
 |---|---|---|
 | main.js, not minified | 5.32 MB / 634 KB / 412 KB | 7.03 MB / 805 KB / 514 KB |
-| main.js, minified (the default) | 3.33 MB / 487 KB / 335 KB | 4.13 MB / 606 KB / 416 KB |
-| main.js, Closure | 1.07 MB / 287 KB / 224 KB | 1.40 MB / 363 KB / 284 KB |
+| main.js, minified (`everyuiWebClosure := false`) | 3.33 MB / 487 KB / 335 KB | 4.13 MB / 606 KB / 416 KB |
+| main.js, Closure (the default) | 1.07 MB / 287 KB / 224 KB | 1.40 MB / 363 KB / 284 KB |
 | main.wasm, not minified | 4.39 MB / 902 KB / 663 KB | 5.85 MB / 1.11 MB / 816 KB |
 | main.wasm, minified (the default) | 1.58 MB / 473 KB / 353 KB | 1.99 MB / 597 KB / 447 KB |
 
-The WebAssembly build's own main.js adds 48 KB (7 KB brotli) to 65 KB (10 KB). Closure takes 16 to 18 seconds to
-link where the minified link takes one or two.
+Linked through the plugin in 0.1.45, the example app with everything it carries (the network module, every demo) went
+from 14.24 MB / 1,920 KB / 1,206 KB to 5.32 MB / 1,164 KB / 866 KB, the memory page from 5.71 MB / 811 KB / 537 KB to
+2.13 MB / 491 KB / 380 KB, and thestreams.tv's app from 4.37 MB / 444 KB Brotli to 1.52 MB / 310 KB. The WebAssembly
+build's own main.js adds 48 KB (7 KB brotli) to 65 KB (10 KB).
 
-Keep the default. Serve the bundle compressed, Brotli where the browser takes it, from the files `seal` (or
-`WebBundle.precompress`) wrote: that matters more than any of these. Closure's JavaScript is a third smaller again
-over the wire, so an app that ships `WebTarget.Js` alone and counts every kilobyte may keep it on
-`Compile / fullLinkJS / scalaJSLinkerConfig` while Scala.js still has it (with the minifier left on, which makes
-Closure's output 2% smaller still); an app on `WebTarget.Both` sends most browsers the WebAssembly build, which
+Serve the bundle compressed, Brotli where the browser takes it, from the files `seal` (or `WebBundle.precompress`)
+wrote: that matters more than any of these. An app on `WebTarget.Both` sends most browsers the WebAssembly build, which
 Closure never touches.
 
 A minifier run over the linked main.js would take more off: esbuild took NaboTV's from 1,350 KB to 976 KB. None
 runs inside sbt without a Node toolchain: esbuild and terser are Node's, and Closure Compiler (Java), given the
 linked file, stops at the Unicode escapes Scala.js writes in identifiers (`_\uff3fself`), so it runs only as the
-linker's own (`withClosureCompilerIfAvailable`, above), which takes NaboTV's main.js from 1,350 KB to 924 KB.
+linker's own (`everyuiWebClosure`, above), which takes NaboTV's main.js from 1,350 KB to 924 KB.
 
 ## The desktop, Android, the Roku, the Apple TV and LG's TVs
 

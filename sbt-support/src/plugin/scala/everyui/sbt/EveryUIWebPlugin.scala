@@ -1,11 +1,12 @@
 package everyui.sbt
 
-import org.scalajs.linker.interface.{ESVersion, ModuleKind}
+import org.scalajs.linker.interface.{ESVersion, ModuleKind, StandardConfig}
 import org.scalajs.sbtplugin.ScalaJSPlugin
 import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport.*
 import sbt.*
 import sbt.Keys.*
 
+import scala.annotation.nowarn
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
@@ -30,8 +31,10 @@ import scala.concurrent.duration.Duration
   * The JavaScript build is the project's own `fullLinkJS`, as its `scalaJSLinkerConfig` sets it. The WebAssembly build
   * links the same IR with that configuration made an ES2022 module with `useWebAssembly`, into
   * `target/everyui-wasm`. Both run Scala.js's minifier (`everyuiWebMinify`, true by default, as sbt-scalajs already
-  * has it for `fullLinkJS`): it takes about 40% off main.js and 65% off main.wasm. Closure, where the build turns it on,
-  * reaches the JavaScript build only.
+  * has it for `fullLinkJS`): it takes about 40% off main.js and 65% off main.wasm. The JavaScript build's `fullLinkJS`
+  * runs Closure Compiler over that (`everyuiWebClosure`, true by default; never `fastLinkJS` or the WebAssembly build,
+  * which Closure cannot read, nor an ES module, for which Scala.js refuses it): about a third more off main.js
+  * over the wire.
   *
   * `everyuiWebStage := WebStage.Fast` links both builds with `fastLinkJS`'s configuration instead, unminified, for
   * development; the bundle task's log says which stage built it. */
@@ -57,6 +60,7 @@ object EveryUIWebPlugin extends AutoPlugin {
     val everyuiWebStage = settingKey[WebStage]("How far the web app is linked: WebStage.Full (the default, fullLinkJS, a release) or WebStage.Fast (fastLinkJS, for development), for its JavaScript and WebAssembly builds alike")
     val everyuiWebScripts = taskKey[WebScripts]("The web app linked at everyuiWebStage for everyuiWebTarget; writeTo(out, page) writes them and the page")
     val everyuiWebMinify = settingKey[Boolean]("Whether the full link runs Scala.js's minifier, on fullLinkJS and everyuiWasmLinkJS alike (true, the default)")
+    val everyuiWebClosure = settingKey[Boolean]("Whether the JavaScript build's fullLinkJS runs Closure Compiler after the minifier (true, the default), where Scala.js can: a script (ModuleKind.NoModule), Longs not as BigInts. Never fastLinkJS or the WebAssembly build")
     val everyuiWasmLinkJS = taskKey[File]("The web app linked at everyuiWebStage to WebAssembly: a directory of main.js, __loader.js and main.wasm")
     val everyuiWebFonts = taskKey[File]("EveryUI's fonts, taken from the everyui-web jar on the classpath, with everyuiAppFonts: a directory for the bundle to copy as fonts/")
     val everyuiWebFaces = settingKey[Seq[WebFace]]("The faces the web app draws with, EveryUI's (WebFace.OpenSans, …) and its own (files in everyuiAppFonts), which everyuiWebFaceFiles ships as WOFF2 cut to what the app draws, with the page's @font-face rules and preloads: WebFace.bundled by default")
@@ -70,16 +74,19 @@ object EveryUIWebPlugin extends AutoPlugin {
     everyuiWebTarget := WebTarget.Js,
     everyuiWebStage := WebStage.Full,
     everyuiWebMinify := true,
+    everyuiWebClosure := true,
     everyuiWebFaces := WebFace.bundled,
     everyuiWebFaceTrueType := false,
     everyuiWebFaceFiles :=
       Def.uncached(WebFaces(everyuiWebFonts.value, everyuiWebFaces.value, everyuiWebFaceTrueType.value)),
-    Compile / fullLinkJS / scalaJSLinkerConfig := (Compile / fullLinkJS / scalaJSLinkerConfig).value
-      .withMinify(everyuiWebMinify.value),
+    Compile / fullLinkJS / scalaJSLinkerConfig := {
+      val config = (Compile / fullLinkJS / scalaJSLinkerConfig).value.withMinify(everyuiWebMinify.value)
+      closure(config, everyuiWebClosure.value && closes(config))
+    },
     everyuiWasmLinkJS := Def.uncached {
       val log = streams.value.log
       val impl = (Compile / scalaJSLinkerImpl).value
-      val config = linkerConfig.value
+      val config = closure(linkerConfig.value, on = false)
         .withModuleKind(ModuleKind.ESModule)
         .withESFeatures(_.withUseWebAssembly(true).withESVersion(ESVersion.ES2022))
       val ir = (Compile / scalaJSIR).value.data
@@ -139,6 +146,15 @@ object EveryUIWebPlugin extends AutoPlugin {
       case WebStage.Fast => fast
     }
   }
+
+  /** Whether Scala.js's Closure pass takes `config`: a script, as a page loads one (Scala.js refuses Closure for an ES
+    * module, and for anything split into modules, which needs one), with Longs not as BigInts, which it also refuses. */
+  private def closes(config: StandardConfig): Boolean =
+    config.moduleKind == ModuleKind.NoModule && !config.esFeatures.allowBigIntsForLongs
+
+  // Closure turned on or off: Scala.js has it deprecated, warning of its removal
+  @nowarn("cat=deprecation")
+  private def closure(config: StandardConfig, on: Boolean): StandardConfig = config.withClosureCompilerIfAvailable(on)
 
   private def stageName(stage: WebStage): String = stage match {
     case WebStage.Full => "full link (release)"
