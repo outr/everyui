@@ -27,8 +27,9 @@ import scala.scalajs.js
   * What is shown is EveryUI's choice, whatever the engine chooses of itself: a TV's runtime shows a subtitle track as
   * its own caption setting says (webOS 3 showed a sidecar nobody chose, and once two at once), so the modes are set
   * again as a track is added or loaded, as the list says a mode changed, and as the element loads (`enforce`, which
-  * [[WebMedia]] calls as it hears the element). */
-final class WebTracks(el: html.Element) {
+  * [[WebMedia]] calls as it hears the element). Shown is `showing`, or `hidden` where EveryUI draws the cues itself
+  * ([[CueDrawing]], [[WebCues]]). */
+final class WebTracks(el: html.Element, drawn: () => Boolean = () => false, changed: () => Unit = () => ()) {
   private val m = el.asInstanceOf[js.Dynamic]
   private var files: List[MediaSidecar] = Nil
   // the `<track>`s made, by their id ("side<n>" a sidecar, "hls<n>" a playlist's subtitles), each with its `blob:`
@@ -40,6 +41,8 @@ final class WebTracks(el: html.Element) {
   private var shown = ""
   // the element's own text track chosen ("" none), once one is
   private var ownText: Option[String] = None
+  // the stream's closed captions chosen ("cc<n>", "" none)
+  private var caption = ""
   // the element's own sound track to hear once it lists it again (`restoreOwn`), -1 none
   private var ownAudio = -1
   // each source a new round, so what an older one's fetch answers late is let go
@@ -83,6 +86,7 @@ final class WebTracks(el: html.Element) {
     playlist = ""
     ownText = None
     ownAudio = -1
+    caption = ""
     if (shown.startsWith("hls")) shown = ""
     unmake(_ => true)
   }
@@ -130,9 +134,30 @@ final class WebTracks(el: html.Element) {
   def captions: List[MediaTrack] = ownList(MediaTrack.Text).filter(t => text(t.kind) == "captions").zipWithIndex
     .map { case (t, i) => MediaTrack("cc" + i, MediaTrack.Text, text(t.language), text(t.label), "CC") }
 
-  /** The captions `cc<n>` shown, the rest hidden (hidden, not disabled, so hls.js goes on filling them). */
-  def showCaptions(id: String): Unit = ownList(MediaTrack.Text).filter(t => text(t.kind) == "captions").zipWithIndex
-    .foreach { case (t, i) => t.mode = if ("cc" + i == id) "showing" else "hidden" }
+  /** The captions `cc<n>` shown (or drawn: [[CueDrawing]]), the rest hidden (hidden, not disabled, so hls.js goes on
+    * filling them). */
+  def showCaptions(id: String): Unit = {
+    caption = id
+    captionList.zipWithIndex.foreach { case (t, i) =>
+      mode(t, if ("cc" + i == id) CueDrawing.mode(chosen = true, drawn()) else "hidden")
+    }
+    changed()
+  }
+
+  /** The text track chosen among the made ones, the element's own and the stream's captions, for its cues to be drawn
+    * ([[WebCues]]), where there is one. */
+  def chosen: Option[js.Dynamic] =
+    made.find(_._1 == shown).map(_._2.asInstanceOf[js.Dynamic].track)
+      .orElse(ownText.flatMap(_.toIntOption).flatMap(ownList(MediaTrack.Text).lift))
+      .orElse(Some(caption).filter(_.startsWith("cc")).flatMap(_.drop(2).toIntOption).flatMap(captionList.lift))
+      .filter(t => !js.isUndefined(t) && t != null)
+
+  /** The subtitle track hls.js reads without showing it (its `subtitleDisplay` off: the one it chose is `hidden`, the
+    * rest disabled), where there is one. */
+  def hiddenSubtitles: Option[js.Dynamic] =
+    ownList(MediaTrack.Text).find(t => text(t.kind) == "subtitles" && t.mode.asInstanceOf[Any] == "hidden")
+
+  private def captionList: List[js.Dynamic] = ownList(MediaTrack.Text).filter(t => text(t.kind) == "captions")
 
   /** The element's own track `id` of `kind` heard or shown, the rest not; "" leaves the sound alone, and shows no
     * text. Whether the sound heard changed. */
@@ -177,18 +202,24 @@ final class WebTracks(el: html.Element) {
   }
 
   /** The modes EveryUI chose set again over the engine's own choice, only where they differ (so a change heard is not
-    * made again): as the element loads, and as tracks are added, loaded or changed. */
+    * made again): as the element loads, and as tracks are added, loaded or changed. The chosen one is `showing`, or
+    * `hidden` where EveryUI draws its cues ([[CueDrawing]]), and they are drawn again (`changed`). */
   def enforce(): Unit = {
+    val drawing = drawn()
     made.foreach { case (id, track, _) =>
-      mode(track.asInstanceOf[js.Dynamic].track, if (id == shown) "showing" else "disabled")
+      mode(track.asInstanceOf[js.Dynamic].track, CueDrawing.mode(id == shown, drawing))
     }
     ownText.foreach { id =>
-      ownList(MediaTrack.Text).zipWithIndex.foreach { case (t, i) => mode(t, if (id == i.toString) "showing" else "disabled") }
+      ownList(MediaTrack.Text).zipWithIndex.foreach { case (t, i) => mode(t, CueDrawing.mode(id == i.toString, drawing)) }
+    }
+    if (caption.nonEmpty) captionList.zipWithIndex.foreach { case (t, i) =>
+      if ("cc" + i == caption) mode(t, CueDrawing.mode(chosen = true, drawing))
     }
     if (ownAudio >= 0 && ownList(MediaTrack.Audio).size > ownAudio) {
       selectOwn(MediaTrack.Audio, ownAudio.toString)
       ownAudio = -1
     }
+    changed()
   }
   private def mode(t: js.Dynamic, to: String): Unit =
     if (!js.isUndefined(t) && t != null && t.mode.asInstanceOf[Any] != to) t.mode = to

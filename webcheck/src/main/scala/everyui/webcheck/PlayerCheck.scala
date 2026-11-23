@@ -27,7 +27,8 @@ import scala.concurrent.duration.*
   *  - the second sound track is the one heard (hls.js's choice or the element's own, marked `*`), where there is more
   *    than one, and the element still where it was, not back at the start;
   *  - no text track shows before one is chosen;
-  *  - each text track chosen is the one the element shows (its `textTracks`, by label), and then none is;
+  *  - each text track chosen is the one shown (by its label: showing among the element's `textTracks`, or drawn
+  *    by EveryUI, `WebCues`), and then none is;
   *  - the seek landed at 30 (or a little on, played since), said and on the element;
   *  - moved into a mini player's box (made off the page, then put on it), it plays on in its new place from where it
   *    was, said and on the element, the sound track chosen still heard and no text shown; before Chromium 62 every
@@ -35,6 +36,23 @@ import scala.concurrent.duration.*
   *    with a source (`VideoPath`);
   *  - left, nothing is held: `MediaSupport.held` 0, at most one `<video>` on the page and none with a source, no
   *    sidecar `<track>`, and no MediaSource open (each the page makes counted by a stand-in for the constructor).
+  *
+  * Then `demo=player cues=1` (PlayerCues): the subtitles read in a player screen, drawn by EveryUI where the browser's
+  * own would not be seen (a TV's host, or an engine before Chromium 62: `CueDrawing`), else the browser's. Opened
+  * with `cues.vtt` beside it (a cue from each even second for one second, "Cue <n>" in italics over "second line", at
+  * the top where n is a multiple of 4, else at the foot) and, where there are two, the second sound track heard first
+  * (so a playlist a TV plays itself is played through hls.js, whose subtitles are then read hidden). Checked:
+  *
+  *  - the sidecar chosen is `hidden` where EveryUI draws it, `showing` where the browser does;
+  *  - sampled twice a second, the box laid after the video holds each cue's words at its time, its line break and its
+  *    italics, at the top or the foot as placed, within the picture, and nothing between cues; where the browser draws
+  *    them, EveryUI draws nothing;
+  *  - moved into a mini player's box, the box of cues lies over the video to the pixel, right after it, and before
+  *    Chromium 62 is a layer of its own; the cues still drawn as above;
+  *  - the source's own subtitles chosen (a playlist's, read from their WebVTT or by hls.js) drawn as the sidecar's;
+  *  - none chosen, nothing drawn; and the screen left, no box of cues and no source left.
+  *
+  * `--lg` runs the browser as webOS 3.5's own Chromium 38 says it is: an LG E7P's user agent, and `#rrggbbaa` read.
   *
   * At the end no `<video>` is left at all and no MediaSource is open, and the console has no uncaught error. Prints the
   * page's console and each check; exits 1 where one fails.
@@ -54,12 +72,12 @@ import scala.concurrent.duration.*
   * again.
   *
   *   PlayerCheck <page dir> <media dir> [--chrome <binary> | --attach <inspector> --host <address>] [--webos [--tv]]
-  *     [--rounds <n>] [--src <path under media>] [--drop]
+  *     [--rounds <n>] [--src <path under media>] [--drop] [--lg]
   *
   * The page dir is the example's web build with hls.js beside it (`everyui-hls/<version>/`); the media dir holds
   * `hls/master.m3u8` (H.264 with two AAC renditions and two WebVTT subtitle renditions), `clip.webm` (VP8 and Opus),
-  * `side-en.vtt` and `side-fr.srt`. The source is the HLS stream where the browser plays H.264 or with `--tv`, else the
-  * WebM. */
+  * `side-en.vtt` and `side-fr.srt` (`cues.vtt` is made by the check where it has none). The source is the HLS stream
+  * where the browser plays H.264 or with `--tv`, else the WebM. */
 object PlayerCheck extends RapidApp {
   // every MediaSource the page makes, kept to be counted, before the page's own scripts
   private val counting =
@@ -170,7 +188,7 @@ object PlayerCheck extends RapidApp {
 
   override def run(args: List[String]): Task[Unit] = {
     val usage = "usage: PlayerCheck <page dir> <media dir> [--chrome <binary> | --attach <inspector> --host <address>] " +
-      "[--webos [--tv]] [--rounds <n>] [--src <path>] [--drop]"
+      "[--webos [--tv]] [--rounds <n>] [--src <path>] [--drop] [--lg]"
     def option(name: String): Option[String] = args.dropWhile(_ != name).drop(1).headOption
     val page = Paths.get(args.headOption.getOrElse(sys.error(usage))).toAbsolutePath.normalize()
     val media = Paths.get(args.lift(1).getOrElse(sys.error(usage))).toAbsolutePath.normalize()
@@ -181,11 +199,17 @@ object PlayerCheck extends RapidApp {
     val webos = args.contains("--webos") || tvPlayer
     val rounds = option("--rounds").map(_.toInt).getOrElse(20)
     val dropping = args.contains("--drop") && attach.isEmpty
+    // webOS 3.5's own Chromium 38 as an LG E7P says it is: its user agent, and a colour written `#rrggbbaa` read
+    val lg = args.contains("--lg") && attach.isEmpty
+    val agent = Option.when(lg)("Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/38.0.2125.122 Safari/537.36 WebAppManager")
+    val hexes = "(function () { var s = CSS.supports; CSS.supports = function (p, v) { " +
+      "return v === '#00000000' || s.apply(CSS, arguments); }; })();"
     val server = serve(page, media, host)
     val origin = "http://" + host + ":" + server.getAddress.getPort
     def browsing[A](f: DevTools => Task[A]): Task[A] = attach match {
       case Some(address) => DevTools.attached(address)(f)
-      case None => DevTools.around(chrome)(f)
+      case None => DevTools.around(chrome, agent)(f)
     }
     var failed = List.empty[String]
     def check(what: String, ok: Boolean): Unit = {
@@ -220,10 +244,14 @@ object PlayerCheck extends RapidApp {
         look((seconds * 10).toInt)
       }
       // (ES 5.1 for Chromium 38: no arrows, no const, no Array.flatMap before Chromium 69)
+      // the text tracks shown, by their labels: the browser's own (`showing`), and those EveryUI draws (`WebCues`, the
+      // track `hidden`), each box of them saying its track
       val showing = "return [].concat.apply([], [].slice.call(document.querySelectorAll('video'))" +
         ".map(function (v) { return [].slice.call(v.textTracks); }))" +
         ".filter(function (t) { return t.mode == 'showing'; })" +
-        ".map(function (t) { return t.label; })"
+        ".map(function (t) { return t.label; })" +
+        ".concat([].slice.call(document.querySelectorAll('.everyui-cues'))" +
+        ".map(function (b) { return b.getAttribute('data-everyui-cues'); }).filter(function (l) { return !!l; }))"
       // where the element is, -1 with none
       val at = "(function () { var v = document.querySelector('video'); return v ? v.currentTime : -1; })()"
       val held = "var vs = [].slice.call(document.querySelectorAll('video')); return [vs.length, " +
@@ -247,7 +275,7 @@ object PlayerCheck extends RapidApp {
         playsH264 <- h264
         _ <- if (attach.nonEmpty) Task.unit else browser.addScript(counting + (if (webos) "\n" + webOS else "") +
           (if (tvPlayer) "\n" + tv + (if (playsH264) "" else "\nwindow.everyuiStandIn = '/media/clip.webm';") else "") +
-          (if (dropping) "\n" + drop else ""))
+          (if (dropping) "\n" + drop else "") + (if (lg) "\n" + hexes else ""))
         // ---- what it decodes ----
         _ <- browser.navigate(origin + "/app/index.html?demo=decodes")
         last <- line("decodes: atmos = ")
@@ -332,6 +360,35 @@ object PlayerCheck extends RapidApp {
         made <- value(held)
         stubbed <- value("return [window.everyuiResets, window.everyuiSprings, window.everyuiShownUnasked]")
         drops <- value("return window.everyuiDrops || 0")
+        // ---- the subtitles read (PlayerCues): drawn by EveryUI where the browser's own would not be seen ----
+        _ = lines.clear()
+        _ <- browser.navigate(origin + "/app/index.html?demo=player&cues=1&step=4" +
+          (if (tvPlayer) "" else "&audio=1") + "&src=" + enc("/media/" + source) +
+          "&side=" + enc("/media/cues.vtt|Cues|en"))
+        drawsHere <- value("var m = /Chrome\\/(\\d+)/.exec(navigator.userAgent); " +
+          "return !!window.webOSSystem || (!!m && +m[1] <= 61)").map(_.asBoolean)
+        cueReady <- line("player cues ready", 60)
+        sideLine <- line("player cues side ")
+        sideMode <- becomes("return " + modeOf("Cues") + " == '" + (if (drawsHere) "hidden" else "showing") + "'", 2.0)
+        sideSeen <- sequence(List.fill(9)(value(cueSample).flatMap(s => Task.sleep(450.millis).map(_ => s))))
+        movedLine <- line("player cues moved", 10)
+        follows <- if (drawsHere) becomes(onVideo, 3.0) else Task.pure(true)
+        movedSeen <- sequence(List.fill(5)(value(cueSample).flatMap(s => Task.sleep(450.millis).map(_ => s))))
+        textLine <- line("player cues text ", 6)
+        textLabel = textLine.map(_.split("player cues text ").last.split(' ').drop(1).mkString(" "))
+        textShown <- textLabel match {
+          case Some(label) if drawsHere => becomes("var b = document.querySelector('.everyui-cues'); return !!b && " +
+            "b.getAttribute('data-everyui-cues') == " + quote(label) + " && /line \\d+/.test(b.textContent) && " +
+            modeOf(label) + " == 'hidden'", 4.0)
+          case Some(label) => becomes(showing + ".join('|') == " + quote(label), 3.0)
+          case None => Task.pure(true)
+        }
+        offLine <- line("player cues off", 10)
+        offNone <- becomes("var b = document.querySelector('.everyui-cues'); " +
+          "return (function () { " + showing + " })().length == 0 && (!b || b.textContent == '')", 2.0)
+        cuesLeft <- line("player cues left held=", 10)
+        cuesGone <- becomes("return document.querySelectorAll('.everyui-cues').length == 0 && " +
+          "document.querySelectorAll('video[src]').length == 0", 3.0)
       } yield {
         check("every round opened where it was asked to (20 s): " + results.count(_._1._1) + " of " + rounds,
           results.forall(_._1._1))
@@ -357,12 +414,69 @@ object PlayerCheck extends RapidApp {
           check("the TV's player started again from 0 after each sound track (" + s(0) + "), sprang back from each " +
             "seek (" + s(1) + ") and showed tracks unasked (" + s(2) + ")", s(0) >= rounds && s(1) >= rounds && s(2) > 0)
         }
+        // each sample of the sidecar's cues as drawn (or, where the browser draws them, none drawn by EveryUI)
+        val judged = (sideSeen ++ movedSeen).flatMap(s => cueJudged(s, drawsHere))
+        println("[player] cue samples " + (sideSeen ++ movedSeen).map(_.toString).mkString(" "))
+        check("the subtitles " + (if (drawsHere) "are drawn by EveryUI here, the chosen track hidden" else
+          "are the browser's own here, the chosen track showing") + " (" + sideLine.nonEmpty + ", mode " + sideMode + ")",
+          cueReady.nonEmpty && sideLine.nonEmpty && sideMode)
+        check("each cue drawn at its time, its words, line break and italics, top or foot as placed, within the " +
+          "picture, and gone after (" + judged.count(identity) + " of " + judged.size + " samples)",
+          judged.nonEmpty && judged.forall(identity) && (!drawsHere || judged.size >= 5))
+        check("after the move into a mini player, the cues follow the picture (" + movedLine.nonEmpty + ")",
+          movedLine.nonEmpty && follows)
+        check("the source's own subtitles " + textLabel.getOrElse("(none here)") + " drawn as the sidecar's are",
+          textShown)
+        check("none read, nothing drawn", offLine.nonEmpty && offNone)
+        check("the player left, no box of cues and no source left (" + cuesLeft.getOrElse("") + ")",
+          cuesLeft.exists(_.endsWith("held=0")) && cuesGone)
         val errors = all.filter(l => l.contains("[uncaught]") || l.toLowerCase.contains("uncaught"))
         check("no uncaught errors on the console", errors.isEmpty)
       }
     }.guarantee(Task(server.stop(0))).map { _ =>
       println(if (failed.isEmpty) "[player] all passed" else "[player] failed: " + failed.mkString("; "))
       if (failed.nonEmpty) sys.exit(1)
+    }
+  }
+
+  // the mode of the first text track labelled `label`, "" for none, as a script's expression
+  private def modeOf(label: String): String = "[].slice.call(document.querySelector('video').textTracks)" +
+    ".filter(function (t) { return t.label == " + quote(label) + "; }).map(function (t) { return t.mode; }).join('')"
+
+  // the box of cues laid right after the video and over it, to the pixel, and before Chromium 62 a layer of its own
+  // (a transform: `RenderNode.overVideoStyle`)
+  private val onVideo = "var v = document.querySelector('video'), b = document.querySelector('.everyui-cues'); " +
+    "if (!v || !b || b.previousElementSibling !== v) return false; var r = v.getBoundingClientRect(), " +
+    "q = b.getBoundingClientRect(), s = getComputedStyle(b), m = /Chrome\\/(\\d+)/.exec(navigator.userAgent); " +
+    "return r.width < 1000 && Math.abs(r.left - q.left) < 1.5 && Math.abs(r.top - q.top) < 1.5 && " +
+    "Math.abs(r.width - q.width) < 1.5 && Math.abs(r.height - q.height) < 1.5 && " +
+    "(!m || +m[1] > 61 || (s.transform || s.webkitTransform || 'none') != 'none')"
+
+  // the playhead, the words drawn, their line breaks and italic runs, where the first cue's middle is down the
+  // picture (a share of its height, -1 for none) and whether it is within the picture
+  private val cueSample = "var v = document.querySelector('video'), b = document.querySelector('.everyui-cues'); " +
+    "if (!v) return [-1, '', 0, 0, -1, false]; var s = b ? b.getElementsByTagName('span')[0] : null, " +
+    "r = v.getBoundingClientRect(), q = s ? s.getBoundingClientRect() : null; " +
+    "return [v.currentTime, b ? b.textContent : '', b ? b.getElementsByTagName('br').length : 0, " +
+    "b ? b.querySelectorAll('span[style*=italic]').length : 0, q ? ((q.top + q.bottom) / 2 - r.top) / r.height : -1, " +
+    "!q || (q.left >= r.left - 1 && q.right <= r.right + 1 && q.top >= r.top - 1 && q.bottom <= r.bottom + 1)]"
+
+  // a sample judged against `cues.vtt` (a cue from each even second for one second: "Cue <n>" in italics, a line
+  // break, "second line"; at the top where n is a multiple of 4, else at the foot), away from its edges: None where
+  // it is too near one to say; where the browser draws them, nothing drawn by EveryUI
+  private def cueJudged(sample: Json, drawn: Boolean): Option[Boolean] = {
+    val s = sample.asVector
+    val t = s(0).asDouble
+    val words = s(1).asString
+    if (t < 0.0) Some(false)
+    else if (!drawn) Some(words.isEmpty)
+    else {
+      val n = (t / 2.0).floor.toInt * 2
+      val phase = t - n
+      if (phase > 0.3 && phase < 0.85) Some(words == "Cue " + n + "second line" && s(2).asInt == 1 && s(3).asInt == 1 &&
+        s(5).asBoolean && (if (n % 4 == 0) s(4).asDouble < 0.5 else s(4).asDouble > 0.5))
+      else if (phase > 1.3 && phase < 1.85) Some(words.isEmpty)
+      else None
     }
   }
 
@@ -373,18 +487,27 @@ object PlayerCheck extends RapidApp {
   private def enc(s: String): String = URLEncoder.encode(s, StandardCharsets.UTF_8)
   private def quote(s: String): String = "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-  // the page under /app/ and the media under /media/, with byte ranges, as a TV's player and a browser seek by them
+  // the cues the cue phase reads (`cues.vtt`, made here where the media dir has none): from each even second for one
+  // second, "Cue <n>" in italics over "second line", at the top (`line:0`) where n is a multiple of 4
+  private val cues: String = "WEBVTT\n\n" + (0 to 58 by 2).map { n =>
+    f"00:00:$n%02d.000 --> 00:00:${n + 1}%02d.000" + (if (n % 4 == 0) " line:0" else "") + "\n<i>Cue</i> " + n +
+      "\n<b>second</b> line\n"
+  }.mkString("\n")
+
+  // the page under /app/ and the media under /media/, with byte ranges, as a TV's player and a browser seek by them;
+  // `made` what is served where the dir has no such file
   private def serve(page: Path, media: Path, host: String): HttpServer = {
     val server = HttpServer.create(new InetSocketAddress(host, 0), 0)
-    def files(root: Path)(x: HttpExchange): Unit = try {
+    def files(root: Path, made: Map[String, String] = Map.empty)(x: HttpExchange): Unit = try {
       val prefix = x.getHttpContext.getPath
       val rel = java.net.URLDecoder.decode(x.getRequestURI.getPath.stripPrefix(prefix).stripPrefix("/"), "UTF-8")
       val file = root.resolve(rel).normalize()
-      if (!file.startsWith(root) || !Files.isRegularFile(file)) {
+      val own = file.startsWith(root) && Files.isRegularFile(file)
+      if (!own && !made.contains(rel)) {
         x.sendResponseHeaders(404, -1)
       }
       else {
-        val bytes = Files.readAllBytes(file)
+        val bytes = if (own) Files.readAllBytes(file) else made(rel).getBytes(StandardCharsets.UTF_8)
         val name = file.getFileName.toString
         val kind = Map("html" -> "text/html", "js" -> "text/javascript", "m3u8" -> "application/vnd.apple.mpegurl",
           "ts" -> "video/mp2t", "aac" -> "audio/aac", "vtt" -> "text/vtt", "srt" -> "text/plain", "webm" -> "video/webm",
@@ -414,7 +537,7 @@ object PlayerCheck extends RapidApp {
     catch { case _: java.io.IOException => () }
     finally x.close()
     server.createContext("/app", x => files(page)(x))
-    server.createContext("/media", x => files(media)(x))
+    server.createContext("/media", x => files(media, Map("cues.vtt" -> cues))(x))
     // daemon threads, so the check ends with its browser
     server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(8, (r: Runnable) => {
       val t = new Thread(r)

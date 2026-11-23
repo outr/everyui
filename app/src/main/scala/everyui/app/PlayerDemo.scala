@@ -22,6 +22,7 @@ import reactify.*
   * `panel=<seconds>` puts a menu up over the playing picture that long in (`steal=1`: the play button under it takes
   * the focus back), logging `player panel up` and `player panel dismissed` as Back closes it.
   * `rounds=<n>` enters and leaves a player screen n times instead ([[PlayerRounds]]).
+  * `cues=1` reads its sidecars and its own subtitles in a player screen, moved into a mini player, instead ([[PlayerCues]]).
   * `cycle=<seconds>` instead lets the player go mid-playback, as a screen left then does, a tenth of that to the whole
   * of it after it was opened (as it opens, as it buffers, as it plays, in turn), and opens the first source in a new
   * VideoView at once or `rest=<seconds>` later (with `same=1` in the same one at once), `cycles=<n>` times (30),
@@ -46,6 +47,7 @@ object PlayerDemo {
     }
     val rounds = Platform.launchArg("rounds").toIntOption.getOrElse(0)
     if (rounds > 0) PlayerRounds.run(sources.head, rounds)
+    else if (Platform.launchArg("cues") == "1") PlayerCues.run(sources.head)
     else {
       val cycle = Platform.launchArg("cycle").toDoubleOption.getOrElse(0.0)
       if (cycle > 0.0) cycling(sources.head, cycle, Platform.launchArg("cycles").toIntOption.getOrElse(30))

@@ -1,8 +1,10 @@
 package everyui.render
 
 import everyui.component.{MediaDiagnostics, MediaRetry, MediaSidecar, MediaTrack}
+import everyui.text.CaptionStyle
 import org.scalajs.dom
 import org.scalajs.dom.html
+import reactify.Var
 
 import scala.scalajs.js
 
@@ -21,7 +23,11 @@ import scala.scalajs.js
   * a moment after ([[MoveReset]]): where the engine let the source go in the move (webOS 3.5), it is opened again where
   * it was, with its tracks, its sound and its rate as they were, playing or paused as it was (a brief wait, then
   * playing); where the engine only paused it (Chromium 38 pauses an element taken off the page, and nothing starts it
-  * again), it plays on; and its boxes are marked again ([[VideoPath]]). */
+  * again), it plays on; and its boxes are marked again ([[VideoPath]]).
+  *
+  * Where the browser's own subtitles would not be seen over the picture (a TV: [[CueDrawing]]), the chosen text track
+  * is `hidden` rather than `showing` and EveryUI draws its cues ([[WebCues]]), as it plays, seeks and moves; `drawCues`
+  * forces either way, and `cueStyle` gives them a look. */
 final class WebMedia(private[render] val el: html.Element, path: Option[VideoPath] = None) {
   private val m = el.asInstanceOf[js.Dynamic]
 
@@ -53,10 +59,26 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
   private var night = 0.0
   private var allowed = false
   private lazy val fold = new CenterFold(el, () => tell("mixing"))
+  // the subtitles where EveryUI draws them (WebCues, CueDrawing)
+  private val cues = new WebCues(el)
   // the element's own tracks, the playlist's where the player lists none, and the sidecar files (WebTracks)
-  private val extra = new WebTracks(el)
+  private val extra = new WebTracks(el, () => WebMedia.drawsCues, () => cued())
   // where the source opened is to start, set again until the player has played on from there (ResumeSeek)
   private var landing = new ResumeSeek(0.0)
+  // the chosen text track's cues drawn where EveryUI draws them (CueDrawing), and else no box held: hls.js's subtitle
+  // track is the one it reads hidden
+  private[render] def cued(): Unit =
+    if (url.nonEmpty && WebMedia.drawsCues)
+      cues.follow(extra.chosen.orElse(hls.filter(_.subtitleTrack.asInstanceOf[Int] >= 0).flatMap(_ => extra.hiddenSubtitles))
+        .orNull)
+    else cues.clear()
+
+  // `WebMedia.drawCues` changed: hls.js's subtitles shown or hidden as it says, the modes set again, the cues drawn
+  private[render] def redrawn(): Unit = {
+    hls.foreach(h => if (h.subtitleTrack.asInstanceOf[Int] >= 0) h.subtitleDisplay = !WebMedia.drawsCues)
+    extra.enforce()
+  }
+
   // a track chosen from the playlist where the element plays it without listing it: the source is opened again through
   // hls.js, there, with it (its kind to its place); and after a move let its source go, hls.js's own choices
   private var pick: Map[String, Int] = Map.empty
@@ -148,7 +170,8 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
   // the player's word as it opens, seeks or changes its sound: the place set again while it stands short of it, and
   // after a sound track chosen, playing or paused as it was
   private def resumed(event: String): Unit = if (url.nonEmpty) {
-    if (event != "timeupdate") extra.enforce()
+    // (the cues drawn again: `enforce` draws them, and a seek is followed by a timeupdate)
+    if (event != "timeupdate") extra.enforce() else cued()
     if (m.readyState.asInstanceOf[Int] > 0 && !m.seeking.asInstanceOf[Boolean]) known = position
     landing.heard(event, m.currentTime.asInstanceOf[Double], m.seeking.asInstanceOf[Boolean]).foreach { at =>
       if (event != "loadedmetadata") everyui.scribe.info("media: landing at " + at.toInt + " s again, the player at " +
@@ -242,7 +265,7 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
         if (audio) { if (i >= 0) h.audioTrack = i }
         else {
           h.subtitleTrack = i
-          h.subtitleDisplay = i >= 0
+          h.subtitleDisplay = i >= 0 && !WebMedia.drawsCues
           extra.showCaptions(id)
         }
       case None =>
@@ -488,7 +511,7 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
   private def read(h: js.Dynamic): Unit = js.timers.setTimeout(0) {
     if (hls.exists(_ eq h)) picked(MediaTrack.Text).orElse(chosen(h.subtitleTracks, wanted._2)).foreach { i =>
       h.subtitleTrack = i
-      h.subtitleDisplay = i >= 0
+      h.subtitleDisplay = i >= 0 && !WebMedia.drawsCues
     }
   }
 
@@ -571,6 +594,7 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
     }
     hls = None
     extra.clear()
+    cues.clear()
     if (held) {
       m.pause()
       el.removeAttribute("src")
@@ -587,6 +611,7 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
     * a track chosen has come, or another source. */
   def moved(): Unit = if (url.nonEmpty) {
     path.foreach(_.mark())
+    cues.place()
     moves += 1
     val move = moves
     val source = opened
@@ -654,9 +679,25 @@ final class WebMedia(private[render] val el: html.Element, path: Option[VideoPat
 }
 
 object WebMedia {
+  /** Whether EveryUI draws the subtitles itself over the picture ([[WebCues]]) rather than leaving them to the browser
+    * (`::cue`): None (the default) as [[CueDrawing]] says, on a TV's host (`AppHosts`: webOS, Tizen and Vega as they
+    * come) and an engine before Chromium 62 (`TvEngine.squashesOverVideo`); Some(true) everywhere, Some(false) nowhere.
+    * Heard at once by every player playing. */
+  val drawCues: Var[Option[Boolean]] = Var(None)
+
+  /** The look of the subtitles EveryUI draws: colours, edge and scale as the device's caption settings give them on
+    * Android ([[everyui.text.CaptionStyle]]); None (the default) for white words edged in black on a dark box, 4.5% of
+    * the video's height (`WebCues.look`). Heard at once. */
+  val cueStyle: Var[Option[CaptionStyle]] = Var(None)
+
+  /** Whether EveryUI draws the subtitles here, now ([[drawCues]]). */
+  def drawsCues: Boolean = CueDrawing.drawn(drawCues(), AppHosts.current.nonEmpty, WebFeatures.videoSquashes)
+
   // the players holding a source, and hls.js's players (each with its MediaSource) not yet destroyed
   private[render] var holding: Set[WebMedia] = Set.empty
   private[render] var scripts: Int = 0
+  drawCues.attach(_ => holding.toList.foreach(_.redrawn()))
+  cueStyle.attach(_ => holding.toList.foreach(_.cued()))
   /** `child` put on the page (`RenderNode.place`): each player holding a source in it (it, or one inside it) told it
     * moved. */
   def placed(child: dom.Element): Unit =

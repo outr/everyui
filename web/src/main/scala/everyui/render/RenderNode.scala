@@ -208,7 +208,7 @@ class RenderNode(val el: html.Element) {
   private[render] var tail: dom.Element = null
   def append(child: RenderNode): Unit = place(child.el, tail)
   def insert(child: RenderNode, index: Int): Unit = {
-    val before = if (index >= 0 && index < el.children.length) el.children(index) else tail
+    val before = Option(RenderNode.childAt(el, index)).getOrElse(tail)
     if (before eq child.el) () else place(child.el, before)
   }
   // A node already on the page is moved where the browser has a move that keeps it as it is (`moveBefore`): a field
@@ -1620,6 +1620,27 @@ class RenderNode(val el: html.Element) {
 }
 
 object RenderNode {
+  /** `el`'s child at `index` among its children, or null past them: a box of a video's subtitles laid beside it
+    * ([[WebCues]]) is not one of them, so the app's children are placed where they would be without it. */
+  private[render] def childAt(el: dom.Element, index: Int): dom.Element = {
+    val all = el.children
+    if (WebCues.live == 0) { if (index >= 0 && index < all.length) all(index) else null }
+    else {
+      var found: dom.Element = null
+      var seen = 0
+      var i = 0
+      while (found == null && i < all.length) {
+        val child = all(i)
+        if (!child.classList.contains(WebCues.name)) {
+          if (seen == index) found = child
+          seen += 1
+        }
+        i += 1
+      }
+      found
+    }
+  }
+
   /** Whether `now` is drawn as `was` in every way but its words, neither a picture: its node can be kept, its words
     * written into it (`reworded`). */
   def rewordable(was: everyui.text.TextRun, now: everyui.text.TextRun): Boolean =

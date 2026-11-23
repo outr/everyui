@@ -5343,6 +5343,39 @@ Roku, with labels and languages, whichever player plays:
   own text tracks, once one is chosen) are set again as a track is added or loaded, as the list says a mode changed
   (`addtrack`, `change`), at a cue, and as the element loads.
 
+**Subtitles drawn by EveryUI on a TV.** A TV's player draws the picture on a plane of its own under the page, through
+a hole the `<video>` punches in it, and the browser's own subtitles (`::cue`) are drawn in that element, so not at
+all: NaboTV on an LG E7P (webOS 3.5) had a sidecar track `showing`, its 1081 cues loaded and the right one active, and
+nothing on the screen. So on a TV's host (`AppHosts`: webOS now, Tizen's and Vega's as they come) and on an engine
+before Chromium 62 (`TvEngine.squashesOverVideo`), EveryUI draws them itself (`everyui.render.CueDrawing`):
+
+- the chosen text track is `hidden` instead of `showing` (its cues still loaded and still active, drawn by neither the
+  browser nor the TV), every place the choice is made: a sidecar, a playlist's subtitles read from their WebVTT, the
+  element's own, a stream's captions, and hls.js's subtitles (`subtitleDisplay` off, so the one it reads is hidden);
+- its active cues are drawn (`WebCues`) in a box laid right after the `<video>`, as large as it and where it is, so
+  over the picture and under what follows the video (a player's controls), and before Chromium 62 a layer of its own
+  as they are (`video ~ *`); drawn again at each `cuechange` and as the element plays, seeks and is moved, and
+  following the video's size and place as they are set (a mini player's box, full screen), the box put back beside it
+  as it moves to another box;
+- each cue's words as WebVTT writes them (`CueText`): line breaks, `<i>`, `<b>` and `<u>`, a class of colour
+  (`<c.yellow>`) and SubRip's `<font color>`; voices, languages and ruby as their words; timestamps and other tags
+  dropped; entities read; SubRip's `{\an8}` taken out, and the cue put at the top as it says;
+- placed as its settings say (`CuePlace`), where the engine has them (an older engine's cue may lack any, or say
+  `middle`): `line` in lines from the top or up from the foot, or in percent with its `lineAlign`; `position`,
+  `positionAlign` and `size` across; `align`; and kept 5% in from each edge. A cue that says nothing is at the foot,
+  centred; several there are stacked in the order they started;
+- the look, where the app gives none, is white words edged in black on a dark box, 4.5% of the video's height.
+
+```scala
+everyui.render.WebMedia.drawCues @= Some(true)    // EveryUI draws them in every browser; Some(false): the browser's own
+everyui.render.WebMedia.cueStyle @= Some(CaptionStyle(Color.White, Color.Black.withAlpha(0.5), Color.Clear,
+  "outline", Color.Black, 1.2))                   // the look: colours, edge and size, as Android's caption settings give
+```
+
+Both are web-only settings, heard at once by every player playing; `drawCues` is None by default (as above), and on a
+desktop's or a phone's browser the browser's own rendering stays. `MediaSupport.cues` and `spoken` stay empty on the
+web, as before: the cues are drawn here, not handed to the app as Android hands them.
+
 **Resume.** `open(url, from)` starts there: hls.js is given it as its start, and the element is given it before it has
 loaded (its default start). A TV's player may drop that, or a seek made before it could take one, so the time is set
 again as it says more (`loadedmetadata`, `canplay`, `playing`, `timeupdate`) while it stands more than 2 s
@@ -5366,7 +5399,7 @@ Both are 0 once every screen that played something has been left. The memory che
 fails where anything is held after a case is taken apart (`everyuiMemory.media()`), and `MediaHeldSpec` holds a screen
 left and come back to twenty times to one player at most and none at the end.
 
-**Checked** by webcheck's `PlayerCheck <page dir> <media dir> [--webos [--tv]] [--chrome <binary>] [--rounds <n>]`, over test
+**Checked** by webcheck's `PlayerCheck <page dir> <media dir> [--webos [--tv]] [--lg] [--chrome <binary>] [--rounds <n>]`, over test
 media of its own served by a server of its own (an HLS stream of H.264 with two AAC renditions and two WebVTT
 subtitle renditions, a VP8 and Opus WebM, a WebVTT and a SubRip sidecar, made with ffmpeg), headless and muted: the
 example's `demo=decodes`, then `demo=player rounds=20` (`PlayerRounds`), a player screen entered at 20 s, its second
@@ -5381,6 +5414,13 @@ H.264), lists its two sound renditions as its own `audioTracks` and starts again
 chosen, lists none of its subtitles (so they are read from their WebVTT), shows each `<track>` as it is added, and
 springs back 4.4 s from a seek once. `--attach http://<tv>:9998 --host <this machine's address>` drives a browser
 already running, a TV's inspector (`DevTools.attached`), with no stubs, the media served where the TV reaches it.
+Then `demo=player cues=1` (`PlayerCues`): a sidecar of cues every other second (italics, a line break, some at the
+top) read, the video moved into a mini player, the source's own subtitles read, then none, and the screen left. Where
+EveryUI draws the cues (`--webos`, and any engine before 62) the chosen track must be `hidden`, each cue in the box laid
+after the video at its time with its words, break, italics and place, nothing between cues, the box over the video to
+the pixel after the move (before 62 a layer of its own), the playlist's subtitles drawn alike (through hls.js where
+the second sound track took the stream there), nothing once none is read, and no box left after; elsewhere the track
+`showing` and nothing drawn by EveryUI. `--lg` runs the browser under an LG E7P's user agent, reading `#rrggbbaa`.
 
 ```sh
 env -u WAYLAND_DISPLAY xvfb-run -a java -cp "$(cat webcheck/out/classpath.txt)" everyui.webcheck.PlayerCheck \
