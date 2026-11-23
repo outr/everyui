@@ -17,6 +17,10 @@ object FullDemos {
       RowTipsDemo.run()
       true
     }
+    else if (demo == "richtips") {
+      RichTipsDemo.run()
+      true
+    }
     else if (demo == "picker") {
       PickerDemo.run()
       true

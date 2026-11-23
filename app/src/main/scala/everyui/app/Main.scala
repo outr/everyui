@@ -178,6 +178,9 @@ import everyui.render.Platform
   *   rowtips    a project's files in a tree, each with its whole path as its tip, shown as the pointer, the cursor or
   *              a finger rests on it (`n=<files>`, `menu=1`, `theme=light`, `rtl=1`); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
+  *   richtips   workspace tiles each with a rich tip (a RichTip: logo, icon lines, CPU and memory meters, a chart and an
+  *              Open button in Sigil's, which is interactive), shown as the pointer, the focus or a finger rests on one
+  *              (`open=<n>` opens one at once, `theme=light`); not on a Roku or an Apple TV (app/full: FullDemos)
   *   picker     a filtering picker narrowed by segment chips (a model picker by provider); not on a Roku or an Apple TV
   *              (app/full: FullDemos)
   *   voice      a microphone with a level meter, played back, and a tone that Stop cuts off (`probe=1` runs it itself); not

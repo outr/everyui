@@ -420,8 +420,48 @@ class Component(val node: RenderNode) {
   def absoluteLeft: Double = position.left() + parent().map(_.absoluteLeft).getOrElse(0.0)
   def absoluteTop: Double = position.top() + parent().map(_.absoluteTop).getOrElse(0.0)
 
-  /** What a pointer resting here says; nothing where there is no pointer. */
-  lazy val tooltip: Prop[String] = own(new Prop[String]("", t => node.setTooltip(t)))
+  /** What a pointer resting here says; nothing where there is no pointer. With a `tipView`, what a screen reader hears
+    * of the tip (its description) and what is drawn in its place where the app's own cannot be (a Roku, an Apple TV). */
+  lazy val tooltip: Prop[String] = own(new Prop[String]("", _ => tipWords()))
+  /** A tip the app draws (`everyui.tooltip.Tooltip`): styled words over several lines, pictures, a small chart, or a
+    * `RichTip`. Made each time it opens, as the pointer rests here, the keys bring the focus here (`Tooltip.onFocus`)
+    * or a finger is held on it, and taken apart as it closes, so nothing of it lives while it is hidden. In its place,
+    * the platform's own plain tip (`tooltip`) is not shown; its words are what a screen reader hears.
+    * {{{
+    *   tile.tooltip @= "Sigil: 5 unread, working"
+    *   tile.tipView @= Some(tip => RichTip("Sigil", lines = List(RichTipLine(MaterialIcon.Mail, "5 unread"))))
+    * }}} */
+  lazy val tipView: Var[Option[everyui.tooltip.TipContext => Component]] = {
+    val made = own(Plain[Option[everyui.tooltip.TipContext => Component]](None))
+    tipMade = true
+    made.attach { view =>
+      if (view.nonEmpty && !tipWatched) {
+        tipWatched = true
+        everyui.tooltip.Tooltip.watch(this)
+      }
+      if (view.isEmpty) everyui.tooltip.Tooltip.hideFor(this)
+      tipWords()
+    }
+    made
+  }
+  /** Whether the tip (`tipView`) stays open as the pointer moves from here into it, and what is in it can be focused and
+    * clicked (a workspace's tip with an "Open" link, which closes it through `TipContext.close`). */
+  lazy val tipInteractive: Var[Boolean] = own(Plain[Boolean](false))
+  /** `tipView` made by `make` each time it opens, as it is or `interactive`. */
+  def tipViewOf(make: () => Component, interactive: Boolean = false): Unit = {
+    tipInteractive @= interactive
+    tipView @= Some(_ => make())
+  }
+  // whether `tipView` has been made, and the tip host told of it
+  private var tipMade = false
+  private var tipWatched = false
+  /** Whether the app draws this one's tip (`tipView`), without making it. */
+  private[everyui] def tipDrawn: Boolean = tipMade && tipView().nonEmpty
+  // the platform's own tip, where the app draws none, else its words described
+  private def tipWords(): Unit = {
+    node.setTooltip(if (tipDrawn) "" else tooltip())
+    if (tipMade) describe()
+  }
   /** What whatever reads the page hears of it after its name (a list row's tip): the web's `aria-describedby`, TalkBack's
     * hint; nothing where the platform has no reader of descriptions. */
   lazy val accessibleDescription: Prop[String] = {
@@ -434,7 +474,8 @@ class Component(val node: RenderNode) {
   private[everyui] def describedNow: String = if (describedMade) accessibleDescription() else ""
   // its description and, after it, what is wrong with it (`invalid`)
   private def describe(): Unit =
-    node.setDescription(List(accessibleDescription(), invalid()).filter(_.nonEmpty).mkString(". "))
+    node.setDescription(List(accessibleDescription(), if (tipDrawn) tooltip() else "", invalid()).filter(_.nonEmpty)
+      .mkString(". "))
   /** The pointer's shape over it, by its CSS name ("col-resize", "row-resize", "pointer", "text"), where there is a
     * pointer to shape; "" leaves the platform's own. */
   lazy val cursor: Prop[String] = own(new Prop[String]("", c => node.setCursor(c)))

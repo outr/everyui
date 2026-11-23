@@ -1249,16 +1249,43 @@ key, as `Arb.parse` reads an ARB).
 
 ### Tooltip (`everyui.tooltip`)
 
-A tip beside a component while the pointer rests on it or the focus is drawn on it (`focusShown`): words, or a
-component the app makes. It comes after `Tooltip.delay` (0.6 s), goes as the pointer leaves or presses or the focus
-moves on, sits under the component (over it where under has no room) and never off the screen. One shows at a time.
+One host for every tip: beside a component while the pointer rests on it or the focus is drawn on it (`focusShown`),
+or once a finger is held on it; words, or a component the app makes. It comes after `Tooltip.delay` (0.6 s), goes as
+the pointer leaves or presses, the focus moves on, Escape is pressed, what it is in scrolls (a `ScrollContainer`, a
+`VirtualList`) or the component is taken apart. It sits under the component, over it where under has less room than
+it needs and over has more (`TipContext.side` says which), never off the screen, its content no wider than
+`Tooltip.maxWidth` (360), on the theme's raised surface with its edge and a shadow. One shows at a time, and it never
+takes the focus. On a touch screen a tap is never a tip's: a finger held opens it at once (where that put up no menu of
+the app's) for `Tooltip.held` (2.5 s).
+
+A component's own tip is `Component.tipView`, made each time it opens and taken apart as it closes, so nothing of it
+lives while it is hidden; its `tooltip` stays what a screen reader hears (its description: the web's
+`aria-describedby`, TalkBack's hint, JavaFX's help text), and the platform's own plain tip is not shown beside it. On
+a Roku and an Apple TV, which draw no app's view in a tip, the `tooltip`'s words are drawn in its place
+(`Tooltip.drawsViews`). `RichTip` is the ready-made layout: a picture (a `MenuPicture`) beside its title, icon lines,
+meters, any component (`extra`: a chart from `everyui.chart`) and a footer, each left out where not given, 280 wide
+(`width`) and within `maxWidth`.
 
 ```scala
-import everyui.tooltip.Tooltip
+import everyui.tooltip.{RichTip, RichTipLine, RichTipMeter, Tooltip}
 
 Tooltip(saveButton, "Save (" + Chord("S", primary = true).label + ")")
 Tooltip.rich(fileTab)(() => new FilePreview(file))     // made afresh each time it shows
+
+tile.tooltip @= "Sigil · 5 unread · working · 21.8 cores · 14.9 GB"   // what a screen reader hears
+tile.tipView @= Some(tip => RichTip("Sigil", Some(MenuPicture.Letter("S", Color.fromHex("#7c4dff"))),
+  lines = List(RichTipLine(MaterialIcon.Mail, "5 unread"), RichTipLine(MaterialIcon.Autorenew, "working", Some(Tone.Success))),
+  meters = List(RichTipMeter("CPU", 0.68, Tone.Warning, "21.8 cores"), RichTipMeter("Memory", 0.23, words = "14.9 GB")),
+  extra = Some(openButton(() => tip.close()))))
+tile.tipInteractive @= true          // stays as the pointer moves into it; its button can be clicked
+tile.tipViewOf(() => preview())      // a view that needs no TipContext
 ```
+
+An interactive tip (`tipInteractive`) stays open while the pointer moves from the component into it (within
+`Tooltip.grace`, 0.35 s), and what is in it can be clicked and focused; one a finger opened stays until a press outside
+it, Escape or Back. Its `TipContext` closes it (`close()`, which closes nothing that opened since), and says what it
+belongs to, the side it opened on and the width it may take. `Tooltip.open(c)` opens `c`'s own tip at once (an app's
+own gesture, a check); `Tooltip.plate` is the tip showing.
 
 On a platform driven by a remote (`Platform.remoteNavigation()`), tips do not follow the focus unless the app sets
 `Tooltip.onFocus @= true`: the focus moves with every press there, and a tip would cover the next thing along. A

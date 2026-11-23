@@ -5,6 +5,7 @@
 | TextView | view | 1.0 | 1.0 | 0.0 | 5824 |
 | TextView, ticking | view | 1.0 | 1.0 | 0.0 | 5925 |
 | Button | button | 2.0 | 2.0 | 0.0 | 16381 |
+| Button with a rich tip, closed | button | 2.0 | 2.0 | 0.0 | 17714 |
 | Container | container | 1.0 | 1.0 | 0.0 | 5865 |
 | ImageView | view | 1.0 | 1.0 | 0.0 | 3584 |
 | ScrollContainer | scroll | 3.0 | 3.0 | 0.0 | 20055 |

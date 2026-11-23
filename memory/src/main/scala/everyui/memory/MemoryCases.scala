@@ -4,11 +4,13 @@ import everyui.Color
 import everyui.chart.{BarChart, DonutChart, Heatmap, LineChart, Meter, Series, StatTile}
 import everyui.chat.{ActivityStatus, ChatEntry, ChatTime, Participant, Transcript}
 import everyui.component.{Button, Component, Container, ImageView, ScrollContainer, TextView, VideoView}
+import everyui.font.MaterialIcon
 import everyui.kit.TabGroups
 import everyui.layout.{HorizontalLayout, VerticalLayout}
 import everyui.list.{LazyColumn, LazyItem, LazyRail, VirtualList}
 import everyui.render.Platform
 import everyui.table.{DataCell, DataColumn, DataTable}
+import everyui.tooltip.{RichTip, RichTipLine, RichTipMeter}
 import reactify.*
 
 /** The cases EveryUI's memory is measured by, the same on every platform that measures (the web's page,
@@ -19,6 +21,8 @@ object MemoryCases {
     MemoryCase("TextView", "view", 200, () => stacked(i => words("A line of words, number " + i.toString))),
     MemoryCase("TextView, ticking", "view", 200, () => tickingWords()),
     MemoryCase("Button", "button", 200, () => stacked(i => new Button("Button " + i.toString))),
+    // a rich tip is made as it opens: closed, a button with one costs what a button does (`Component.tipView`)
+    MemoryCase("Button with a rich tip, closed", "button", 200, () => stacked(i => tipped(i))),
     MemoryCase("Container", "container", 200, () => stacked(_ => box())),
     MemoryCase("ImageView", "view", 100, () => stacked(_ => ImageView(Platform.resolvePath("images/everyui-mark.png"),
       32.0))),
@@ -64,6 +68,15 @@ object MemoryCases {
       m
     })
   )
+
+  // a button with a RichTip, as a workspace tile has
+  private def tipped(i: Int): Button = {
+    val b = new Button("Workspace " + i.toString)
+    b.tooltip @= "Workspace " + i.toString + " · 5 unread · working"
+    b.tipView @= Some(_ => RichTip("Workspace " + i.toString, lines = List(RichTipLine(MaterialIcon.Mail, "5 unread")),
+      meters = List(RichTipMeter("CPU", 0.68, words = "21.8 cores"))))
+    b
+  }
 
   private val days = Vector("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
