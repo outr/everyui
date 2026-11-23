@@ -2126,16 +2126,22 @@ object Host {
 
   // whether the edges follow the theme yet
   private var paintingEdges = false
-  /** The window's ground behind the bars and round the safe area in the theme's background, and the bars' icons dark
-    * on a light one, light on a dark one, followed as the palette changes. */
+  /** What covers the screen the app is laid out in, a dialog's sheet (`Platform.setEdges`), as `#rrggbb`: the edges
+    * painted in it rather than the theme's background, "" for none. */
+  var edges: String = ""
+  /** The window's ground behind the bars and round the safe area in the theme's background (or what covers the app's
+    * screen, `edges`), and the bars' icons dark on a light one, light on a dark one, followed as the palette changes. */
   def paintEdges(): Unit = if (activity != null) {
     if (!paintingEdges) {
       paintingEdges = true
       everyui.theme.Theme.palette.attach(_ => paintEdges())
     }
     val window = activity.getWindow
-    window.getDecorView.setBackgroundColor(android.graphics.Color.parseColor(everyui.theme.Theme.background().toHex))
-    val light = everyui.theme.Theme.colorScheme() == "light"
+    val ground = if (edges.nonEmpty) everyui.Color.fromHex(edges) else everyui.theme.Theme.background()
+    window.getDecorView.setBackgroundColor(android.graphics.Color.parseColor(ground.toHex))
+    val light =
+      if (edges.isEmpty) everyui.theme.Theme.colorScheme() == "light"
+      else ground.red * 0.2126 + ground.green * 0.7152 + ground.blue * 0.0722 > 0.5
     if (android.os.Build.VERSION.SDK_INT >= 30) Option(window.getInsetsController).foreach { bars =>
       val both = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
         android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
@@ -3090,6 +3096,14 @@ object Platform {
 
   /** Whether a rich document is edited in place here (everyui.rich.RichTextEditor): not yet, its Markdown instead. */
   def richEditing(): Boolean = false
+
+  /** What the window shows outside the screen the app is laid out in (behind a phone's bars, round a cutout), as a
+    * dialog's sheet covers the screen: `hex`, or the theme's background for "", the bars' icons drawn to be read on it
+    * (`Host.paintEdges`). */
+  def setEdges(hex: String): Unit = if (Hop.offThread) Hop(() => setEdges(hex)) else if (Host.edges != hex) {
+    Host.edges = hex
+    Host.paintEdges()
+  }
 
   /** Whether a page declares the theme's colour scheme: there is no page here, so nothing is declared. */
   def declareColorScheme(on: Boolean): Unit = ()

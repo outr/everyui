@@ -986,7 +986,7 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
 - `Turns`: work split over frames.
 - `TextView.line`: one line that closes up when it is empty.
 - `TextScroll`: text scrolled with the arrows.
-- `ImageViewer`: pictures shown full screen, one at a time, zoomed and moved about.
+- `ImageViewer`: pictures shown full screen, one at a time, zoomed and moved about, on black to the window's edges.
 - `Mirror`: parts placed by hand, mirrored for right-to-left languages.
 - `TextOutline.overPicture` and `TextOutline.overPictureLight`: edges for text over pictures.
 
@@ -6082,10 +6082,12 @@ published jar: an app does not exclude `reactify_3`.
 On an Android phone or tablet the app keeps the status and navigation bars, and is drawn edge to edge behind them.
 It is laid out inside the safe area they leave, with a camera's cutout and the screen's rounded corners, so nothing
 of it, words or a button, lies under a bar, the camera, a curve or the gesture handle. The window's ground round it is
-the theme's background, and the bars' icons are dark on a light theme and light on a dark one. It follows a rotation,
-a fold and the keyboard. `Platform.safeArea()` says what was taken from each edge, in the app's units, for an app
-that wants to know. An Android television keeps the whole screen with no bars, as before. A browser keeps a page
-inside its own safe area, and a desktop window, a Roku and an Apple TV have none, so the safe area is nothing there.
+the theme's background, and the bars' icons are dark on a light theme and light on a dark one. While a dialog is up
+the ground is what its sheet makes of the screen (`Platform.setEdges`, from `Modal`): dimmed under a dimming sheet,
+black under the `ImageViewer`, the icons drawn to be read on it. It follows a rotation, a fold and the keyboard.
+`Platform.safeArea()` says what was taken from each edge, in the app's units, for an app that wants to know. An
+Android television keeps the whole screen with no bars, as before. A browser keeps a page inside its own safe area,
+and a desktop window, a Roku and an Apple TV have none, so the safe area is nothing there.
 An iPhone or an iPad is laid out inside its safe area as an Android phone is (see The Apple TV).
 
 | Platform | The app depends on | and adds itself |

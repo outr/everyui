@@ -921,6 +921,10 @@ object Platform {
     everyui.layout.Insets(uiSafeInset(0) / scale, uiSafeInset(1) / scale, uiSafeInset(2) / scale, uiSafeInset(3) / scale)
   }
 
+  /** What the window shows outside the screen the app is laid out in (a phone's bars, round a cutout), as a dialog's
+    * sheet covers the screen: `hex`, or the theme's background for "". Not yet followed here: an Apple TV has nothing
+    * outside it, and an iPhone's bars keep their own ground. */
+  def setEdges(hex: String): Unit = ()
   /** Whether a page declares the theme's colour scheme: there is no page here, so nothing is declared. */
   def declareColorScheme(on: Boolean): Unit = ()
 

@@ -42,8 +42,9 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
   private var clickedAt = -1.0e9
 
   def open(): Unit = {
-    val wide = ui.size.width() - 16.0
-    val tall = ui.size.height() - 16.0
+    // the whole of the screen, to its edges: the black is the viewer's, and nothing of the app shows beside it
+    def wide: Double = ui.size.width()
+    def tall: Double = ui.size.height()
     val view = new ImageView
     // the picture being left, sliding out as the next slides in
     val leaving = new ImageView
@@ -106,8 +107,8 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
     }
     counter.position.left @= 12.0
     counter.position.top @= 6.0
-    pill.position.left := (wide - pill.size.width()) / 2.0
-    pill.position.top := tall - 12.0 - pill.size.height()
+    pill.position.left := (ui.size.width() - pill.size.width()) / 2.0
+    pill.position.top := ui.size.height() - 12.0 - pill.size.height()
     val downloading = Var(false)
     val save = new IconButton(everyui.font.MaterialIcon.Download, "Download image", () => {
       download match {
@@ -124,12 +125,12 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
         case _ => ()
       }
     }, Some(Color.White))
-    save.position.left @= wide - 44.0
+    save.position.left := ui.size.width() - 44.0
     save.position.top @= 12.0
     save.backgroundColor @= Color.Black.withAlpha(0.65)
     val panel = new Container {
-      size.width @= wide
-      size.height @= tall
+      size.width := ui.size.width()
+      size.height := ui.size.height()
       backgroundColor @= Color.Black
       focusable @= true
       touchDrags @= true
@@ -210,9 +211,17 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
       else clickedAt = Platform.ticks()
       moved = false
     }
+    // the screen turned or the window sized again: the picture fitted to it afresh
+    def refit(): Unit = if (fitW > 0.0) {
+      val _ = fit(view.image(), 0.0)
+    }
+    panel.follow(ui.size.width, (_: Double) => refit())
+    panel.follow(ui.size.height, (_: Double) => refit())
     show(start, 0)
     near(start)
-    Modal.over(panel, panel, closed)
+    Modal.over(panel, panel, closed, dim = false)
+    // its sheet black too, which a phone's bars are painted as (Modal: the window's edges)
+    panel.parent().foreach(_.backgroundColor @= Color.Black)
   }
 
   /** Which picture is showing. */

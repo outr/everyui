@@ -2564,6 +2564,9 @@ object Platform {
   /** The screen's safe area: none here (a browser keeps a page inside its own; a window, a television, have none). */
   def safeArea(): everyui.layout.Insets = everyui.layout.Insets.none
 
+  /** What the window shows outside the screen the app is laid out in (a phone's bars, round a cutout), as a dialog's
+    * sheet covers the screen: `hex`, or the theme's background for "". Nothing lies outside it here. */
+  def setEdges(hex: String): Unit = ()
   /** Whether the page declares the theme's colour scheme (`color-scheme` on its root and in a `<meta>`), as it does
     * unless this turns it off: an app that declares its own. */
   def declareColorScheme(on: Boolean): Unit = {

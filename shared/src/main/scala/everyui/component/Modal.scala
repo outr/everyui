@@ -54,6 +54,7 @@ object Modal {
   covered.attach(now => if (layers.nonEmpty) {
     layers.foreach(_.sheet.visible @= !now)
     unheard()
+    edged()
     if (now) {
       Focus.scope @= None
       Focus.focused @= None
@@ -92,6 +93,7 @@ object Modal {
     layers = layers.filterNot(_ eq layer)
     layer.release()
     unheard()
+    edged()
     if (Focus.scope().exists(_ eq layer.sheet)) Focus.scope @= (if (covered()) None else ruling())
     let(layer)
     layer.after()
@@ -146,6 +148,9 @@ object Modal {
     ui.children += sheet
     layers = layer :: layers
     unheard()
+    // the window's edges outside the app's screen (a phone's bars) covered as it is, its colour followed
+    sheet.backgroundColor.attach(_ => edged())
+    edged()
     // Put up under a cover, it waits there rather than appearing over it: a dialog raised while the screensaver is
     // running is one the viewer is not present for, and it belongs to the screen they left, not to the picture.
     if (covered()) sheet.visible @= false
@@ -183,6 +188,7 @@ object Modal {
     // taken apart a turn from now (`let`), not left: no undisposed warning (Component.warnUndisposed)
     ui.children -= Component.heldAside(layer.sheet)
     unheard()
+    edged()
     if (top) {
       Focus.scope @= (if (covered()) None else ruling())
       // back where it was; or, where that has left the screen meanwhile (a card taken off a row read again under the
@@ -205,6 +211,32 @@ object Modal {
     silenced.filterNot(c => c.takenApart || under.exists(_ eq c)).foreach(_.readerHidden @= false)
     under.foreach(_.readerHidden @= true)
     silenced = under
+  }
+
+  // the colour the window's edges were last painted, "" the theme's background
+  private var edges = ""
+
+  /** What the window's edges outside the app's screen are painted now (`#rrggbb`), "" the theme's background. */
+  private[everyui] def edgesPainted: String = edges
+
+  /** The window outside the screen the app is laid out in (behind a phone's bars, round a camera's cutout) painted as
+    * the dialogs' sheets cover the screen: each sheet's colour over the one under it, over the theme's background, so a
+    * dimmed screen is dimmed to the window's edge and a picture shown whole (`ImageViewer`) is on black to it; the
+    * theme's background again once none is up or a cover is over them (`Platform.setEdges`). */
+  private def edged(): Unit = {
+    val shown = if (covered()) Nil else layers.reverse
+    val now =
+      if (shown.isEmpty) ""
+      else shown.foldLeft(Theme.background()) { (under, layer) =>
+        val c = layer.sheet.backgroundColor()
+        under.blend(c.withAlpha(1.0), c.alpha)
+      }.toHex
+    // (sheets that dim nothing, menus', leave them as they were)
+    val painted = if (now == Theme.background().toHex) "" else now
+    if (painted != edges) {
+      edges = painted
+      everyui.render.Platform.setEdges(painted)
+    }
   }
 
   /** A dialog closed, taken apart: its sheet, and its panel unless that is kept or has been put up again meanwhile. On
