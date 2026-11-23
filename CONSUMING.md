@@ -1169,6 +1169,17 @@ it. Everything else is a menu's: the same entries, keys, submenus, `dismissed`, 
 and the keys' menus drop as ever, however tall, and a menu that fits drops for a finger too. `menu.isSheet` says
 which it is. Nothing in the API changes; `Menu.below`, `Menu.at` and `Menu.show` all do it.
 
+An entry can have a tip: `MenuItem.tooltip` (words) or `MenuItem.tip` (`Option[TipContext => Component]`, a view of
+its own, a `RichTip`, its `tooltip` then only what a screen reader hears). It shows in the one tip host as the pointer
+rests on the entry, as the keys bring the focus to it, and at once as a finger is held on it (in a sheet too), the
+menu staying open; it goes as the focus moves on. The menu's keys stay its own: Escape and Back close the menu, and
+the tip with it, at one press; OK chooses the entry under the tip.
+
+```scala
+MenuItem(alert.title, () => open(alert), detail = alert.firstLine,
+  tip = Some(_ => RichTip(alert.title, lines = List(RichTipLine(MaterialIcon.Terminal, alert.command)))))
+```
+
 Back closes the menu on top, sheet or dropdown, before anything under it (a dialog it was opened over, then the
 screen), with nothing for the app to do: on Android it is the system's Back, by the gesture or the button, as a key
 or, where the app has opted in to predictive back (`android:enableOnBackInvokedCallback="true"`), through the
@@ -1297,6 +1308,8 @@ itself: `Tooltip.askFor(row, () => words)`, the words read as it shows and none 
 (`Tooltip.pendingFor` says whose that is); another's, showing or to come, is left, so taking apart something that never
 asked for a tip calls off none. `Tooltip.hide()` takes away whatever shows or is to come. A list's rows have theirs
 from `Decoration.tooltip` (Tree).
+Its own view, where it has one, is `Tooltip.askView(row)` (after the delay, or at once with `finger = true` for a
+finger held, for `Tooltip.held` or, interactive, until a press outside it); a `VirtualList` does both for its rows.
 
 ### FilterPicker (`everyui.picker`)
 
@@ -8519,6 +8532,11 @@ own item's, never one it showed before. They are also the row's description to a
 (`Component.accessibleDescription`: the web's `aria-describedby`, TalkBack's hint). Rows are only watched for it once
 they have had one, so a list without tips is as it was. `ListRow.tip` is what a row of its own sets for the same.
 
+A row with a view of its own for its tip (`Component.tipView`) shows that instead, for the pointer, the cursor and a
+finger held alike: the view wins, and the words (`ListRow.tip`, `Decoration.tooltip`) are then only the row's
+description to a screen reader, so a row may set both. (Before, the two answered the same pointer, and whichever asked
+last showed.) Where views are not drawn (a Roku, an Apple TV) the words show. A `RichList` item's is `RichLook.tip`.
+
 ```scala
 tree.decorate @= (f => Decoration(icon = Some(MaterialIcon.Description), badge = f.folder, tooltip = Some(f.path)))
 ```
@@ -8657,6 +8675,16 @@ can set it; `matches` says what a word finds), or the app filters its own `secti
 into another place: `accepts` (within their own section, by default) and `moved` (a `RichMove`: the keys, the section,
 the item they go before). Alt with Up or Down moves the item under the cursor past the line above or below, the
 same way, for the keys. `rename(key)` types a title in place, for `commit`.
+
+`RichLook.tip` (`Option[TipContext => Component]`, None by default) is an item's own tip, a `RichTip` say: made as it
+opens (the pointer resting on the row, the keys' cursor on it, a finger held where that opens no menu) and taken apart
+as it closes. A row handed another item as the list scrolls or changes closes the one showing, and shows the new
+item's where the pointer is still on it; an item with none shows none. The row's words stay what a screen reader hears.
+
+```scala
+c => RichLook(c.title, Some(c.snippet), who = Some(c.persona),
+  tip = Some(_ => RichTip(c.title, lines = List(RichTipLine(MaterialIcon.Chat, c.snippet)))))
+```
 
 ```scala
 val chats = new RichList[Chat](sections, _.id, c => RichLook(c.title, Some(c.snippet), who = Some(c.persona),

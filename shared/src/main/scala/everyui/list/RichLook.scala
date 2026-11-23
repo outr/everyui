@@ -2,7 +2,9 @@ package everyui.list
 
 import everyui.Color
 import everyui.chat.Participant
+import everyui.component.Component
 import everyui.font.MaterialIcon
+import everyui.tooltip.TipContext
 
 /** How a `RichList` shows one item: its `title`, with a second line of `detail` under it (a snippet, an address), led
   * by `who`'s avatar (their picture, or their initial on their colour) or else an `icon`, and at its end `time` (epoch
@@ -16,7 +18,12 @@ import everyui.font.MaterialIcon
   * of the accent behind it and a thin accent bar at its start edge, apart from the list's own choice (`selected`), which
   * stays the stronger; `liveLabel` ("open in a tab") is said to a screen reader with the row while it is live. A
   * `meter` (`RichMeter`: a quota's use) is a bar on a line of its own under the title and the detail, taking the room
-  * its words at its end leave, which are never cut, its colour turning as it fills; its words are said with the row. */
+  * its words at its end leave, which are never cut, its colour turning as it fills; its words are said with the row.
+  *
+  * `tip` is a view of the item's own for its row's tip (`Component.tipView`: a `RichTip`, say, with a face, the last
+  * message's first words and who asks), made as it opens (the pointer resting on the row, the cursor on it, a finger
+  * held where that opens no menu) and taken apart as it closes; a row handed another item closes the one showing and
+  * shows that item's. None by default. */
 case class RichLook(title: String,
                     detail: Option[String] = None,
                     who: Option[Participant] = None,
@@ -32,4 +39,5 @@ case class RichLook(title: String,
                     actionShown: Boolean = false,
                     live: Boolean = false,
                     liveLabel: Option[String] = None,
-                    meter: Option[RichMeter] = None)
+                    meter: Option[RichMeter] = None,
+                    tip: Option[TipContext => Component] = None)

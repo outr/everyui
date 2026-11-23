@@ -150,6 +150,18 @@ class RichRow[T](owner: RichList[T]) extends ListRow[RichLine[T]] {
   heading.visible := header() && !(blocks() && group().nonEmpty)
   // a header is a line tall: its title cut short is read whole in its tip
   tip := (if (header()) heading.cut() else None)
+  // an item's own tip (`RichLook.tip`): the row's while it holds that item, made only as it opens; given to the row only
+  // once an item has one, so a list without any is as it was (a row handed another item drops the one showing)
+  private var viewed = false
+  private def viewFor(l: Option[RichLook]): Unit = {
+    val view = l.flatMap(_.tip)
+    if (view.nonEmpty || viewed) {
+      viewed = true
+      tipView @= view
+    }
+  }
+  viewFor(look())
+  look.attach(viewFor)
   /** The header's ⋮, opening its section's (or group's) menu: a little smaller than an item's, to fit the header. */
   val sectionMore: IconButton = new IconButton(MaterialIcon.MoreVert, RichList.moreLabel, () => openSectionMore()) {
     size.width @= RichRow.headerMore

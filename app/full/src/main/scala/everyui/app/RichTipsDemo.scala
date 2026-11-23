@@ -18,7 +18,11 @@ import reactify.*
   * `tooltip` is the plain words a screen reader hears. The tips come as the pointer rests on a tile, as the keys bring
   * the focus to one, or as a finger is held on one. `open=<n>` opens tile n's tip at once (1 is Sigil),
   * `theme=light` shows the light palette. Logs `richtips ok`, `richtips opened <name>` as a tip opens and
-  * `richtips open <name>` as its button is pressed. */
+  * `richtips open <name>` as its button is pressed.
+  *
+  * Under them, a `RichList` of conversations with a tip per item (`RichLook.tip`: the persona, the last message's first
+  * words, who asks, whether an agent works there) and an Alerts button whose menu's entries have tips (`MenuItem.tip`,
+  * one plain `MenuItem.tooltip`): `RichTipsLists`. `row=<n>` opens line n's tip, `menu=<n>` the menu with entry n's. */
 object RichTipsDemo {
   // (name, letter colour, unread, state, state's tone, cores, memory in GB, what runs)
   private val workspaces = Vector(
@@ -41,10 +45,30 @@ object RichTipsDemo {
       size.width := math.max(240.0, ui.size.width() - 48.0)
     }
     tiles.children ++= workspaces.zipWithIndex.map { case (w, i) => tile(w, i == 0) }
-    ui.children ++= List(title, tiles)
+    val list = RichTipsLists.conversations()
+    list.position.left @= 24.0
+    list.position.top := tiles.position.top() + tiles.size.height() + 20.0
+    list.size.width := math.min(360.0, ui.size.width() - 48.0)
+    list.size.height @= 300.0
+    val bell = RichTipsLists.bell()
+    // beside the list, or under it where the screen is narrow
+    val narrow = Val(ui.size.width() < 560.0)
+    bell.position.left := (if (narrow()) list.position.left() else list.position.left() + list.size.width() + 16.0)
+    bell.position.top := (if (narrow()) list.position.top() + list.size.height() + 16.0 else list.position.top())
+    ui.children ++= List(title, tiles, list, bell)
     Platform.log("richtips ok")
     Platform.launchArg("open").toIntOption.flatMap(n => tiles.children().lift(n - 1)).foreach { t =>
       Platform.after(0.5, () => Tooltip.open(t))
+    }
+    // row=<n>: the list's nth line's tip (0 is the section's header); menu=<n>: the bell's menu up, entry n's tip open
+    Platform.launchArg("row").toIntOption.foreach { n =>
+      Platform.after(0.5, () => list.list.rowAt(n).foreach(r => Tooltip.open(r)))
+    }
+    Platform.launchArg("menu").toIntOption.foreach { n =>
+      Platform.after(0.5, () => {
+        val menu = RichTipsLists.openBell(bell)
+        Platform.after(0.3, () => menu.rows.lift(n - 1).foreach(r => Tooltip.open(r)))
+      })
     }
   }
 

@@ -1097,7 +1097,7 @@ class VirtualList[T](val items: Var[Vector[T]], val keyOf: T => String, val labe
             row.position.left @= pad
             row.index @= at
             row.item @= item
-            if (row.tip().nonEmpty) tips.watch(row)
+            if (RowTips.has(row)) tips.watch(row)
             if (ownHeights) note(row)
             row.selected @= everyRow != chosen.contains(key)
             row.current @= cursor.contains(key)

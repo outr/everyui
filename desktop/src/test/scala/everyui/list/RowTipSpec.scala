@@ -34,6 +34,30 @@ class RowTipSpec extends FxSpec {
     list
   }
 
+  // the views made for rows' tips, newest first
+  private var views: List[Component] = Nil
+
+  /** A list whose rows each have a view of their own for their tip, saying their item, and (with `words`) the words of
+    * `tipOf` too. */
+  private def viewed(n: Int, words: Boolean = true): VirtualList[Int] = {
+    views = Nil
+    val list = new VirtualList[Int](files(n), i => i.toString, i => "File" + i.toString)(() =>
+      new TextRow[Int](i => "File" + i.toString, i => Decoration(tooltip = if (words) tipOf(i) else None)) {
+        tipView @= Some { _ =>
+          val view = new TextView {
+            content @= "View " + item().map(_.toString).getOrElse("")
+          }
+          views = view :: views
+          view
+        }
+      })
+    list.size.width @= 320.0
+    list.size.height @= 280.0
+    list.position.left @= 100.0
+    list.position.top @= 100.0
+    list
+  }
+
   private def onScreen[T](c: Component)(test: => T): T = {
     fx {
       Tooltip.delay @= 0.05
@@ -307,6 +331,97 @@ class RowTipSpec extends FxSpec {
             new MouseEvent(kind, x, y, x, y, MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true, null))))
           fx(list.selection.keys()) shouldBe Set(i.toString)
         }
+      }
+    }
+    "sit under what shows of a row half past the foot of its list" in {
+      val list = fx(made(20))
+      onScreen(list) {
+        // ten rows and a half: the eleventh shows its top half
+        fx(list.scrollTop(14.0))
+        val r = rowOf(list, 10)
+        fx(r.absoluteTop + r.size.height()) should be > fx(list.absoluteTop + list.size.height())
+        enter(r)
+        eventually(shownFor(r)) shouldBe true
+        fx(plate.get.position.top()) shouldBe fx(list.absoluteTop + list.size.height() + 6.0) +- 0.5
+      }
+    }
+    "show a row's own view in place of its words, for the pointer, its words then only its description" in {
+      val list = fx(viewed(20))
+      onScreen(list) {
+        val r = rowOf(list, 3)
+        enter(r)
+        eventually(shownFor(r) && words.contains("View 3")) shouldBe true
+        // and not its words after it, asked for on the same pointer
+        Thread.sleep(250L)
+        fx(words) shouldBe Some("View 3")
+        fx(views.size) shouldBe 1
+        fx(r.accessibleDescription()) shouldBe path(3)
+        leave(r)
+        fx(Tooltip.shownFor) shouldBe None
+        fx(views.forall(_.takenApart)) shouldBe true
+        // a row with a view and no words shows its view
+        val none = rowOf(list, 2)
+        enter(none)
+        eventually(shownFor(none) && words.contains("View 2")) shouldBe true
+        leave(none)
+      }
+    }
+    "show a row's own view for the keys' cursor, following it" in {
+      val list = fx(viewed(20))
+      onScreen(list) {
+        fx(list.focus())
+        eventually(shownFor(rowOf(list, 0)) && words.contains("View 0")) shouldBe true
+        key(KeyCode.DOWN)
+        eventually(shownFor(rowOf(list, 1)) && words.contains("View 1")) shouldBe true
+        key(KeyCode.DOWN)
+        eventually(shownFor(rowOf(list, 2)) && words.contains("View 2")) shouldBe true
+        fx(Focus.focused().exists(_ eq list)) shouldBe true
+        fx(Focus.focused @= None)
+        fx(Tooltip.shownFor) shouldBe None
+        fx(views.forall(_.takenApart)) shouldBe true
+      }
+    }
+    "show a row's own view at once for a finger held on it, with or without words, made once, for a while" in {
+      for (withWords <- List(false, true)) {
+        val list = fx(viewed(20, withWords))
+        onScreen(list) {
+          fx(list.holdTips @= Some(true))
+          hold(list, 4)
+          fx(shownFor(rowOf(list, 4))) shouldBe true
+          fx(words) shouldBe Some("View 4")
+          // the row's own watch does not make it again for the same hold
+          Thread.sleep(150L)
+          fx(views.size) shouldBe 1
+          fx(words) shouldBe Some("View 4")
+          eventually(Tooltip.shownFor.isEmpty) shouldBe true
+          fx(views.forall(_.takenApart)) shouldBe true
+        }
+      }
+    }
+    "leave nothing of a row's view alive once it closes, over rows handed other items" in {
+      val list = fx(viewed(200))
+      onScreen(list) {
+        val r = rowOf(list, 5)
+        enter(r)
+        eventually(shownFor(r)) shouldBe true
+        leave(r)
+        val before = fx(Component.liveNow)
+        for (i <- List(5, 6, 7)) {
+          val s = rowOf(list, i)
+          enter(s)
+          eventually(shownFor(s) && words.contains("View " + i.toString)) shouldBe true
+          leave(s)
+        }
+        // handed another item under the pointer: its view goes, and the new item's comes
+        enter(r)
+        eventually(shownFor(r) && words.contains("View 5")) shouldBe true
+        fx(list.items @= (0 until 200).reverse.toVector)
+        eventually(shownFor(r) && words.contains("View " + r.item().get.toString)) shouldBe true
+        leave(r)
+        fx(Tooltip.shownFor) shouldBe None
+        fx(views.forall(_.takenApart)) shouldBe true
+        fx(list.items @= (0 until 200).toVector)
+        fx(Component.liveNow) shouldBe before
       }
     }
   }

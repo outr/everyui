@@ -1,12 +1,15 @@
 package everyui.tooltip
 
 import everyui.component.*
-import everyui.event.{PointerEvent, PointerKind}
+import everyui.event.{Pointer, PointerEvent, PointerKind}
 import everyui.focus.Focus
 import everyui.font.MaterialIcon
-import everyui.render.Nodes
+import everyui.list.{RichList, RichLook, RichSection}
+import everyui.menu.{Menu, MenuItem, MenuRow}
+import everyui.render.{Nodes, Platform}
 import everyui.theme.Tone
 import everyui.{FxSpec, ui}
+import reactify.*
 
 /** A component's own tip (`Component.tipView`) in the one tip host: made as it opens (after the pointer rests, as the
   * keys bring the focus, at once as a finger is held) and taken apart as it closes (the pointer leaving, Escape, a
@@ -57,6 +60,9 @@ class TipViewSpec extends FxSpec {
       ui.children ++= cards
     }
     try test finally fx {
+      while (Modal.showing) Modal.close()
+      Pointer.finger = false
+      Pointer.usedAt = -1.0e9
       Tooltip.hide()
       Tooltip.delay @= 0.6
       Tooltip.grace @= 0.35
@@ -329,6 +335,194 @@ class TipViewSpec extends FxSpec {
         fx(Tooltip.hide())
         fx(tip.takenApart) shouldBe true
         fx(Component.liveNow) shouldBe before
+      }
+    }
+  }
+
+  // a view for a tip that says `name`, counted among those made
+  private def viewOf(name: String): TipContext => Component = { _ =>
+    val view = new TextView {
+      content @= name
+    }
+    made = view :: made
+    view
+  }
+  // the words of the tip showing, a view's or the host's own
+  private def tipText: Option[String] = Tooltip.plate.flatMap(_.children().headOption).collect { case t: TextView => t.content() }
+  private def press(key: String): Unit = fx {
+    Focus.key(key, true)
+    Focus.key(key, false)
+  }
+
+  "A rich list's item" should {
+    def people(names: String*): Vector[RichSection[String]] = Vector(RichSection("all", "All", names.toVector))
+    // every item has a tip of its own but Cy
+    def listOf(sections: Var[Vector[RichSection[String]]]): RichList[String] = {
+      val list = new RichList[String](sections, s => s, s => RichLook(s, Some("About " + s),
+        tip = if (s == "Cy") None else Some(viewOf("Tip " + s))))
+      list.size.width @= 300.0
+      list.size.height @= 300.0
+      list.position.left @= 100.0
+      list.position.top @= 100.0
+      list
+    }
+
+    "show its own tip as the pointer rests on its row, made as it opens and taken apart as it closes" in {
+      val sections = Var(people("Ada", "Bo", "Cy", "Di"))
+      val list = fx(listOf(sections))
+      onScreen(list) {
+        val ada = fx(list.list.rowAt(1).get)
+        // (once first: what the pointer over a row shows is made as it first comes)
+        var before = 0
+        (1 to 3).foreach { i =>
+          if (i == 2) before = fx(Component.liveNow)
+          fx(enter(ada))
+          eventually(shown(ada) && tipText.contains("Tip Ada")) shouldBe true
+          fx(leave(ada))
+          fx(Tooltip.shownFor) shouldBe None
+        }
+        fx(made.size) shouldBe 3
+        fx(made.forall(_.takenApart)) shouldBe true
+        fx(Component.liveNow) shouldBe before
+        // none for an item without one, and its words the row's still
+        val cy = fx(list.list.rowAt(3).get)
+        fx(enter(cy))
+        Thread.sleep(200L)
+        fx(Tooltip.shownFor) shouldBe None
+        fx(leave(cy))
+        fx(list.dispose())
+      }
+    }
+    "close the tip showing as its row is handed another item, and show that item's" in {
+      val sections = Var(people("Ada", "Bo", "Cy", "Di"))
+      val list = fx(listOf(sections))
+      onScreen(list) {
+        val row = fx(list.list.rowAt(1).get)
+        fx(enter(row))
+        eventually(shown(row) && tipText.contains("Tip Ada")) shouldBe true
+        val ada = fx(made.head)
+        // the items in the other order: the same row shows Di
+        fx(sections @= people("Di", "Cy", "Bo", "Ada"))
+        fx(list.list.rowAt(1).exists(_ eq row)) shouldBe true
+        fx(ada.takenApart) shouldBe true
+        fx(tipText.contains("Tip Ada")) shouldBe false
+        eventually(shown(row) && tipText.contains("Tip Di")) shouldBe true
+        // handed one with none, it shows none
+        fx(sections @= people("Cy", "Di", "Bo", "Ada"))
+        fx(Tooltip.shownFor) shouldBe None
+        Thread.sleep(200L)
+        fx(Tooltip.shownFor) shouldBe None
+        fx(made.forall(_.takenApart)) shouldBe true
+        fx(list.dispose())
+      }
+    }
+    "show its tip for the keys' cursor" in {
+      val sections = Var(people("Ada", "Bo", "Cy", "Di"))
+      val list = fx(listOf(sections))
+      onScreen(list) {
+        fx(list.focus())
+        press("ArrowDown")
+        eventually(tipText.contains("Tip Ada")) shouldBe true
+        fx(Tooltip.shownFor.exists(_ eq list.list.rowAt(1).get)) shouldBe true
+        press("ArrowDown")
+        eventually(tipText.contains("Tip Bo")) shouldBe true
+        fx(Focus.focused().exists(_ eq list.list)) shouldBe true
+        fx(list.dispose())
+      }
+    }
+  }
+
+  "A menu entry's tip" should {
+    def items(chose: String => Unit): List[MenuItem] = List(
+      MenuItem("One", () => chose("one"), tip = Some(viewOf("Tip One"))),
+      MenuItem("Two", () => chose("two"), tooltip = "The second", tip = Some(viewOf("Tip Two"))),
+      MenuItem("Three", () => chose("three"), tooltip = "Words of three"),
+      MenuItem("Four", () => chose("four")))
+    def entry(menu: Menu, label: String): MenuRow = fx(menu.rows.find(_.item.label == label).get)
+    def focusedLabel: Option[String] = fx(Focus.focused().collect { case r: MenuRow => r.item.label })
+
+    "show as the pointer rests on the entry and as the keys bring the focus, the menu's keys its own" in {
+      val a = fx(card(100.0, 40.0))
+      onScreen(a) {
+        fx(a.focus())
+        val before = fx(Component.liveNow)
+        var chose = ""
+        val menu = fx(Menu.at(120.0, 100.0, items(c => chose = c)))
+        val (one, two, three) = (entry(menu, "One"), entry(menu, "Two"), entry(menu, "Three"))
+        fx(enter(one))
+        eventually(shown(one) && tipText.contains("Tip One")) shouldBe true
+        fx(Modal.showing) shouldBe true
+        fx(leave(one))
+        fx(Tooltip.shownFor) shouldBe None
+        // the keys move the focus as ever, the tip following it
+        press("ArrowDown")
+        focusedLabel shouldBe Some("Two")
+        eventually(shown(two) && tipText.contains("Tip Two")) shouldBe true
+        // a view's words are what a screen reader hears
+        fx(two.node.fx.getAccessibleHelp) shouldBe "The second"
+        press("ArrowDown")
+        focusedLabel shouldBe Some("Three")
+        eventually(shown(three) && tipText.contains("Words of three")) shouldBe true
+        fx(three.node.fx.getAccessibleHelp) shouldBe "Words of three"
+        press("ArrowDown")
+        focusedLabel shouldBe Some("Four")
+        fx(Tooltip.shownFor) shouldBe None
+        Thread.sleep(200L)
+        fx(Tooltip.shownFor) shouldBe None
+        press("ArrowUp")
+        press("ArrowUp")
+        eventually(tipText.contains("Tip Two")) shouldBe true
+        // Enter chooses the entry under its tip, and the menu and the tip go
+        press("Enter")
+        chose shouldBe "two"
+        fx(Modal.showing) shouldBe false
+        fx(Tooltip.shownFor) shouldBe None
+        fx(made.forall(_.takenApart)) shouldBe true
+        fx(Component.liveNow) shouldBe before
+      }
+    }
+    "leave Escape to the menu, which closes with its tip at one press" in {
+      val a = fx(card(100.0, 40.0))
+      onScreen(a) {
+        fx(a.focus())
+        val before = fx(Component.liveNow)
+        fx(Menu.at(120.0, 100.0, items(_ => ())))
+        press("ArrowDown")
+        eventually(tipText.contains("Tip Two")) shouldBe true
+        press("Escape")
+        fx(Modal.showing) shouldBe false
+        fx(Tooltip.shownFor) shouldBe None
+        fx(Focus.focused().exists(_ eq a)) shouldBe true
+        fx(made.forall(_.takenApart)) shouldBe true
+        fx(Component.liveNow) shouldBe before
+      }
+    }
+    "show at once for a finger held on the entry, the menu staying, and in a sheet, which Back closes with it" in {
+      val a = fx(card(100.0, 40.0))
+      onScreen(a) {
+        val menu = fx(Menu.at(120.0, 100.0, items(_ => ())))
+        val one = entry(menu, "One")
+        fx(one.event.pointer.menu @= PointerEvent(PointerKind.Menu, one.absoluteLeft + 10.0, one.absoluteTop + 5.0, finger = true))
+        eventually(shown(one) && tipText.contains("Tip One")) shouldBe true
+        fx(Modal.showing) shouldBe true
+        // gone after a while, the menu still up
+        eventually(Tooltip.shownFor.isEmpty) shouldBe true
+        fx(Modal.showing) shouldBe true
+        fx(Modal.close())
+        // a finger's tall menu, a sheet
+        val sheet = fx {
+          Pointer.usedAt = Platform.ticks()
+          Pointer.finger = true
+          Menu.at(120.0, 100.0, items(_ => ()) ++ (1 to 60).map(i => MenuItem("Entry " + i.toString)))
+        }
+        fx(sheet.isSheet) shouldBe true
+        val two = entry(sheet, "Two")
+        fx(two.event.pointer.menu @= PointerEvent(PointerKind.Menu, two.absoluteLeft + 10.0, two.absoluteTop + 5.0, finger = true))
+        eventually(shown(two) && tipText.contains("Tip Two")) shouldBe true
+        press("Back")
+        fx(Modal.showing) shouldBe false
+        fx(Tooltip.shownFor) shouldBe None
+        fx(made.forall(_.takenApart)) shouldBe true
       }
     }
   }

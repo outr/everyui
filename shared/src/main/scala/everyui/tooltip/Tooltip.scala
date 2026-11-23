@@ -5,6 +5,7 @@ import everyui.component.types.WhiteSpace
 import everyui.event.{Key, Pointer}
 import everyui.focus.Focus
 import everyui.list.VirtualList
+import everyui.menu.Menu
 import everyui.render.Platform
 import everyui.theme.Theme
 import everyui.{Color, PlatformKind, Shadow, ui}
@@ -14,15 +15,18 @@ import reactify.*
   * (`Component.focusShown`: the keys brought it there), or once a finger is held on it: words, or anything the app
   * makes (`Component.tipView`, a `RichTip`, a key's chord beside its name, a preview). It comes after `delay` seconds,
   * so a pointer passing over does not raise it, and goes as the pointer leaves, presses, the focus moves on, Escape is
-  * pressed, what it is in scrolls, or what it belongs to is taken apart. It sits under the component, centred on it,
-  * or over it where under has no room (`TipContext.side`), never off the screen, its content no wider than
-  * `maxWidth`, on the theme's raised surface with its edge and a shadow. One shows at a time, and it never takes the
-  * focus.
+  * pressed, what it is in scrolls, or what it belongs to is taken apart. It sits under the component (what shows of
+  * it, where a list or a scroll cuts it), centred on it, or over it where under has no room (`TipContext.side`), never
+  * off the screen, its content no wider than `maxWidth`, on the theme's raised surface with its edge and a shadow. One
+  * shows at a time, and it never takes the focus.
   *
   * A finger's tap is never taken for a tip: a finger held on the component opens it at once (where that opens no menu
   * of the app's), and it goes `held` seconds later, or, where it is interactive, at the next press outside it. An
   * interactive tip (`Component.tipInteractive`) stays open as the pointer moves from the component into it, within
   * `grace` seconds, and what is in it can be clicked and focused; it closes itself through `TipContext.close`.
+  *
+  * In a menu (`MenuItem.tip`), Escape and Back stay the menu's: they close it, and the tip with it. A list asks for its
+  * rows' tips itself (`askFor` for words, `askView` for a row's own view, which wins over its words).
   *
   * On a platform driven by a remote it shows for the focus only where the app asks (`onFocus`): there the focus moves
   * with every press, and a tip following it would cover the next thing along. Where the app's own view cannot be drawn
@@ -101,7 +105,8 @@ object Tooltip {
     target.event.pointer.menu.attach { e =>
       if (e.finger) {
         val dialogs = Modal.opened
-        Platform.later(() => if (Modal.opened == dialogs && !Pointer.menuAnswered) {
+        // (not again where what it is in opened it for the same hold: a list for its row)
+        Platform.later(() => if (Modal.opened == dialogs && !Pointer.menuAnswered && !shownFor.exists(_ eq target)) {
           asked += 1
           pending = None
           show(target, make, open(), finger = true)
@@ -126,6 +131,22 @@ object Tooltip {
     val make = (_: TipContext) => text().map(words)
     if (now) showIf(target, make, () => false, mine)
     else Platform.after(delay(), () => showIf(target, make, () => false, mine))
+  }
+
+  /** `target`'s own tip (`Component.tipView`) asked for by what owns it rather than by its own pointer and focus (a
+    * list's row under its cursor): after `delay`, or at once with `finger`, a finger held on it, which has waited
+    * already, and then for `held` seconds, or, where it is interactive, until a press outside it. */
+  def askView(target: Component, finger: Boolean = false): Unit = {
+    asked += 1
+    val mine = asked
+    if (finger) {
+      pending = None
+      show(target, own(target), target.tipInteractive(), finger = true)
+    }
+    else {
+      pending = Some(target)
+      Platform.after(delay(), () => showIf(target, own(target), () => target.tipInteractive(), mine))
+    }
   }
 
   /** The tip showing, taken away, and any still to come, whoever's. */
@@ -241,22 +262,25 @@ object Tooltip {
     else if (finger) {
       Platform.after(held, () => if (showing.exists(_._2 eq plate)) hideFor(target))
     }
-    // Escape closes it, before a dialog under it; Back too, where a finger or the pointer's way into it opened it
-    val back = (key: Key) => (key == Key.Escape || (key == Key.Back && (open || finger))) && {
-      hideFor(target)
-      true
-    }
-    unhooks = Focus.onBack(back) :: unhooks
-    // and so does what it is in scrolling
+    // what it is in scrolling closes it
+    var inMenu = false
     var at = target.parent()
     while (at.nonEmpty) {
       at.get match {
         case s: ScrollContainer => unhooks = closing(s.offset, target) :: unhooks
         case l: VirtualList[?] => unhooks = closing(l.offset, target) :: unhooks
+        case _: Menu => inMenu = true
         case _ => ()
       }
       at = at.get.parent()
     }
+    // so do Escape, before a dialog under it, and Back, where a finger or the pointer's way into it opened it; in a
+    // menu the key is still the menu's, which closes, and the tip with it
+    val back = (key: Key) => (key == Key.Escape || (key == Key.Back && (open || finger))) && {
+      hideFor(target)
+      !inMenu
+    }
+    unhooks = Focus.onBack(back) :: unhooks
   }
 
   // `target`'s tip closed as `offset` moves, until undone
@@ -269,12 +293,27 @@ object Tooltip {
   // more, never off the screen
   private def placed(target: Component, plate: Container, tip: TipContext): Unit = {
     val left = target.absoluteLeft
-    val top = target.absoluteTop
+    // the part of it in view: a row half past the foot of its list has its tip under what shows of it
+    var top = target.absoluteTop
+    var bottom = top + target.size.height()
+    var at = target.parent()
+    while (at.nonEmpty) {
+      at.get match {
+        case c @ (_: ScrollContainer | _: VirtualList[?]) =>
+          val (from, to) = (math.max(top, c.absoluteTop), math.min(bottom, c.absoluteTop + c.size.height()))
+          if (from < to) {
+            top = from
+            bottom = to
+          }
+        case _ => ()
+      }
+      at = at.get.parent()
+    }
     val width = plate.size.width()
     val height = plate.size.height()
     plate.position.left @= math.max(8.0, math.min(left + (target.size.width() - width) / 2.0,
       ui.size.width() - width - 8.0))
-    val under = top + target.size.height() + 6.0
+    val under = bottom + 6.0
     val roomUnder = ui.size.height() - 8.0 - under
     val roomOver = top - 6.0 - 8.0
     val side = if (height <= roomUnder || roomUnder >= roomOver) TipSide.Below else TipSide.Above

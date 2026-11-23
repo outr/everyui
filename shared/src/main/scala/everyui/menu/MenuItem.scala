@@ -1,7 +1,9 @@
 package everyui.menu
 
+import everyui.component.Component
 import everyui.font.MaterialIcon
 import everyui.keymap.{Chord, Command}
+import everyui.tooltip.TipContext
 import reactify.Val
 
 /** One entry of a [[Menu]]: what it says and what choosing it does, with an `icon` before it, a line of `detail` under
@@ -19,7 +21,13 @@ import reactify.Val
   * A `picture` is drawn where the icon would be, a small rounded square (a workspace's icon, a face, a logo, or a
   * letter on a colour: `MenuPicture`) as big as the icon whatever its own size, so its words line up with the other
   * entries'; dimmed with the entry where it is disabled; a ticked one shows its tick at the row's end instead. A
-  * picture still to load stands in as its fallback, else the icon. */
+  * picture still to load stands in as its fallback, else the icon.
+  *
+  * `tooltip` is words for more than the entry shows, in a tip as the pointer rests on it, the keys bring the focus to it
+  * or a finger is held on it, and what a screen reader hears of it after its label. `tip` is a view of its own for that
+  * tip instead (`Component.tipView`: a `RichTip`, an approval's whole command), made as it opens and taken apart as it
+  * closes; its `tooltip` is then only what a screen reader hears (and drawn in its place where views are not). Either
+  * leaves the menu as it is: open, its keys its own (Escape closes it, and the tip with it). */
 case class MenuItem(label: String,
                     action: () => Unit = () => (),
                     icon: MaterialIcon = MaterialIcon.Empty,
@@ -34,7 +42,9 @@ case class MenuItem(label: String,
                     active: Boolean = false,
                     on: Option[Val[Boolean]] = None,
                     keepOpen: Boolean = false,
-                    picture: Option[MenuPicture] = None) {
+                    picture: Option[MenuPicture] = None,
+                    tooltip: String = "",
+                    tip: Option[TipContext => Component] = None) {
   /** Whether it can be chosen, and so take the focus. */
   def choosable: Boolean = enabled && !separator
 

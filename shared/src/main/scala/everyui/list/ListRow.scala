@@ -29,7 +29,9 @@ class ListRow[T] extends Container {
     * accent too (`HighlightRow`'s do). */
   val inUse: Var[Boolean] = own(Var(false))
   /** Words for more than the row shows (`Decoration.tooltip`), which the list shows in a tip as the pointer or the
-    * cursor rests on the row and gives a screen reader as its description: a row binds it to its item's. None is no tip. */
+    * cursor rests on the row, or a finger is held on it, and gives a screen reader as its description: a row binds it to
+    * its item's. None is no tip. A row with a view for its tip (`tipView`) shows that instead, wherever views are drawn:
+    * the view wins, and these words are then only what a screen reader hears. */
   val tip: Var[Option[String]] = own(Var(None))
   /** Whether the row has an item to show. */
   val present: Val[Boolean] = own(Val(item().nonEmpty))

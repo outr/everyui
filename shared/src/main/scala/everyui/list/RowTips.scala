@@ -9,7 +9,11 @@ import reactify.*
   * row, as the cursor rests on one in a list with the focus (where the focus shows tips, `Tooltip.onFocus`), and as a
   * finger is held on one where that opens no menu, for `held` seconds. A row is only watched once it has had a tip,
   * so a list without any is as it was. The words are read as the tip shows, so a row handed another item shows its
-  * own; and a tip goes as its row is handed another item, as the rows scroll, and with the list. */
+  * own; and a tip goes as its row is handed another item, as the rows scroll, and with the list.
+  *
+  * A row with a view of its own for its tip (`Component.tipView`, where views are drawn) shows that instead, for the
+  * pointer (by `Tooltip`'s own watch of the row), the cursor and a finger held alike: the view wins, and the row's
+  * words (`ListRow.tip`) are only what a screen reader hears. */
 private[list] class RowTips[T](list: VirtualList[T]) {
   private var watched: List[ListRow[T]] = Nil
   // the row the pointer is on, and whether the tip asked for last was the cursor's
@@ -22,23 +26,29 @@ private[list] class RowTips[T](list: VirtualList[T]) {
     watched = row :: watched
     row.accessibleDescription := row.tip().getOrElse("")
     if (Platform.pointerSupport()) {
-      // (a finger coming onto a row, on a touch laptop, is no pointer resting on it: a finger held shows its tip)
+      // (a finger coming onto a row, on a touch laptop, is no pointer resting on it: a finger held shows its tip; a
+      // view the row's own watch shows)
       row.event.pointer.enter.attach(e => if (!e.finger) {
         pointedAt = Some(row)
         byCursor = false
-        Tooltip.askFor(row, () => row.tip())
+        if (!RowTips.drawn(row)) Tooltip.askFor(row, () => row.tip())
       })
       row.event.pointer.leave.attach { _ =>
         if (pointedAt.exists(_ eq row)) pointedAt = None
-        if (!byCursor) Tooltip.hideFor(row)
+        if (!byCursor && !RowTips.drawn(row)) Tooltip.hideFor(row)
       }
     }
     row.event.pointer.down.attach(_ => Tooltip.hideFor(row))
     row.item.attach { _ =>
       if (Tooltip.shownFor.exists(_ eq row)) Tooltip.hideFor(row)
-      if (pointedAt.exists(_ eq row)) Tooltip.askFor(row, () => row.tip())
+      if (pointedAt.exists(_ eq row)) ask(row)
     }
   }
+
+  // row `row`'s tip asked for, its view where it has one, else its words; at once for a finger held
+  private def ask(row: ListRow[T], finger: Boolean = false): Unit =
+    if (RowTips.drawn(row)) Tooltip.askView(row, finger)
+    else Tooltip.askFor(row, () => row.tip(), now = finger)
 
   private def ours(t: Component): Boolean = watched.exists(_ eq t)
 
@@ -62,10 +72,10 @@ private[list] class RowTips[T](list: VirtualList[T]) {
     * the focus) in a list with the focus; else the cursor's taken away. */
   def cursor(keys: Boolean): Unit = {
     val row = list.current().map(list.indexOf).flatMap(list.rowAt)
-    if (keys && list.focused() && Tooltip.onFocus() && row.exists(_.tip().nonEmpty)) {
+    if (keys && list.focused() && Tooltip.onFocus() && row.exists(RowTips.has)) {
       Tooltip.shownFor.filter(t => ours(t) && !row.exists(_ eq t)).foreach(Tooltip.hideFor)
       byCursor = true
-      row.foreach(r => Tooltip.askFor(r, () => r.tip()))
+      row.foreach(r => ask(r))
     }
     else if (byCursor) {
       byCursor = false
@@ -73,17 +83,25 @@ private[list] class RowTips[T](list: VirtualList[T]) {
     }
   }
 
-  /** A finger held on row `index`, which opened no menu: its tip at once, for `held` seconds. */
-  def heldOn(index: Int): Unit = list.rowAt(index).filter(_.tip().nonEmpty).foreach { row =>
+  /** A finger held on row `index`, which opened no menu: its tip at once, for `held` seconds (its view's, `Tooltip`'s
+    * own while, or until a press outside an interactive one). */
+  def heldOn(index: Int): Unit = list.rowAt(index).filter(RowTips.has).foreach { row =>
     byCursor = false
-    Tooltip.askFor(row, () => row.tip(), now = true)
+    ask(row, finger = true)
     holds += 1
     val mine = holds
-    Platform.after(RowTips.held, () => if (mine == holds && Tooltip.shownFor.exists(_ eq row)) Tooltip.hideFor(row))
+    if (!RowTips.drawn(row))
+      Platform.after(RowTips.held, () => if (mine == holds && Tooltip.shownFor.exists(_ eq row)) Tooltip.hideFor(row))
   }
 }
 
 object RowTips {
   /** How long a tip a finger held up stays, in seconds, as Android's own does. */
   val held: Double = 2.5
+
+  /** Whether `row` shows a view of its own for its tip (`Component.tipView`), where views are drawn. */
+  def drawn(row: Component): Boolean = row.tipDrawn && Tooltip.drawsViews
+
+  /** Whether `row` has a tip: a view of its own, or words. */
+  def has(row: ListRow[?]): Boolean = drawn(row) || row.tip().nonEmpty
 }

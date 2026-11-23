@@ -8,6 +8,7 @@ import everyui.font.MaterialIcon
 import everyui.i18n.Direction
 import everyui.kit.Mirror
 import everyui.theme.Theme
+import everyui.tooltip.Tooltip
 import everyui.component.types.Semantics
 import reactify.*
 
@@ -128,6 +129,16 @@ class MenuRow(val item: MenuItem, width: => Double, points: Double, widest: => D
       t.position.top := (size.height() - t.size.height()) / 2.0
     }
     children ++= lead.toList ++ List(words) ++ trail.toList
+    // its tip: a view of its own, its words then what a screen reader hears; else its words, in the one tip host
+    item.tip match {
+      case Some(view) =>
+        tipView @= Some(view)
+        if (item.tooltip.nonEmpty) tooltip @= item.tooltip
+      case None if item.tooltip.nonEmpty =>
+        accessibleDescription @= item.tooltip
+        Tooltip(this, item.tooltip)
+      case None => ()
+    }
     if (item.enabled) {
       event.pointer.enter.attach(_ => focus())
       event.click.attach { e =>
