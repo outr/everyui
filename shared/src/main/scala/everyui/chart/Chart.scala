@@ -87,6 +87,8 @@ abstract class Chart extends Container {
   words.clipsToBox @= Some(false)
   plot.visible := !table()
   words.visible := !table()
+  // the words are laid over the plot, and the pointer goes through them to it
+  everyui.render.Gestures.passThrough(words.node)
   children ++= List(plot, words)
 
   /** What reads the kind's own data, bound once that is made: called last by each kind's constructor. */
@@ -224,6 +226,8 @@ abstract class Chart extends Container {
         shadow @= Some(everyui.Shadow(0.0, 3.0, 12.0, Color.Black.withAlpha(0.3)))
         visible := tips() && hovered().nonEmpty && !table()
       }
+      // the pointer goes through it to the marks under it
+      everyui.render.Gestures.passThrough(plate.node)
       tipMade = Some(plate)
       children += plate
     }
