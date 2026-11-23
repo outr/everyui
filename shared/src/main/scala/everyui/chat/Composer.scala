@@ -106,9 +106,12 @@ class Composer(onSend: Draft => Unit,
     * draft, such as where it goes, pressed to change and taken off by their ×. They are the draft's, not files: never
     * sent, and kept or cleared by the app as messages go. A chip set again under the same key is changed in place. */
   val extraChips: Var[List[ComposerChip]] = own(Var(Nil))
-  /** What a press on a file's chip does: the app's, where it sets one, for every file; else a picture is shown whole
-    * over the screen (`preview`) and any other file's chip is not pressed at all. */
+  /** What a press on a file's chip does: the app's, where it sets one, for every file it `canOpen`; else a picture is
+    * shown whole over the screen (`preview`) and any other file's chip is not pressed at all. */
   val onAttachmentOpen: Var[Option[Attachment => Unit]] = own(Var(None))
+  /** Whether a file's chip opens at all: one this says no to is no button (a zip the app has nothing to show of), and
+    * one it says yes to opens as `onAttachmentOpen` says. Every file, by default. */
+  val canOpen: Var[Attachment => Boolean] = own(Var((_: Attachment) => true))
   /** Whether a reply is coming: Send is Stop, and Enter sends nothing. */
   val busy: Var[Boolean] = own(Var(false))
   /** Whether it is in use at all. */
@@ -475,6 +478,7 @@ class Composer(onSend: Draft => Unit,
   }
   // made again as what a press does changes
   onAttachmentOpen.attach(_ => fileChipsMade())
+  canOpen.attach(_ => fileChipsMade())
   // the app's chips by key, each changed in place, those gone taken apart and those new made
   extraChips.attach { list =>
     val before = appChips
@@ -752,8 +756,8 @@ class Composer(onSend: Draft => Unit,
   def preview(a: Attachment): Unit =
     a.preview.filter(_ => a.image).foreach(source => new everyui.kit.ImageViewer(List(source), 0, saves = false).open())
 
-  // what a press on `a`'s chip does, if anything (`onAttachmentOpen`)
-  private def opener(a: Attachment): Option[() => Unit] = onAttachmentOpen() match {
+  // what a press on `a`'s chip does, if anything (`canOpen`, `onAttachmentOpen`)
+  private def opener(a: Attachment): Option[() => Unit] = if (!canOpen()(a)) None else onAttachmentOpen() match {
     case Some(open) => Some(() => open(a))
     case None if a.image && a.preview.nonEmpty => Some(() => preview(a))
     case None => None

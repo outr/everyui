@@ -146,6 +146,38 @@ class ComposerPreviewSpec extends FxSpec {
       fx(chips(c).map(_.opens)) shouldBe Vector(true, false)
     }
 
+    "open only the files the app says it can, each as it says" in {
+      val c = make()
+      var opened = List.empty[String]
+      val archive = Attachment("logs.zip", 4096L, "application/zip", everyui.async.Task(Array.emptyByteArray))
+      fx {
+        c.attach(photo)
+        c.attach(notes)
+        c.attach(archive)
+        c.onAttachmentOpen @= Some((a: Attachment) => opened = opened :+ a.name)
+        c.canOpen @= ((a: Attachment) => a.mime != "application/zip")
+      }
+      val Vector(picture, text, zip) = fx(chips(c))
+      fx(Vector(picture.opens, text.opens, zip.opens)) shouldBe Vector(true, true, false)
+      // the zip's chip no button at all, its × still there
+      fx(zip.body.focusable()) shouldBe false
+      fx(zip.body.semantics()) shouldBe Semantics()
+      fx(zip.removal.semantics()) shouldBe Semantics.button("Remove logs.zip")
+      click(zip.body)
+      click(text.body)
+      opened shouldBe List("notes.txt")
+      // without the hook, the picture to the viewer still, where the app lets it open
+      fx(c.onAttachmentOpen @= None)
+      val Vector(shown, plain, archived) = fx(chips(c))
+      fx(Vector(shown.opens, plain.opens, archived.opens)) shouldBe Vector(true, false, false)
+      click(shown.body)
+      eventually(Modal.showing) shouldBe true
+      fx(Modal.close())
+      // and none where it says no to every file
+      fx(c.canOpen @= ((_: Attachment) => false))
+      fx(chips(c).map(_.opens)) shouldBe Vector(false, false, false)
+    }
+
     "be no button for a file that is not a picture, without the hook" in {
       val c = make()
       fx(c.attach(notes))

@@ -3051,6 +3051,10 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
   Escape, Back or a click outside it close it, the focus and the draft as they were), and any other file's chip is no
   button at all. A screen reader hears one that opens as a button named "Preview" and the file's name
   (`composer.preview`), and its × as "Remove" and the name; Right and Left go between them.
+- `canOpen` (`Var[Attachment => Boolean]`, every file by default) decides which chips open at all: one it says no to
+  (a zip the app has nothing to show of) is no button, whatever `onAttachmentOpen` is; one it says yes to opens by the
+  hook where it is set, else in the viewer where it is a picture.
+  `composer.canOpen @= (a => a.image || a.mime == "text/plain")`
 - `pasted` decides what a paste becomes: words in the field, or a file's chip, as a long log or stack trace should be
   (`ComposerPaste.longAsFile`; see Pasting below).
 - A picture pasted (a screenshot tool's or an image viewer's copy, a keyboard's sticker) or a file copied in a file
