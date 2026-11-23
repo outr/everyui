@@ -1156,8 +1156,8 @@ class RenderNode(val view: View) {
     * at its width; anything else breaks it only where the words themselves do. */
   def setWhiteSpace(value: String): Unit = if (Hop.needed(this)) Hop(() => setWhiteSpace(value)) else view match {
     // a box of lines: "pre" and "nowrap" keep each line whole, scrolled sideways
-    case e: EditText =>
-      if ((e.getInputType & android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0)
+    case e: FieldView =>
+      if ((e.fieldType & android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0)
         e.setHorizontallyScrolling(value == "pre" || value == "nowrap")
     case t: TextView =>
       wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
@@ -1236,8 +1236,10 @@ class RenderNode(val view: View) {
   def setAutofill(token: String, section: String, name: String, passkey: Boolean, literal: Boolean,
     numeric: Boolean): Unit = if (Hop.needed(this)) Hop(() => setAutofill(token, section, name, passkey, literal, numeric))
   else view match {
-    case e: EditText if android.os.Build.VERSION.SDK_INT >= 26 =>
+    case e: FieldView if android.os.Build.VERSION.SDK_INT >= 26 =>
       import android.text.InputType as T
+      // the type it has as a field, which a read-only one keeps for when it is one again (`FieldView.fieldType`)
+      val now = e.fieldType
       if (token == "off") e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO)
       else if (token.isEmpty) e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_AUTO)
       else {
@@ -1245,10 +1247,10 @@ class RenderNode(val view: View) {
         val hint = RenderNode.autofillHint(token)
         if (hint.nonEmpty) e.setAutofillHints(hint)
       }
-      val lines = e.getInputType & T.TYPE_TEXT_FLAG_MULTI_LINE
-      val secret = (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_PASSWORD ||
-        (e.getInputType & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-        (e.getInputType & (T.TYPE_MASK_CLASS | T.TYPE_MASK_VARIATION)) ==
+      val lines = now & T.TYPE_TEXT_FLAG_MULTI_LINE
+      val secret = (now & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_PASSWORD ||
+        (now & T.TYPE_MASK_VARIATION) == T.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+        (now & (T.TYPE_MASK_CLASS | T.TYPE_MASK_VARIATION)) ==
           (T.TYPE_CLASS_NUMBER | T.TYPE_NUMBER_VARIATION_PASSWORD)
       val password = secret || token == "current-password" || token == "new-password"
       val kind = token match {
@@ -1274,12 +1276,7 @@ class RenderNode(val view: View) {
         case _ if literal => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         case _ => T.TYPE_CLASS_TEXT
       }
-      if (e.getInputType != (kind | lines)) {
-        // a password's type would set its own face: the field keeps the one it was given
-        val face = e.getTypeface
-        e.setInputType(kind | lines)
-        e.setTypeface(face)
-      }
+      e.setFieldType(kind | lines)
     case _ => ()
   }
   /** A form (`everyui.form.Form`) is a container here, sent by the app alone. */
@@ -1428,7 +1425,8 @@ class RenderNode(val view: View) {
       if (on) e.edit(true)
       if (on && !e.hasFocus) {
         e.requestFocus()
-        e.post(() => keyboard.showSoftInput(e, 0))   // once the focus has landed, or the keyboard ignores it
+        // once the focus has landed, or the keyboard ignores it; none for a read-only field
+        if (!e.isReadOnly) e.post(() => keyboard.showSoftInput(e, 0))
       }
       else if (!on) keyboard.hideSoftInputFromWindow(e.getWindowToken, 0)
       if (!on && e.hasFocus) {
@@ -2082,7 +2080,8 @@ object NodeGroup {
   /** Whether a scroll the way `along` goes (`NodeGroup.scrollsAlong`) that can still go `toward` (`NodeGroup.goes`)
     * lies inside `group` under the point `x`, `y` on the screen, where a finger went down: a list in a dialog's scroll,
     * a panel that scrolls in a list's row; or a page's web view whose page can still scroll `toward` (1 on, -1 back)
-    * along it. A page that scrolls keeps the drags along it while it has further to go that way, and one at its end, or
+    * along it, or a read-only field whose words can (`FieldView.scrolls`: a note or code to read in a page). A page that
+    * scrolls keeps the drags along it while it has further to go that way, and one at its end, or
     * one that cannot scroll (a page sized to its box, `overflow: hidden`), leaves them to the scroll it is in: settled
     * as the drag is, so a drag that brings a page to its end stays the page's, and the next one past it is the scroll's.
     * What scrolls inside the page (a box of its own that overflows) is not seen from here, and a drag on it is the
@@ -2092,6 +2091,8 @@ object NodeGroup {
       group.getChildAt(i) match {
         case page: android.webkit.WebView if page.getVisibility == View.VISIBLE && holds(page, x, y) =>
           toward != 0 && (if (along == 1) page.canScrollVertically(toward) else page.canScrollHorizontally(toward))
+        // a read-only field, whose touches are its own (`FieldView.scrolls`)
+        case field: FieldView if field.getVisibility == View.VISIBLE && holds(field, x, y) => field.scrolls(along, toward)
         case child: ViewGroup if child.getVisibility == View.VISIBLE && holds(child, x, y) =>
           (child match {
             case g: NodeGroup => g.scrollsAlong == along && g.takeDrag != null && g.goes(toward)

@@ -6,10 +6,11 @@ import everyui.text.TextArea
 import everyui.theme.Theme
 import everyui.ui
 
-/** Read-only fields: a share link and a key to copy, a note in a box of lines, code in one (`TextArea.code`: its own
-  * face, its lines whole and scrolled sideways, its tabs at four), and an editable field under them, with a button
-  * that makes the link editable and read-only again. What reaches each field's value is logged, so a check can type
-  * and paste into them and see that nothing reaches a read-only one:
+/** Read-only fields: a share link and a key to copy, a note in a box of lines (longer than its box, so it scrolls),
+  * code in one (`TextArea.code`: its own face, its lines whole and scrolled sideways, its tabs at four), and an
+  * editable field under them, with a button that makes the link editable and read-only again.
+  * What reaches each field's value is logged, so a check can type and paste into them and see that nothing reaches a
+  * read-only one:
   *
   *   [ui] readonly link=https://example.com/s/4f2a9c
   *   [ui] readonly ok
@@ -20,8 +21,10 @@ object ReadOnlyDemo {
     val width = math.min(360.0, ui.size.width() - 32.0)
     val link = field("Share link", "link", "https://example.com/s/4f2a9c", width)
     link.readOnly @= true
-    val note = new TextArea(width = width, grow = true)
-    note.value @= "A note that can be read and copied,\nbut not changed."
+    // longer than its box, to be scrolled by a swipe at once
+    val note = new TextArea(width = width, minHeight = 96.0)
+    note.value @= "A note that can be read and copied,\nbut not changed.\nIt runs on past the foot of its box,\n" +
+      "so a swipe on it scrolls it\nwith no tap first,\nand no keyboard comes up\nwhen it is tapped."
     note.readOnly @= true
     note.value.attach(v => Platform.log("readonly note=" + v.replace('\n', '|')))
     val code = new TextArea(width = width, grow = true)

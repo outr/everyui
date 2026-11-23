@@ -9,8 +9,9 @@ import everyui.file.PickedFile
 
 /** An `EditText` that is only a field while it is being edited. Until then it takes no focus and no touches, so
   * Android never hands it the focus by itself (a TV focuses the first focusable view as a window opens, and Google TV
-  * brings the keyboard up with it) and a tap goes to the component around it, which starts editing. It also says when
-  * its on-screen keyboard is put away with Back, which the keyboard takes before the activity ever sees it.
+  * brings the keyboard up with it) and a tap goes to the component around it, which starts editing; a read-only one's
+  * touches are its own at once, to be scrolled, and a tap on it gives it the focus itself. It also says when its
+  * on-screen keyboard is put away with Back, which the keyboard takes before the activity ever sees it.
   *
   * Its pastes are put to the app before they land (`pasting`): its menu's Paste and Paste as plain text, Ctrl+V on a
   * keyboard, and a soft keyboard's Paste key, which all come through `onTextContextMenuItem`; and a soft keyboard's
@@ -44,29 +45,59 @@ final class FieldView(context: Context) extends EditText(context) {
     setFocusableInTouchMode(on)
   }
 
-  // what a read-only field put by, to be a field again
+  // whether it is read-only, and the input type it put by to be a field again
   private var fixed = false
-  private var keys: android.text.method.KeyListener = null
   private var kind: Int = 0
 
   /** Read-only, or a field again. Read-only, it has no key listener, so it takes no typing, offers no paste and brings
-    * up no keyboard, and TalkBack reads it as not editable; its words are still selectable, to be chosen and copied.
-    * Being a field again puts its keys, its input type (a secret's, an email address's) and its caret's movement back.
-    * Either way it takes the focus only while it is being edited, as before. */
+    * up no keyboard, and TalkBack reads it as not editable; its words are still selectable, to be chosen and copied,
+    * and its touches are its own at once (`dispatchTouchEvent`), so a drag scrolls it with no tap first. Being a field
+    * again puts its input type back (`fieldType`: a secret's, an email address's, with its keys) and its caret's
+    * movement. Either way it takes the focus only while it is being edited or touched. */
   def readOnly(on: Boolean): Unit = if (on != fixed) {
-    fixed = on
     if (on) {
-      keys = getKeyListener
       kind = getInputType
+      fixed = true
       setKeyListener(null)
       setTextIsSelectable(true)
     } else {
+      fixed = false
       setTextIsSelectable(false)
-      setKeyListener(keys)
-      setRawInputType(kind)
+      setFieldType(kind)
       setMovementMethod(android.text.method.ArrowKeyMovementMethod.getInstance)
     }
+    setShowSoftInputOnFocus(!on)
     edit(editing)
+  }
+
+  /** Whether it is read-only (`readOnly`): no keyboard is brought up for it. */
+  def isReadOnly: Boolean = fixed
+
+  /** Its input type as a field: while it is read-only (which has none, `TYPE_NULL`) the one it is a field again with. */
+  def fieldType: Int = if (fixed) kind else getInputType
+
+  /** Its input type as a field set, its face kept (a password's would set its own): while it is read-only, kept for
+    * when it is a field again, as setting it would give it its keys back. */
+  def setFieldType(to: Int): Unit = if (fixed) kind = to else if (getInputType != to) {
+    val face = getTypeface
+    setInputType(to)
+    setTypeface(face)
+  }
+
+  /** Whether a drag along it (1 down, 2 across) can still scroll its words `toward` (1 on, -1 back), where its touches
+    * are its own while it is not edited (read-only): a scroll it is in leaves such a drag to it, and takes one at its
+    * end (`NodeGroup.scrollUnder`). */
+  def scrolls(along: Int, toward: Int): Boolean = fixed && getLayout != null && {
+    val layout = getLayout
+    if (along == 1) everyui.event.DragAxis.goes(getScrollY,
+      layout.getHeight - (getHeight - getCompoundPaddingTop - getCompoundPaddingBottom), toward)
+    else {
+      val lines = 0 until layout.getLineCount
+      val left = if (lines.isEmpty) 0f else lines.map(layout.getLineLeft).min
+      val right = if (lines.isEmpty) 0f else lines.map(layout.getLineRight).max
+      everyui.event.DragAxis.goes(getScrollX - left, right - left - (getWidth - getCompoundPaddingLeft -
+        getCompoundPaddingRight), toward)
+    }
   }
 
   // its words all chosen as it takes the focus (`selectOnFocus`); not as it is given the focus back after it moved
@@ -91,6 +122,8 @@ final class FieldView(context: Context) extends EditText(context) {
     } else if (!focused) {
       blurred = true
       post(() => blurred = false)
+      // a read-only field a touch gave the focus to (`touched`) takes none by itself again once it moves on
+      if (fixed && !editing) post(() => if (!isFocused && !editing) edit(false))
     }
   }
 
@@ -102,7 +135,42 @@ final class FieldView(context: Context) extends EditText(context) {
     super.onDetachedFromWindow()
   }
 
-  override def dispatchTouchEvent(event: MotionEvent): Boolean = editing && super.dispatchTouchEvent(event)
+  // where a touch on it went down, and whether it has since gone further than a tap may (a drag that scrolled it)
+  private var downAt = (0f, 0f)
+  private var strayed = false
+
+  // a read-only field's touches are its own while it is not edited too: a drag scrolls it, and a tap or a long press
+  // gives it the focus (`touched`)
+  override def dispatchTouchEvent(event: MotionEvent): Boolean = (editing || fixed) && {
+    if (event.getActionMasked == MotionEvent.ACTION_DOWN) {
+      downAt = (event.getRawX, event.getRawY)
+      strayed = false
+    }
+    else if (event.getActionMasked == MotionEvent.ACTION_MOVE) {
+      val slop = android.view.ViewConfiguration.get(getContext).getScaledTouchSlop
+      if (math.abs(event.getRawX - downAt._1) > slop || math.abs(event.getRawY - downAt._2) > slop) strayed = true
+    }
+    super.dispatchTouchEvent(event)
+  }
+
+  // a tap that did not scroll it
+  override def performClick(): Boolean = {
+    if (fixed && !editing && !strayed) touched()
+    super.performClick()
+  }
+
+  // a long press, which chooses its words
+  override def performLongClick(): Boolean = {
+    if (fixed && !editing) touched()
+    super.performLongClick()
+  }
+
+  // a read-only field not edited given the focus by a touch, which starts editing it (`RenderNode.onInputFocus`), with no
+  // keyboard; a bare one, which nothing edits, keeps it till it moves on (`onFocusChanged`)
+  private def touched(): Unit = {
+    setFocusableInTouchMode(true)
+    if (!isFocused) requestFocus()
+  }
 
   override def onAttachedToWindow(): Unit = {
     super.onAttachedToWindow()
