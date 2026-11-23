@@ -388,6 +388,8 @@ class RenderNode(val sg: SGNode) {
       if (explicitWidth < 0.0) uiSetWidth(sg, 0.0)
     }
   }
+  /** How many columns apart a tab's stops are: a label draws a tab as the device's font does, so nothing is set. */
+  def setTabSize(columns: Int): Unit = ()
 
   /** The picture the view draws, or none: the last one asked for, never one that came after another was, decoded at the
     * size it is drawn at (swift/runtime/UniversalRuntime.swift's Pictures). */

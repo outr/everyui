@@ -48,7 +48,7 @@ class RenderNode(val view: View) {
   def setText(text: String): Unit = if (Hop.needed(this)) Hop(() => setText(text)) else view match {
     case t: TextView =>
       // what the face has nothing for (an emoji newer than the device's own fonts) in the app's fallback face
-      t.setText(FaceSpan.fallen(text, t.getPaint))
+      t.setText(tabbed(FaceSpan.fallen(text, t.getPaint), t))
       if (textDirection == "auto") applyAlign()
       // a string written as several lines is drawn as several lines, wrapping or not. Not wrapping means "do not
       // break these words for me", not "throw away everything after the first newline", which is what a fixed
@@ -99,6 +99,8 @@ class RenderNode(val view: View) {
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
       spaceLines(t)
       placeY()
+      // a tab's stops are its face's columns, measured again
+      if (tabColumns > 0) setTabSize(tabColumns)
     case _ => ()
   }
 
@@ -129,6 +131,8 @@ class RenderNode(val view: View) {
       t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size.toFloat)
       spaceLines(t)
       placeY()
+      // a tab's stops are columns of the face, measured again
+      if (tabColumns > 0) setTabSize(tabColumns)
     case _ => ()
   }
 
@@ -729,7 +733,7 @@ class RenderNode(val view: View) {
         t.setHighlightColor(android.graphics.Color.TRANSPARENT)
         t.setFocusable(false)
       }
-      t.setText(FaceSpan.fallen(text, t.getPaint))
+      t.setText(tabbed(FaceSpan.fallen(text, t.getPaint), t))
       // each run's tip (`TextRun.title`) the view's as the pointer is over it: a mouse's or a stylus's hover
       runTips = tips.result()
       if (runTips.nonEmpty) hearHover()
@@ -1151,7 +1155,10 @@ class RenderNode(val view: View) {
   /** `"normal"` (or `"pre-wrap"`, `"pre-line"`: a TextView keeps the words' own line breaks anyway) wraps a text node
     * at its width; anything else breaks it only where the words themselves do. */
   def setWhiteSpace(value: String): Unit = if (Hop.needed(this)) Hop(() => setWhiteSpace(value)) else view match {
-    case _: EditText => ()
+    // a box of lines: "pre" and "nowrap" keep each line whole, scrolled sideways
+    case e: EditText =>
+      if ((e.getInputType & android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0)
+        e.setHorizontallyScrolling(value == "pre" || value == "nowrap")
     case t: TextView =>
       wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
       if (wrapping) {
@@ -1164,6 +1171,45 @@ class RenderNode(val view: View) {
         t.setMaxLines(lines)
       }
     case _ => ()
+  }
+
+  // a tab's stops this many columns of its face apart (`setTabSize`); 0 leaves Android's own, a fixed 20 pixels
+  private var tabColumns = 0
+  /** How many columns apart a tab's stops are in its words: set on the words as stops a space's width times `columns`
+    * apart, on a field's as it is typed in. */
+  def setTabSize(columns: Int): Unit = if (Hop.needed(this)) Hop(() => setTabSize(columns)) else view match {
+    case e: EditText =>
+      if (tabColumns == 0) e.addTextChangedListener(new android.text.TextWatcher {
+        override def beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int): Unit = ()
+        override def onTextChanged(s: CharSequence, start: Int, before: Int, count: Int): Unit = ()
+        override def afterTextChanged(s: android.text.Editable): Unit = tabEdits(e, again = false)
+      })
+      tabColumns = columns
+      tabEdits(e, again = true)
+    case t: TextView =>
+      tabColumns = columns
+      t.setText(tabbed(t.getText, t))
+    case _ => ()
+  }
+  // the words with a tab's stops on them, where they have a tab
+  private def tabbed(text: CharSequence, t: TextView): CharSequence =
+    if (tabColumns <= 0 || text.toString.indexOf('\t') < 0) text
+    else {
+      val out = new android.text.SpannableString(text)
+      out.getSpans(0, out.length, classOf[android.text.style.TabStopSpan]).foreach(out.removeSpan)
+      RenderNode.tabStops(t, tabColumns).foreach(s =>
+        out.setSpan(s, 0, out.length, android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE))
+      out
+    }
+  // a field's stops over all it holds: set `again`, else only where its words were set afresh (they cover them all)
+  private def tabEdits(e: EditText, again: Boolean): Unit = if (tabColumns > 0) {
+    val text = e.getText
+    val stops = text.getSpans(0, text.length, classOf[android.text.style.TabStopSpan])
+    if (again || stops.isEmpty || text.getSpanStart(stops(0)) != 0 || text.getSpanEnd(stops(0)) != text.length) {
+      stops.foreach(text.removeSpan)
+      RenderNode.tabStops(e, tabColumns).foreach(s =>
+        text.setSpan(s, 0, text.length, android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE))
+    }
   }
 
   /** A text field's contents. */
@@ -1762,6 +1808,13 @@ object RenderNode {
     // on a television there is no touch to explore, so a service that speaks counts as well
     manager != null && manager.isEnabled && (manager.isTouchExplorationEnabled ||
       !manager.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_SPOKEN).isEmpty)
+  }
+
+  /** A tab's stops for `t`'s words, `columns` of its face's spaces apart: one at each, out to 64 of them, for Android
+    * goes on from the last in steps of its own. */
+  def tabStops(t: TextView, columns: Int): Array[android.text.style.TabStopSpan.Standard] = {
+    val step = math.max(1, math.round(t.getPaint.measureText(" ") * columns))
+    Array.tabulate(64)(i => new android.text.style.TabStopSpan.Standard(step * (i + 1)))
   }
 
   /** How many lines a string is written as: one, plus a line for every newline in it. */

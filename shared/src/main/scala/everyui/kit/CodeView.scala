@@ -14,6 +14,7 @@ class CodeView(text: => String, points: Double = 14.0, language: String = "") ex
     font.size @= points
     color := Theme.text()
     whiteSpace @= WhiteSpace.Pre
+    tabSize @= everyui.text.TextArea.codeTabs
     runs := Highlight.runs(text, language)
   }
   content.children += code

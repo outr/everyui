@@ -1,18 +1,21 @@
 package everyui.text
 
 import everyui.component.*
+import everyui.component.feature.FontFeature
 import everyui.component.types.{Autofill, PasteAction, Semantics, TextDirection, WhiteSpace}
 import everyui.event.{Key, KeyEvent}
 import everyui.file.PickedFile
 import everyui.keymap.Chord
+import everyui.markdown.MarkdownView
 import everyui.render.Platform
 import everyui.theme.Theme
 import reactify.*
 
-/** A box of lines to type in: a commit message, a note. What it holds wraps to its width and scrolls when it is longer
-  * than the box; `placeholder` shows while it is empty. `value` is what it holds, both ways. Enter starts a new line,
-  * and Primary+Enter (Ctrl, or Cmd on a Mac) is heard on `submitted`. With `grow`, the box is as tall as its lines,
-  * from `minHeight` up to `maxHeight`, and scrolls past that.
+/** A box of lines to type in: a commit message, a note. What it holds wraps to its width (`code` keeps each line
+  * whole, scrolled sideways) and scrolls when it is longer than the box; `placeholder` shows while it is empty.
+  * `value` is what it holds, both ways. Enter starts a new line, and Primary+Enter (Ctrl, or Cmd on a Mac) is heard
+  * on `submitted`. With `grow`, the box is as tall as its lines, from `minHeight` up to `maxHeight`, and scrolls past
+  * that.
   *
   * While it is being edited the keys it types with (Enter, the arrows, the page keys, Backspace) are its own, and the
   * focus layer makes no other use of them; Tab and Escape still move the focus and go back. Where the keyboard is on
@@ -48,6 +51,11 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   /** Holds text meant as it is typed (code, a script), never spell-checked, corrected or capitalized
     * (`InputView.literal`). */
   val literal: Var[Boolean] = own(Var(false))
+  /** Code, to read or to edit: in EveryUI's monospaced face (`TextArea.codeFace`), each line kept whole and scrolled
+    * sideways rather than wrapped, a tab's stops `TextArea.codeTabs` columns apart, `literal`, and on the wash a
+    * Markdown code block is drawn on (`MarkdownView.codeColour`), as one looks. Where the platform has no field of its
+    * own (a Roku, an Apple TV) its tabs are spaces to the next stop, and a line too long for the box wraps. */
+  val code: Var[Boolean] = own(Var(false))
   /** Which way its words run (`InputView.direction`): by default the app's, left to right where `literal`. */
   val direction: Var[TextDirection] = own(Var(TextDirection.Inherit))
   val readOnly: Var[Boolean] = own(Var(false))
@@ -72,16 +80,19 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   // its list of completions, made the first time it is given a source
   private var completer: Option[FieldCompletion] = None
   private val pad = 10.0
-  // the lines as they wrap and as Enter broke them, measured out of sight: how tall the box grows
+  // the lines as they wrap and as Enter broke them, measured out of sight: how tall the box grows. Code in the
+  // platform's field is not wrapped: as many lines as it is written as, each measured as one letter
   private val ruler = new TextView {
     whiteSpace @= WhiteSpace.PreWrap
     font.size @= points
     opacity @= 0.0
-    content := value() + " "
+    content := (if (code() && native) TextArea.rows(value()) else value()) + " "
     size.width := TextArea.this.size.width() - pad * 2.0
   }
-  /** How tall its lines ask it to be, with its padding: what `grow` follows, between `minHeight` and `maxHeight`. */
-  val lines: Val[Double] = own(Val(ruler.size.height() + pad * 2.0))
+  look(ruler, ruler.font, whole = false)
+  /** How tall its lines ask it to be, with its padding: what `grow` follows, between `minHeight` and `maxHeight`; with
+    * room under code's for the bar that scrolls it sideways. */
+  val lines: Val[Double] = own(Val(ruler.size.height() + pad * 2.0 + (if (code() && native) TextArea.barRoom else 0.0)))
   /** The platform's own field it wraps, where the platform has one (not a Roku's or an Apple TV's): for its caret. */
   val field: Option[InputView] = if (native) Some(new InputView(false, multiline = true)) else None
 
@@ -92,7 +103,7 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   size.height := (if (grow) math.max(minHeight, math.min(maxHeight, lines())) else minHeight)
   borderWidth := (if (focused()) 2.5 else 1.0)
   borderColor := (if (focused()) Theme.accent() else Theme.edge())
-  backgroundColor := (if (focused()) Theme.controlLit() else Theme.raised())
+  backgroundColor := (if (focused()) Theme.controlLit() else if (code()) MarkdownView.codeColour() else Theme.raised())
   children += ruler
 
   field.foreach { input =>
@@ -110,7 +121,8 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     input.readOnly := readOnly()
     input.pasted := pasted()
     input.pastedFiles := pastedFiles()
-    input.literal := literal()
+    input.literal := literal() || code()
+    look(input, input.font)
     input.direction := direction()
     input.text.attach(v => if (value() != v) value @= v)
     value.attach(v => if (input.text() != v) input.text @= v)
@@ -130,14 +142,15 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
   }
   if (!native) {
     val shown = new TextView {
-      whiteSpace @= WhiteSpace.PreWrap
       font.size @= points
       color := (if (value().isEmpty) Theme.muted() else Theme.text())
-      content := (if (value().isEmpty) hint() else value())
+      content := (if (value().isEmpty) hint() else if (code()) TextArea.spaced(value(), TextArea.codeTabs) else value())
       position.left @= pad
       position.top @= pad
       size.width := TextArea.this.size.width() - pad * 2.0
     }
+    // (a long line wrapped: a Roku's words unwrapped are one line, cut short)
+    look(shown, shown.font, whole = false)
     clipTo(width, minHeight)
     size.height.attach(h => clipTo(size.width(), h))
     event.click.attach(_ => if (!readOnly())
@@ -146,6 +159,14 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
     children += shown
   }
   event.key.down.attach(k => if (editing() && TextArea.submit.matches(k)) submitted @= value())
+
+  // its words in code's face, with code's tab stops and each line kept `whole` while it is `code`, else as a note's
+  private def look(words: Component, font: FontFeature, whole: Boolean = true): Unit = {
+    val plain = font.family()
+    font.family := (if (code()) TextArea.codeFace else plain)
+    words.whiteSpace := (if (code() && whole) WhiteSpace.Pre else WhiteSpace.PreWrap)
+    words.tabSize := (if (code()) TextArea.codeTabs else 8)
+  }
 
   /** Primary+Enter is its own, and the platform's field never sees it; and while its list of completions shows, the
     * keys the list takes (`CompletionKey`). */
@@ -171,6 +192,38 @@ class TextArea(placeholder: String = "", width: Double = 360.0, grow: Boolean = 
 object TextArea {
   /** What sends it: Primary+Enter. */
   val submit: Chord = Chord("Enter", primary = true)
+  /** The face code is set in (`code`): EveryUI's monospaced one, a Markdown code block's. */
+  val codeFace: String = "Roboto Mono"
+  /** How many columns apart a tab's stops are in code. */
+  val codeTabs: Int = 4
+  // the room a bar that scrolls code sideways takes under its lines (the desktop's is 12, a browser's thin one less)
+  private val barRoom: Double = 16.0
+
+  /** `text` as one letter for each of its lines: measured, as tall as it unwrapped. */
+  def rows(text: String): String = {
+    var out = "M"
+    var at = text.indexOf("\n")
+    while (at >= 0) {
+      out = out + "\nM"
+      at = text.indexOf("\n", at + 1)
+    }
+    out
+  }
+
+  /** `text` with each tab spaces to the next stop, `columns` apart: where a tab is not set out (a Roku's words). */
+  def spaced(text: String, columns: Int): String = if (text.indexOf("\t") < 0) text else {
+    var out = ""
+    var from = 0
+    var tab = text.indexOf("\t")
+    while (tab >= 0) {
+      out = out + text.substring(from, tab)
+      val line = out.lastIndexOf("\n") + 1
+      out = out + " " * (columns - (out.length - line) % columns)
+      from = tab + 1
+      tab = text.indexOf("\t", from)
+    }
+    out + text.substring(from)
+  }
 
   /** The keys a box of lines types with or moves its caret by, which the focus layer would otherwise use. */
   def typed(key: Key): Boolean = key == Key.Enter || key == Key.ArrowUp || key == Key.ArrowDown ||

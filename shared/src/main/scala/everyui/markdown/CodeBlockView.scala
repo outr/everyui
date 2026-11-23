@@ -34,6 +34,8 @@ class CodeBlockView(val language: String, source: String, ctx: MarkdownContext, 
     font.family @= "Roboto Mono"
     font.size @= points
     whiteSpace @= WhiteSpace.Pre
+    // a tab's stops as a code TextArea's
+    tabSize @= everyui.text.TextArea.codeTabs
     color := Theme.text()
     // code reads left to right whatever the words about it do
     direction @= TextDirection.LeftToRight

@@ -370,6 +370,9 @@ class Component(val node: RenderNode) {
     own(new Prop[WhiteSpace](WhiteSpace.NoWrap, ws => node.setWhiteSpace(ws.value), () => measure.trigger()))
   }
   private[everyui] def whiteSpaceNow: WhiteSpace = if (whiteSpaceMade) whiteSpace() else WhiteSpace.NoWrap
+  /** How many columns of its face apart a tab's stops are in its words (code's 4): left as the platform has them,
+    * a browser's and the desktop's 8, until set. A Roku and an Apple TV draw a tab as their fonts do. */
+  lazy val tabSize: Prop[Int] = own(new Prop[Int](8, n => node.setTabSize(n), () => measure.trigger()))
 
   // whether `flex` has been made: one never made is 0, and a layout looking at every child's need not make it
   private var flexMade = false

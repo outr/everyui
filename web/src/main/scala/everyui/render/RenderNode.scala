@@ -956,6 +956,8 @@ class RenderNode(val el: html.Element) {
   def setPositionType(name: String): Unit = el.style.position = if (name.isEmpty) "static" else name
 
   def setWhiteSpace(value: String): Unit = el.style.whiteSpace = value
+  /** How many columns apart a tab's stops are in its words (`tab-size`). */
+  def setTabSize(columns: Int): Unit = el.style.setProperty("tab-size", columns.toString)
 
   /** The picture the `img` draws, or none: its `src` taken away, so the page holds nothing decoded for it while it is
     * out of sight (`ImageView.showing`), and set again as it comes back, from the page's own store of pictures. */

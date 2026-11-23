@@ -476,6 +476,8 @@ class RenderNode(val sg: SGNode) {
     spaceLines()
     if (richWidth >= 0.0) drawText()
   }
+  /** How many columns apart a tab's stops are: a Label draws a tab as the device's font does, so nothing is set. */
+  def setTabSize(columns: Int): Unit = ()
   /** Only a web page scrolls under a finger that drags: nothing to do here. */
   def setTouchDrags(on: Boolean): Unit = ()
   def setTouchScrolls(on: Boolean): Unit = ()

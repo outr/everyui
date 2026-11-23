@@ -672,6 +672,19 @@ class RenderNode(val fx: Node) {
     case t: Text =>
       wrapping = value == "normal" || value == "pre-wrap" || value == "pre-line"
       applyAlign()
+    // a box of lines: "pre" and "nowrap" keep each line whole, scrolled sideways
+    case a: TextArea => a.setWrapText(value != "nowrap" && value != "pre")
+    case _ => ()
+  }
+  /** How many columns apart a tab's stops are in its words: a text node's, a paragraph's, and a box of lines' (the
+    * text node of its skin, set once that is made). */
+  def setTabSize(columns: Int): Unit = if (Hop.needed(this)) Hop(() => setTabSize(columns)) else fx match {
+    case t: Text => t.setTabSize(columns)
+    case f: RichFlow => f.setTabSize(columns)
+    case a: TextArea =>
+      // by a class its sheet sets the size by (`areaSheet`), reaching the text node of its skin whenever that is made
+      a.getStyleClass.removeIf(_.startsWith("tabs-"))
+      a.getStyleClass.add("tabs-" + math.max(1, math.min(16, columns)))
     case _ => ()
   }
 
@@ -1154,7 +1167,13 @@ object RenderNode {
       ".text-area .scroll-bar, .text-area .corner { -fx-background-color: transparent; -fx-pref-width: 8; } " +
       ".text-area .scroll-bar .thumb { -fx-background-color: rgba(128, 128, 128, 0.45); -fx-background-radius: 4; } " +
       ".text-area .increment-button, .text-area .decrement-button, .text-area .increment-arrow, " +
-      ".text-area .decrement-arrow { -fx-padding: 0; -fx-background-color: transparent; }").getBytes("UTF-8"))
+      ".text-area .decrement-arrow { -fx-padding: 0; -fx-background-color: transparent; }" +
+      // a tab's stops, by the class `setTabSize` gives it (code's): justified, which with no width to wrap at is as
+      // left, as JavaFX keeps the lines of a left-aligned text node with its words and face in a store of its own, their
+      // tabs as they were first laid out, and a change of stops reached nothing; its lines as tall as a text node's, as
+      // the box is measured by one (TextArea), rather than a little taller about their middles
+      (1 to 16).map(n => " .text-area.tabs-" + n + " .text { -fx-tab-size: " + n +
+        "; -fx-text-alignment: justify; -fx-bounds-type: logical; }").mkString).getBytes("UTF-8"))
 
   /** A text field drawn by the component around it: no box of its own, the caret and the words in `hex`. */
   def fieldStyle(hex: String): String =

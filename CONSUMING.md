@@ -2133,6 +2133,24 @@ OK brings up the platform's keyboard. A component that wraps a platform field sa
 `Component.typesEvent`; those keys reach its `event.key.down` and then the platform, untouched. `TextInput` now does
 this too. Before, it kept Backspace, Space and the arrows from its own field while it was being edited.
 
+### Code in a TextArea (`code`)
+
+`code @= true` on a `TextArea` shows code as a Markdown code block does, to read (with `readOnly`) or to edit: in
+EveryUI's monospaced face (`TextArea.codeFace`, Roboto Mono), each line kept whole and scrolled sideways rather than
+wrapped, a tab's stops `TextArea.codeTabs` (4) columns apart, `literal`, on the code wash (`MarkdownView.codeColour`).
+
+```scala
+val source = new TextArea(width = 360.0, grow = true)
+source.code @= true
+source.readOnly @= true
+source.value @= script
+```
+
+The web's `textarea` is `white-space: pre` with `tab-size`, the desktop's `TextArea` does not wrap and its words take
+the tab size, and Android's `EditText` scrolls sideways with tab stops set on its words. A Roku's and an Apple TV's
+box shows its tabs as spaces to the next stop, a long line wrapped. Any component's words take
+`tabSize` (`Prop[Int]`, the platform's own until set; a Markdown code block's and a `CodeView`'s are 4).
+
 ### Read-only fields (`readOnly`)
 
 `readOnly @= true` on an `InputView`, a `TextInput` or a `TextArea` shows the value as the field does, where it can be

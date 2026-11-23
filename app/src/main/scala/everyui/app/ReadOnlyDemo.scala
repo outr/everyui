@@ -6,9 +6,10 @@ import everyui.text.TextArea
 import everyui.theme.Theme
 import everyui.ui
 
-/** Read-only fields: a share link and a key to copy, a note in a box of lines, and an editable field under them, with a
-  * button that makes the link editable and read-only again. What reaches each field's value is logged, so a check can
-  * type and paste into them and see that nothing reaches a read-only one:
+/** Read-only fields: a share link and a key to copy, a note in a box of lines, code in one (`TextArea.code`: its own
+  * face, its lines whole and scrolled sideways, its tabs at four), and an editable field under them, with a button
+  * that makes the link editable and read-only again. What reaches each field's value is logged, so a check can type
+  * and paste into them and see that nothing reaches a read-only one:
   *
   *   [ui] readonly link=https://example.com/s/4f2a9c
   *   [ui] readonly ok
@@ -23,6 +24,10 @@ object ReadOnlyDemo {
     note.value @= "A note that can be read and copied,\nbut not changed."
     note.readOnly @= true
     note.value.attach(v => Platform.log("readonly note=" + v.replace('\n', '|')))
+    val code = new TextArea(width = width, grow = true)
+    code.code @= true
+    code.readOnly @= true
+    code.value @= "def greet(name: String): String = {\n\tval words = \"Hello, \" + name +\n\t\t\"! This line runs on well past the edge of the box.\"\n\twords\n}"
     // the platform's own field, bare
     val key = new InputView
     key.text @= "KEY-1234-5678"
@@ -35,7 +40,7 @@ object ReadOnlyDemo {
     val name = field("Name (editable)", "name", "", width)
     val toggle = new Button("Make the link editable", () => link.readOnly @= !link.readOnly())
     toggle.label := (if (link.readOnly()) "Make the link editable" else "Make the link read-only")
-    val body = Column(14.0)(link, note, key, name, toggle)
+    val body = Column(14.0)(link, note, code, key, name, toggle)
     body.position.left @= 16.0
     body.position.top @= 16.0
     val scroll = new ScrollContainer {
