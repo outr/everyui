@@ -430,6 +430,9 @@ class RenderNode(val fx: Node) {
   /** Whether the mouse is over it as what is under a still mouse moves: JavaFX looks again at every pulse, so its
     * enter and exit say it already. */
   def onOver(told: Boolean => Unit): Unit = ()
+  /** Whether what hears `kind` here only watches it (a tip's hold): Android's alone, where the view a touch starts on
+    * has all of it; here a press reaches what holds this as well. */
+  def watchesOnly(kind: PointerKind, only: Boolean): Unit = ()
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * place in the app's units: the scene's over the size the app is drawn at (`Host.unscaled`). */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = if (Hop.needed(this)) Hop(() => onPointer(kind, f)) else if (kind == PointerKind.Wheel)

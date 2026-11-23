@@ -13,10 +13,11 @@ private[render] object PressOwner {
 
   /** Whether a node that hears the pointer kinds `heard` takes a touch that lands on it as its own: it answers a click
     * or a long press, follows the pointer as it moves or to its lift, or `drags` (a scroll, a slider, a pinch). One that
-    * only watches a press go down (a tip hiding itself) leaves the touch to what holds it that takes one, as the web
-    * hands a press on to what is round it. */
-  def owns(heard: collection.Set[PointerKind], drags: Boolean): Boolean = drags ||
-    heard.exists(k => k == PointerKind.Click || k == PointerKind.Menu || k == PointerKind.Up || k == PointerKind.Move)
+    * only watches a press go down (a tip hiding itself), or a long press (`holdWatched`: a tip shown for it), leaves the
+    * touch to what holds it that takes one, as the web hands a press on to what is round it. */
+  def owns(heard: collection.Set[PointerKind], drags: Boolean, holdWatched: Boolean = false): Boolean = drags ||
+    heard.exists(k => k == PointerKind.Click || (k == PointerKind.Menu && !holdWatched) || k == PointerKind.Up ||
+      k == PointerKind.Move)
 
   /** `view` answers clicks. */
   def mark(view: View): Unit = clickers.add(view)

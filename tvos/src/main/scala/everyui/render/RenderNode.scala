@@ -327,6 +327,9 @@ class RenderNode(val sg: SGNode) {
   /** Every view is placed by its own position, so there is no position type to set. */
   /** Whether the pointer is over it as what is under a still one moves: the platform's enter and leave alone here. */
   def onOver(told: Boolean => Unit): Unit = ()
+  /** Whether what hears `kind` here only watches it (a tip's hold): Android's alone, where the view a touch starts on
+    * has all of it; no touch comes here. */
+  def watchesOnly(kind: PointerKind, only: Boolean): Unit = ()
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click"). */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit = uiOnPointer(sg, kind.toString, f)
 

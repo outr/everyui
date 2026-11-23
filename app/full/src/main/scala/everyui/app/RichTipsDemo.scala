@@ -17,8 +17,9 @@ import reactify.*
   * button that closes the tip (`TipContext.close`), the tip interactive so the pointer can move into it. Each tile's
   * `tooltip` is the plain words a screen reader hears. The tips come as the pointer rests on a tile, as the keys bring
   * the focus to one, or as a finger is held on one. `open=<n>` opens tile n's tip at once (1 is Sigil),
-  * `theme=light` shows the light palette. Logs `richtips ok`, `richtips opened <name>` as a tip opens and
-  * `richtips open <name>` as its button is pressed.
+  * `theme=light` shows the light palette, `logos=1` gives each tile's logo a tip of its own (a tap on it is still the
+  * tile's). Logs `richtips ok`, `richtips opened <name>` as a tip opens, `richtips open <name>` as its button is
+  * pressed, `richtips tapped <name>` as a tile is clicked and `richtips logo <name>` as a logo's tip opens.
   *
   * Under them, a `RichList` of conversations with a tip per item (`RichLook.tip`: the persona, the last message's first
   * words, who asks, whether an agent works there) and an Alerts button whose menu's entries have tips (`MenuItem.tip`,
@@ -99,7 +100,15 @@ object RichTipsDemo {
       used.toString + " cores · " + held.toString + " GB · " + running
     box.tipInteractive @= interactive
     box.tipView @= Some(tip => tipOf(w, picture, interactive, tip))
-    box.event.click.attach(_ => box.focus())
+    box.event.click.attach { _ =>
+      Platform.log("richtips tapped " + name)
+      box.focus()
+    }
+    // logos=1: the logo its own tip, inside the tile that takes the tap
+    if (Platform.launchArg("logos") == "1") logo.tipView @= Some { _ =>
+      Platform.log("richtips logo " + name)
+      TextView(name + "'s logo", 13.0, Theme.text())
+    }
     box
   }
 

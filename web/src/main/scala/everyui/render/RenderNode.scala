@@ -608,6 +608,9 @@ class RenderNode(val el: html.Element) {
   /** Whether the mouse is over it, told again as what is under a still mouse moves (WebHover): `over`'s, beside its
     * enter and leave. */
   def onOver(told: Boolean => Unit): Unit = WebHover.watch(el, told)
+  /** Whether what hears `kind` here only watches it (a tip's hold): Android's alone, where the view a touch starts on
+    * has all of it; here a press reaches what holds this as well. */
+  def watchesOnly(kind: PointerKind, only: Boolean): Unit = ()
   /** A pointer event of `kind` ("down", "up", "move", "enter", "leave", "click", or "wheel" with its deltas) with its
     * place in the app's units: the viewport's over the size the app is drawn at. */
   def onPointer(kind: PointerKind, f: (Double, Double) => Unit): Unit =

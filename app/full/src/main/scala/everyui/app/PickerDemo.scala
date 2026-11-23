@@ -8,6 +8,7 @@ import everyui.kit.Spinner
 import everyui.picker.{FilterPicker, HighlightRow, Match, PickerField, PickerToggle, Segment, SegmentIcon}
 import everyui.render.Platform
 import everyui.theme.{Palette, Theme}
+import everyui.tooltip.{RichTip, RichTipLine}
 import everyui.ui
 import reactify.*
 
@@ -25,7 +26,9 @@ import reactify.*
   * pictures of those not at work with a small "?" that has a tip and no press of its own, hanging out of the picture.
   * `badge=vc` draws the rows as Voidcraft's switcher does (its picture, ring and waiting badge, and "2 waiting on you"
   * in the words, which cut short on a phone give the row a tip); `badge=words` the same without the badges, and
-  * `words=0` the badges without those words.
+  * `words=0` the badges without those words. `tips=1` gives each row a tip view of its own (`Component.tipView`, a
+  * `RichTip`), as Voidcraft's switcher did on a phone; `tips=badge` gives badge=1's "?" one in place of its words: a tap
+  * on a row still chooses it, and a finger held shows the tip (logged `picker tip <name>`).
   * Logs `picker chose <model>` when one is chosen, and `picker menu <row>` when a row is held. */
 object PickerDemo {
   // (name, provider's key, provider's name)
@@ -164,6 +167,10 @@ object PickerDemo {
         position.top @= -4.0
         tooltip @= "Not set up yet"
       }
+      if (Platform.launchArg("tips") == "badge") dot.tipView @= Some { _ =>
+        Platform.log("picker tip badge " + space._1)
+        TextView("Not set up yet: " + space._1, 13.0, Theme.text())
+      }
       val mark = new TextView
       mark.content @= "?"
       mark.font.size @= 9.0
@@ -239,6 +246,18 @@ object PickerDemo {
     icon
   }
 
+  // `tips=1`: a row's own tip view, the workspace it shows as a RichTip
+  private def tipped(row: HighlightRow[(String, Int, Boolean)]): HighlightRow[(String, Int, Boolean)] = {
+    if (Platform.launchArg("tips") == "1") row.tipView @= Some { _ =>
+      val space = row.item()
+      Platform.log("picker tip " + space.map(_._1).getOrElse(""))
+      RichTip(space.map(_._1).getOrElse(""), lines = space.toList.flatMap(s => List(
+        RichTipLine(MaterialIcon.Forum, s._2.toString + " conversations"),
+        RichTipLine(MaterialIcon.Workspaces, if (s._3) "working" else "idle"))))
+    }
+    row
+  }
+
   /** A workspace switcher: no segments, an icon toggle at the field's end, a picture before each row's words (a
     * spinning ring round those at work) and a menu on a held row. */
   private def switch(chose: Var[String]): Unit = {
@@ -251,7 +270,7 @@ object PickerDemo {
       Task.pure((if (byName()) spaces.sortBy(_._1) else spaces).filter(_._1.toLowerCase.contains(q.trim.toLowerCase))),
       _._1, _._1, detail, placeholder = "Switch workspace",
       toggles = List(PickerToggle("sortByName", "", byName, "Sort by name", icon = MaterialIcon.SortByAlpha)),
-      row = Some(words => new HighlightRow[(String, Int, Boolean)](_._1, s => Match.spans(words(), s._1).getOrElse(Nil),
+      row = Some(words => tipped(new HighlightRow[(String, Int, Boolean)](_._1, s => Match.spans(words(), s._1).getOrElse(Nil),
         detail, points, leading = if (voidcraft) Some(vcLeading(points)) else Some { item =>
           val face = points + 8.0
           val icon = new Container
@@ -272,7 +291,7 @@ object PickerDemo {
             glyph :: ring ++ badged(space, face)
           }))
           icon
-        })))
+        }))))
     picker.chosen.attach { s =>
       chose @= s._1
       Platform.log("picker chose " + s._1)

@@ -15,7 +15,28 @@ class PointerEvents(component: Component) {
   /** A context menu asked for where the pointer is: the secondary button, or a finger held. A handler that shows one
     * puts up a `Menu` (or any dialog), or consumes the event: only then is the page's own menu kept away
     * (`Pointer.menuAnswered`), so words the app has no menu for keep the browser's Copy and Look Up. */
-  lazy val menu: Channel[PointerEvent] = channel(PointerKind.Menu)
+  lazy val menu: Channel[PointerEvent] = {
+    claims = true
+    if (watchesHold) component.node.watchesOnly(PointerKind.Menu, only = false)
+    asked
+  }
+  /** The same as `menu`, heard only to watch for it (a tip shown for a finger held): unlike `menu`, it does not take a
+    * touch that starts on the component from what it is in, on Android, where the one view that takes a touch's start
+    * has all of it. A list's row with a tip of its own leaves its tap to the list, which chooses it, as on the web. */
+  lazy val held: Channel[PointerEvent] = {
+    if (!claims) {
+      watchesHold = true
+      component.node.watchesOnly(PointerKind.Menu, only = true)
+    }
+    asked
+  }
+  // the one channel `menu` and `held` share, and whether anything answers the hold (`menu`) or only watches it (`held`)
+  private lazy val asked: Channel[PointerEvent] = channel(PointerKind.Menu)
+  private var claims = false
+  private var watchesHold = false
+
+  /** Whether something answers a hold here (`menu`), rather than only watching it (`held`). */
+  private[everyui] def claimsHold: Boolean = claims
 
   /** A click with the middle button: down and up on the component (an app closes a tab with it). */
   lazy val middle: Channel[PointerEvent] = {

@@ -802,6 +802,13 @@ class RenderNode(val view: View) {
     listen()
   }
 
+  /** Whether what hears `kind` here only watches it: a long press heard for a tip (`PointerEvents.held`) leaves a touch
+    * that starts here to what holds this that takes one (`ownsPress`), which it is told of from the root (`watchHold`),
+    * so a list's row with a tip of its own is still chosen by a tap. */
+  def watchesOnly(kind: PointerKind, only: Boolean): Unit = if (Hop.needed(this)) Hop(() => watchesOnly(kind, only)) else
+    if (kind == PointerKind.Menu) holdWatched = only
+  private var holdWatched = false
+
   /** The view's touches and hovers heard, once. */
   private[render] def listen(): Unit = if (!listening) {
     listening = true
@@ -888,6 +895,10 @@ class RenderNode(val view: View) {
   private def touch(e: MotionEvent): Boolean = {
     touchHook.foreach(f => f(e))
     val action = e.getActionMasked
+    // a press it only watches is left to what holds it that takes presses (`ownsPress`), as a parent hears what a child
+    // hears on the web: Android gives a whole touch to the one view that takes its start, so a picker's row whose words
+    // were cut short (its tip, which hears a press to hide itself) held the tap, and the list never chose the row
+    val leaves = action == MotionEvent.ACTION_DOWN && !ownsPress && ownedAbove
     if (action == MotionEvent.ACTION_DOWN) {
       // what drags itself keeps the drag from a scroll it is in (Android lets go of the ask as the touch ends)
       if (keepsDrag && view.getParent != null) view.getParent.requestDisallowInterceptTouchEvent(true)
@@ -900,19 +911,22 @@ class RenderNode(val view: View) {
         // a mouse's secondary button asks at once
         if ((e.getButtonState & MotionEvent.BUTTON_SECONDARY) != 0) {
           pressedLong = true
+          if (leaves) RenderNode.heldLong = true
           fire(PointerKind.Menu, e)
         }
         else {
           pressFrom = (e.getRawX, e.getRawY)
-          val held: Runnable = () => {
-            pressHeld = None
-            pressedLong = true
-            val at = Array(0, 0)
-            Host.root.getLocationOnScreen(at)
-            pointer.get(PointerKind.Menu).foreach(f => f((pressFrom._1 - at(0)) / Host.scale, (pressFrom._2 - at(1)) / Host.scale))
+          // one it leaves the touch to: told of the hold by the root, which sees the rest of the touch where this does not
+          if (leaves) RenderNode.watchHold(this)
+          else {
+            val held: Runnable = () => {
+              pressHeld = None
+              pressedLong = true
+              heldAt(pressFrom)
+            }
+            pressHeld = Some(held)
+            view.postDelayed(held, android.view.ViewConfiguration.getLongPressTimeout.toLong)
           }
-          pressHeld = Some(held)
-          view.postDelayed(held, android.view.ViewConfiguration.getLongPressTimeout.toLong)
         }
       }
     }
@@ -937,7 +951,8 @@ class RenderNode(val view: View) {
       // Android's own lists: one dragged down a picker's rows chose the row it lifted from (a mouse may still drag on a
       // button and click it, as a desktop's does)
       val swiped = strayed && e.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE
-      if (inside && !pressedLong && !swiped && !(moved && PressOwner.elsewhere(view, e.getRawX, e.getRawY)))
+      // nor where something in it that only watches for a long press heard one (a tip shown for it: `watchHold`)
+      if (inside && !pressedLong && !RenderNode.heldLong && !swiped && !(moved && PressOwner.elsewhere(view, e.getRawX, e.getRawY)))
         fire(PointerKind.Click, e)
     }
     else if (action == MotionEvent.ACTION_CANCEL) {
@@ -949,17 +964,21 @@ class RenderNode(val view: View) {
       fire(PointerKind.Up, e)
       toRoot(PointerKind.Up, e)
     }
-    // a press it only watches is left to what holds it that takes presses (`ownsPress`), as a parent hears what a child
-    // hears on the web: Android gives a whole touch to the one view that takes its start, so a picker's row whose words
-    // were cut short (its tip, which hears a press to hide itself) held the tap, and the list never chose the row
-    !(action == MotionEvent.ACTION_DOWN && !ownsPress && ownedAbove)
+    !leaves
+  }
+
+  // the long press it hears, at `from` on the screen
+  private def heldAt(from: (Float, Float)): Unit = {
+    val at = Array(0, 0)
+    Host.root.getLocationOnScreen(at)
+    pointer.get(PointerKind.Menu).foreach(f => f((from._1 - at(0)) / Host.scale, (from._2 - at(1)) / Host.scale))
   }
 
   /** Whether a touch that lands on it is its own (`PressOwner.owns`). */
   private[render] def ownsPress: Boolean = PressOwner.owns(pointer.keySet, keepsDrag || touchHook.nonEmpty || (view match {
     case g: NodeGroup => g.scrollsAlong != 0
     case _ => false
-  }))
+  }), holdWatched)
 
   // whether a view around it, short of the root (which hears every touch's moves and lift as it is: `toRoot`), hears the
   // pointer and takes presses
@@ -1628,6 +1647,54 @@ class RenderNode(val view: View) {
 object RenderNode {
   /** The render root's node (`root`), which hears every touch's moves and lift as well (`toRoot`). */
   private[render] var rootNode: RenderNode = null
+
+  // The nodes a touch went down on that only watch for a long press (a tip's: `watchesOnly`) and left the touch to what
+  // holds them, innermost first: they hear no more of it, so the root, which sees all of it, tells them of the hold
+  // after the platform's long-press time, unless the finger moved further than a tap may or lifted first. A hold one
+  // heard is no tap on what has the touch (`heldLong`), as a long press on what has it is not.
+  private var watching: List[RenderNode] = Nil
+  private var watchFrom: (Float, Float) = (0f, 0f)
+  private var watchAsk: Runnable = null
+  /** Whether a node that only watches for a long press heard one in the touch going on. */
+  private[render] var heldLong = false
+
+  /** `node` told of a hold in the touch going down, which it leaves to what holds it. */
+  private[render] def watchHold(node: RenderNode): Unit = watching = watching :+ node
+
+  /** A touch at the root (`NodeGroup.dispatchTouchEvent`), before it is handed to the views under it, and after
+    * (`handed`): the holds watched (`watchHold`) asked for as it went down, and let go as it moves or ends. */
+  private[render] def rootTouch(e: MotionEvent, handed: Boolean): Unit = e.getActionMasked match {
+    case MotionEvent.ACTION_DOWN =>
+      if (!handed) {
+        unwatch()
+        heldLong = false
+      }
+      else if (watching.nonEmpty) {
+        watchFrom = (e.getRawX, e.getRawY)
+        val ask: Runnable = () => {
+          watchAsk = null
+          heldLong = true
+          val told = watching
+          watching = Nil
+          told.foreach(_.heldAt(watchFrom))
+        }
+        watchAsk = ask
+        Host.root.postDelayed(ask, android.view.ViewConfiguration.getLongPressTimeout.toLong)
+      }
+    case MotionEvent.ACTION_MOVE => if (!handed && watching.nonEmpty) {
+      val slop = android.view.ViewConfiguration.get(Host.root.getContext).getScaledTouchSlop
+      if (math.abs(e.getRawX - watchFrom._1) > slop || math.abs(e.getRawY - watchFrom._2) > slop) unwatch()
+    }
+    case MotionEvent.ACTION_UP | MotionEvent.ACTION_CANCEL => if (!handed) unwatch()
+    case _ => ()
+  }
+
+  private def unwatch(): Unit = {
+    if (watchAsk != null) Host.root.removeCallbacks(watchAsk)
+    watchAsk = null
+    watching = Nil
+  }
+
   /** A view's text direction for `setTextDirection`'s value: "auto" by the first letter with one (the app's where
     * there is none), "ltr", "rtl", or the app's for "". */
   def textDirection(value: String): Int = value match {
@@ -1903,7 +1970,11 @@ final class NodeGroup(context: Context) extends ViewGroup(context) {
   // the drag taken (`onInterceptTouchEvent`) handed to the scroll once the view that had it has heard it cancelled,
   // so its lift (heard at the root too) ends nothing the scroll starts
   override def dispatchTouchEvent(e: MotionEvent): Boolean = {
+    // the root sees every touch whole, for the holds of what left it to others (`RenderNode.rootTouch`)
+    val root = this eq Host.root
+    if (root) RenderNode.rootTouch(e, handed = false)
     val handled = super.dispatchTouchEvent(e)
+    if (root) RenderNode.rootTouch(e, handed = true)
     if (taking) {
       taking = false
       takeDrag(e, downX, downY)

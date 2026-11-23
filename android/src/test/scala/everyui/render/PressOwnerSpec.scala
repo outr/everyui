@@ -29,5 +29,13 @@ class PressOwnerSpec extends AnyWordSpec with Matchers {
       // and the wheel, which no touch brings
       PressOwner.owns(Set(Wheel, Down), drags = false) shouldBe false
     }
+    "leave a touch to what it is in where it only watches for a long press, and keep one it also answers" in {
+      // a tip view's host (PointerEvents.held): a picker's row with one held its tap, and its list never chose the row
+      PressOwner.owns(Set(Enter, Leave, Down, Menu), drags = false, holdWatched = true) shouldBe false
+      PressOwner.owns(Set(Menu), drags = false, holdWatched = true) shouldBe false
+      // a rail's tile, its own click beside the tip's watch, and anything that drags
+      PressOwner.owns(Set(Down, Click, Menu), drags = false, holdWatched = true) shouldBe true
+      PressOwner.owns(Set(Down, Menu), drags = true, holdWatched = true) shouldBe true
+    }
   }
 }

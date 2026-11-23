@@ -398,6 +398,27 @@ class RowTipSpec extends FxSpec {
         }
       }
     }
+    "leave a tap on a row with a view of its own to the list, which chooses it, and a hold to the list, which shows it" in {
+      // (on Android the row's watch for a hold, to show its view, took every touch on it: Voidcraft's workspace
+      // switcher's rows were dead to taps)
+      val list = fx(viewed(20))
+      onScreen(list) {
+        for (i <- List(4, 7)) {
+          val r = rowOf(list, i)
+          fx(r.tipDrawn) shouldBe true
+          fx(r.event.pointer.claimsHold) shouldBe false
+          val x = fx(r.absoluteLeft + 40.0)
+          val y = fx(r.absoluteTop + 5.0)
+          List(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED).foreach(kind => fx(javafx.event.Event.fireEvent(r.node.fx,
+            new MouseEvent(kind, x, y, x, y, MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true, null))))
+          fx(list.selection.keys()) shouldBe Set(i.toString)
+        }
+        fx(list.holdTips @= Some(true))
+        hold(list, 5)
+        fx(shownFor(rowOf(list, 5))) shouldBe true
+        fx(words) shouldBe Some("View 5")
+      }
+    }
     "leave nothing of a row's view alive once it closes, over rows handed other items" in {
       val list = fx(viewed(200))
       onScreen(list) {

@@ -102,7 +102,7 @@ object Tooltip {
     }
     target.event.pointer.down.attach(_ => hideFor(target))
     // a finger held, where nothing put a menu up for it (this, or what it is in, as the press climbs)
-    target.event.pointer.menu.attach { e =>
+    target.event.pointer.held.attach { e =>
       if (e.finger) {
         val dialogs = Modal.opened
         // (not again where what it is in opened it for the same hold: a list for its row)

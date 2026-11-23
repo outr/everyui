@@ -9,6 +9,7 @@ import everyui.menu.{Menu, MenuItem, MenuRow}
 import everyui.render.{Nodes, Platform}
 import everyui.theme.Tone
 import everyui.{FxSpec, ui}
+import javafx.scene.input.{MouseButton, MouseEvent}
 import reactify.*
 
 /** A component's own tip (`Component.tipView`) in the one tip host: made as it opens (after the pointer rests, as the
@@ -175,6 +176,45 @@ class TipViewSpec extends FxSpec {
         Thread.sleep(200L)
         fx(Tooltip.shownFor) shouldBe None
         fx(made) shouldBe Nil
+      }
+    }
+    "only watch the hold it opens on, leaving a tap to a clickable holder, and keep a clickable one's own tap and hold" in {
+      // (on Android a component that answers a hold takes every touch that starts on it: a picker's row with a tip
+      // view held its tap, and its list never chose it)
+      val a = fx(tipped(card(10.0, 10.0)))
+      val holder = fx(new Container {
+        size.width @= 300.0
+        size.height @= 100.0
+        position.left @= 100.0
+        position.top @= 100.0
+        children += a
+      })
+      // a rail's tile: its own click and menu, and a tip view
+      val tile = fx(tipped(card(500.0, 100.0)))
+      var clicks = List.empty[String]
+      fx(holder.event.click.attach(_ => clicks = "holder" :: clicks))
+      fx(tile.event.click.attach(_ => clicks = "tile" :: clicks))
+      fx(tile.event.pointer.menu.attach(_ => ()))
+      onScreen(holder, tile) {
+        fx(a.event.pointer.claimsHold) shouldBe false
+        fx(holder.event.pointer.claimsHold) shouldBe false
+        fx(tile.event.pointer.claimsHold) shouldBe true
+        // a tap on it is its holder's
+        for (c <- List(a, tile)) {
+          val x = fx(c.absoluteLeft + 5.0)
+          val y = fx(c.absoluteTop + 5.0)
+          List(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED).foreach(kind =>
+            fx(javafx.event.Event.fireEvent(c.node.fx, new MouseEvent(kind, x, y, x, y, MouseButton.PRIMARY, 1, false,
+              false, false, false, true, false, false, false, false, true, null))))
+        }
+        fx(clicks.reverse) shouldBe List("holder", "tile")
+        fx(Tooltip.shownFor) shouldBe None
+        // a finger held opens each one's tip
+        for (c <- List(a, tile)) {
+          fx(c.event.pointer.held @= PointerEvent(PointerKind.Menu, c.absoluteLeft + 5.0, c.absoluteTop + 5.0, finger = true))
+          eventually(shown(c)) shouldBe true
+          fx(Tooltip.hide())
+        }
       }
     }
     "close as what it is in scrolls" in {
