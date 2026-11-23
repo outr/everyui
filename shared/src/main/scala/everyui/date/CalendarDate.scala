@@ -66,7 +66,7 @@ case class CalendarDate(year: Int, month: Int, day: Int) {
   /** Midnight at its start in UTC, in milliseconds since the epoch. */
   def toEpochMillis: Long = epochDay.toLong * CalendarDate.DayMillis
 
-  /** Midnight at its start where the device is (`Platform.localDateTime`), in milliseconds since the epoch. On a day
+  /** Midnight at its start where the device is (`LocalClock`), in milliseconds since the epoch. On a day
     * whose midnight a change of the clocks skips, the first moment it has. */
   def toLocalEpochMillis: Long = {
     val utc = toEpochMillis
@@ -133,15 +133,24 @@ object CalendarDate {
   /** The UTC day `millis` since the epoch falls on. */
   def fromEpochMillis(millis: Long): CalendarDate = ofEpochDay(floorDivLong(millis, DayMillis).toInt)
 
-  /** The day `millis` since the epoch falls on where the device is. */
-  def fromLocalEpochMillis(millis: Long): CalendarDate = {
+  /** The day `millis` since the epoch falls on where the device is (`LocalClock`). */
+  def fromLocalEpochMillis(millis: Long): CalendarDate = LocalClock.date(millis)
+
+  /** How far the device's clock is ahead of UTC at `millis`, in milliseconds (negative west of Greenwich), as the
+    * platform tells it (`LocalClock`). */
+  def localOffsetMillis(millis: Long): Long = LocalClock.offset(millis)
+
+  /** The day it is now where the device is. */
+  def today(): CalendarDate = fromLocalEpochMillis(System.currentTimeMillis())
+
+  // the platform asked outright, where LocalClock's years end: its local date and time at `millis`, read as though it
+  // were UTC, less the moment
+  private[date] def platformDate(millis: Long): CalendarDate = {
     val local = Platform.localDateTime(millis)
     parse(local.substring(0, 10)).getOrElse(fromEpochMillis(millis))
   }
 
-  /** How far the device's clock is ahead of UTC at `millis`, in milliseconds (negative west of Greenwich), as the
-    * platform tells it: its local date and time at that moment, read as though it were UTC, less the moment. */
-  def localOffsetMillis(millis: Long): Long = {
+  private[date] def platformOffsetMillis(millis: Long): Long = {
     val local = Platform.localDateTime(millis)
     parse(local.substring(0, 10)) match {
       case Some(date) if local.length >= 19 =>
@@ -152,9 +161,6 @@ object CalendarDate {
       case _ => 0L
     }
   }
-
-  /** The day it is now where the device is. */
-  def today(): CalendarDate = fromLocalEpochMillis(System.currentTimeMillis())
 
   /** The earlier of the two. */
   def min(a: CalendarDate, b: CalendarDate): CalendarDate = if (b.isBefore(a)) b else a

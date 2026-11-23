@@ -1,11 +1,11 @@
 package everyui.util
 
-import everyui.render.Platform
+import everyui.date.LocalClock
 
 /** Times, spans and counts as a dashboard shows them. */
 object Format {
   /** Local `yyyy-MM-dd HH:mm:ss`. */
-  def time(millis: Long): String = Platform.localDateTime(millis)
+  def time(millis: Long): String = LocalClock.dateTime(millis)
 
   /** `finished` or, while unfinished, now (`Clock.now`, so a binding ticks): "42s", "3m 12s", "2h 05m". */
   def elapsed(started: Long, finished: Option[Long]): String = {

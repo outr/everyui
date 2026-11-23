@@ -3467,6 +3467,18 @@ object Platform {
       two(d.getHours().toInt) + ":" + two(d.getMinutes().toInt) + ":" + two(d.getSeconds().toInt)
   }
 
+  /** How far the device's clock is ahead of UTC at `millis`, in milliseconds (everyui.date.LocalClock keeps it): the
+    * local date and time `localDateTime` gives, read as though it were UTC, less the moment to the second. */
+  def zoneOffset(millis: Long): Long = {
+    val d = new js.Date(millis.toDouble)
+    val local = js.Date.UTC(d.getFullYear().toInt, d.getMonth().toInt, d.getDate().toInt, d.getHours().toInt,
+      d.getMinutes().toInt, d.getSeconds().toInt)
+    local.toLong - (millis - Math.floorMod(millis, 1000L))
+  }
+
+  /** `millis`: a browser does not say when its zone's offset changes, so LocalClock checks a span at its ends. */
+  def zoneChangeAfter(millis: Long): Long = millis
+
   /** The WebSocket origin of the page itself (`ws://host:port`), so an app served by its own server needs no address. */
   /** Where this app's server is, to resolve its relative URLs against: the page's origin ("https://example.com"). */
   /** An app packaged for a TV is loaded from its own files, from no server: there, as on a Roku, what the app set as

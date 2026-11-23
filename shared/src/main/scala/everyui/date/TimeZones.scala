@@ -27,6 +27,7 @@ object TimeZones {
     val now = Platform.timeZone()
     if (now != known) {
       known = now
+      LocalClock.reset()
       listeners.foreach(f => f())
     }
   }

@@ -4,6 +4,7 @@ import everyui.PlatformKind
 import everyui.clipboard.Clipboard
 import everyui.component.{Button, ButtonStyle, Container, TextView}
 import everyui.component.types.{Semantics, WhiteSpace}
+import everyui.date.LocalClock
 import everyui.event.{Key, KeyEvent}
 import everyui.font.MaterialIcon
 import everyui.list.{ListSource, VirtualList}
@@ -692,7 +693,7 @@ object LogView {
 
   /** `millis` since the epoch as the local time of day, to the millisecond: "17:46:50.123". */
   def time(millis: Long): String = {
-    val local = Platform.localDateTime(millis)
+    val local = LocalClock.dateTime(millis)
     val ms = (millis % 1000L).toString
     (if (local.length >= 19) local.substring(11, 19) else local) + "." + "0" * (3 - ms.length) + ms
   }

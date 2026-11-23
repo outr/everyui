@@ -1,11 +1,11 @@
 package everyui.chat
 
 import everyui.i18n.{DateText, Strings}
-import everyui.render.Platform
+import everyui.date.LocalClock
 
 /** Times as a transcript shows them, in the language in use: how long ago a message was ("now", "5m", then the time of
   * day), a day as its separator names it ("Today", "Yesterday", "Wed, Sep 16"), and how long something has taken
-  * ("12s", "1m 9s"). The local calendar comes from the platform (`Platform.localDateTime`). */
+  * ("12s", "1m 9s"). The local calendar comes from the platform (`everyui.date.LocalClock`). */
 object ChatTime {
   private val Minute = 60000L
   private val Hour = 3600000L
@@ -17,10 +17,10 @@ object ChatTime {
     val ago = now - time
     if (ago < Minute) ChatWords.now
     else if (ago < Hour) ChatWords.minutesAgo(ago / Minute)
-    else if (!dated || dayOf(time) == dayOf(now)) clock(time)
     else {
-      val (_, month, day) = parts(dayOf(time))
-      DateText.monthDay(month, day) + " " + clock(time)
+      val day = LocalClock.date(time)
+      if (!dated || day == LocalClock.date(now)) clock(time)
+      else DateText.monthDay(day.month, day.day) + " " + clock(time)
     }
   }
 
@@ -35,24 +35,24 @@ object ChatTime {
     else if (since < Day) ChatWords.hoursAgo(since / Hour)
     else if (since < Day * 7L) ChatWords.daysAgo(since / Day)
     else {
-      val day = dayOf(time)
-      val (year, month, date) = parts(day)
+      val day = LocalClock.date(time)
       val pattern = DateText.symbols(Strings.language().code).monthDay
       val dayFirst = pattern.indexOf('d') >= 0 && pattern.indexOf('d') < pattern.indexOf('M')
-      val numbers = if (dayFirst) date.toString + "/" + month.toString else month.toString + "/" + date.toString
-      if (day.substring(0, 4) == dayOf(now).substring(0, 4)) numbers
-      else numbers + "/" + (if (year % 100 < 10) "0" else "") + (year % 100).toString
+      val numbers =
+        if (dayFirst) day.day.toString + "/" + day.month.toString else day.month.toString + "/" + day.day.toString
+      if (day.year == LocalClock.date(now).year) numbers
+      else numbers + "/" + (if (day.year % 100 < 10) "0" else "") + (day.year % 100).toString
     }
   }
 
   /** The time of day `time` was, as the language writes it: "3:07 PM", "15:07". */
   def clock(time: Long): String = {
-    val local = Platform.localDateTime(time)
-    DateText.timeOfDay(number(local, 11, 13), number(local, 14, 16))
+    val seconds = LocalClock.secondOfDay(time)
+    DateText.timeOfDay(seconds / 3600, seconds / 60 % 60)
   }
 
   /** The local day `time` falls on, as "yyyy-MM-dd": what tells one day's entries from the next. */
-  def dayOf(time: Long): String = Platform.localDateTime(time).substring(0, 10)
+  def dayOf(time: Long): String = LocalClock.dateTime(time).substring(0, 10)
 
   /** A day ("yyyy-MM-dd") named for its separator, seen at `now`: "Today", "Yesterday", within the year "Wed, Sep 16",
     * else "Sep 16, 2025". */

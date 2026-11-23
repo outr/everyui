@@ -2047,6 +2047,16 @@ function uiLocalDateTime(millis as dynamic) as string
     return Right("0" + dt.GetYear().ToStr(), 4) + "-" + Right("0" + dt.GetMonth().ToStr(), 2) + "-" + Right("0" + dt.GetDayOfMonth().ToStr(), 2) + " " + Right("0" + dt.GetHours().ToStr(), 2) + ":" + Right("0" + dt.GetMinutes().ToStr(), 2) + ":" + Right("0" + dt.GetSeconds().ToStr(), 2)
 end function
 
+' How far the device's clock is ahead of UTC at `millis`, in milliseconds: the moment as local time, less the moment,
+' to the second as uiLocalDateTime has it.
+function uiZoneOffset(millis as dynamic) as dynamic
+    seconds = millis \ 1000
+    dt = CreateObject("roDateTime")
+    dt.FromSeconds(seconds)
+    dt.ToLocalTime()
+    return (dt.AsSeconds() - seconds) * 1000
+end function
+
 ' The time zone the device is set to, by its own name for it ("US/Central").
 function uiTimeZone() as string
     return CreateObject("roDeviceInfo").GetTimeZone()

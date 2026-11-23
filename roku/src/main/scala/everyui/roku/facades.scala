@@ -296,6 +296,10 @@ class SGNode
 @native object uiLocalDateTime {
   def apply(millis: Long): String = native.value
 }
+/** How far the device's clock is ahead of UTC at `millis`, in milliseconds. */
+@native object uiZoneOffset {
+  def apply(millis: Long): Long = native.value
+}
 /** The time zone the device is set to, by its name for it ("US/Central"). */
 @native object uiTimeZone {
   def apply(): String = native.value

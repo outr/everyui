@@ -1395,17 +1395,32 @@ func uiSetRadius(_ node: V, _ radius: V) -> V {
     return .vNull
 }
 
-/// Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`.
 /// The character at a Unicode code point, as a string.
 func uiChr(_ codePoint: V) -> V {
     guard let scalar = Unicode.Scalar(UInt32(rtDouble(codePoint))) else { return .vStr("") }
     return .vStr(String(Character(scalar)))
 }
 
-func uiLocalDateTime(_ millis: V) -> V {
+/// Milliseconds since the epoch as local `yyyy-MM-dd HH:mm:ss`, by one formatter made once (each is costly to make):
+/// in digits and the Gregorian calendar whatever the device's language, its zone set again as the device's changes.
+let uiLocalFormat: DateFormatter = {
     let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.calendar = Calendar(identifier: .gregorian)
     f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-    return .vStr(f.string(from: Date(timeIntervalSince1970: rtDouble(millis) / 1000.0)))
+    return f
+}()
+
+func uiLocalDateTime(_ millis: V) -> V {
+    let zone = TimeZone.current
+    if uiLocalFormat.timeZone != zone { uiLocalFormat.timeZone = zone }
+    return .vStr(uiLocalFormat.string(from: Date(timeIntervalSince1970: rtDouble(millis) / 1000.0)))
+}
+
+/// How far the device's clock is ahead of UTC at `millis`, in milliseconds, to the second as uiLocalDateTime has it.
+func uiZoneOffset(_ millis: V) -> V {
+    let moment = Date(timeIntervalSince1970: (rtDouble(millis) / 1000.0).rounded(.down))
+    return .vDbl(Double(TimeZone.current.secondsFromGMT(for: moment)) * 1000.0)
 }
 
 /// The time zone the device is in, as IANA names it ("America/Chicago").

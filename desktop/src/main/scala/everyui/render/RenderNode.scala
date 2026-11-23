@@ -2235,10 +2235,22 @@ object Platform {
     System.exit(0)
   }
 
+  // the same in every locale: digits and the ISO calendar
+  private val localFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", java.util.Locale.ROOT)
+
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
   def localDateTime(millis: Long): String =
     java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault())
-      .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+      .format(localFormat)
+
+  /** How far the device's clock is ahead of UTC at `millis`, in milliseconds (everyui.date.LocalClock keeps it). */
+  def zoneOffset(millis: Long): Long =
+    java.time.ZoneId.systemDefault().getRules.getOffset(java.time.Instant.ofEpochMilli(millis)).getTotalSeconds * 1000L
+
+  /** The first moment after `millis` the zone's offset changes, from its rules; Long.MaxValue where it never does. */
+  def zoneChangeAfter(millis: Long): Long =
+    Option(java.time.ZoneId.systemDefault().getRules.nextTransition(java.time.Instant.ofEpochMilli(millis)))
+      .fold(Long.MaxValue)(_.toEpochSecond * 1000L)
 
   /** No page to be served from: an app names its server (`--live=`). */
   def webSocketOrigin(): String = ""

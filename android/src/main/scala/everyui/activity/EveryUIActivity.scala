@@ -22,6 +22,8 @@ abstract class EveryUIActivity extends Activity {
     Host.activity = this
     EveryUIActivity.presence.created(this)
     everyui.network.NetworkBackend.init()   // rapid on a thread pool, before anything starts a Task
+    // the time zone read again as Android says it changed, for the local times worked out from it
+    everyui.render.ZoneWatch.start(this)
     // a frame the loop asked for and never had is asked for again, and logged with where the loop was woken from
     everyui.task.Frames.guarded = true
     everyui.task.Frames.origin = () => new everyui.render.WokeFrom

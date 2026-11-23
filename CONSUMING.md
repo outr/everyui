@@ -3485,7 +3485,7 @@ Roku has none of): `plusDays`, `plusWeeks`, `plusMonths` and `plusYears` (Januar
 `weekday` (1 Monday to 7 Sunday), `daysInMonth`, `isLeapYear`, `daysUntil`, `compare`, `isBefore`/`isAfter`, `within`
 and `clamp` to optional bounds, `startOfWeek(firstDay)`, and ISO 8601 both ways (`iso`, `CalendarDate.parse`). To and
 from the epoch: `toEpochMillis`/`fromEpochMillis` at UTC midnight, and `toLocalEpochMillis`/`fromLocalEpochMillis` where
-the device is (`Platform.localDateTime`, so the platform's own zone), with `localOffsetMillis` and `CalendarDate.today()`.
+the device is (`LocalClock`, so the platform's own zone), with `localOffsetMillis` and `CalendarDate.today()`.
 `DateRange(start, end)` is both ends included (`DateRange.of` puts them in order), `DateRange.parse("2026-09-01/2026-09-29")`.
 
 ```scala
@@ -3565,8 +3565,16 @@ fills a date's and a clock's together (`EEE d MMM, h:mm a`). `DateText.pattern` 
 
 The device's time zone is `Platform.timeZone()`, as IANA names it ("America/Chicago"; a Roku uses its own names, such
 as "US/Central"). `Platform.onTimeZone(f)` is told when the zone changes. It is checked again whenever the app comes
-back to the front or its window gets the focus back (`everyui.date.TimeZones`). On the desktop the JVM reads the zone
-once, at start.
+back to the front or its window gets the focus back (`everyui.date.TimeZones`), and on Android as soon as the system
+says so. On the desktop the JVM reads the zone once, at start.
+
+A moment's local date and time come from `everyui.date.LocalClock`: `dateTime(millis)` ("2026-11-22 15:07:42", what
+`Platform.localDateTime` says), `date(millis)` (a `CalendarDate`), `secondOfDay(millis)` and `offset(millis)`.
+It asks the platform for its offset from UTC once for each six hours (`Platform.zoneOffset`, with the zone's next
+change where the platform knows its rules) and works out each moment in arithmetic, so a transcript, a log or a week
+of days costs no formatter or zone lookup each time. Its answers are the platform's, across every change of the clocks;
+it forgets what it kept as the zone changes. `CalendarDate`'s local conversions, `ClockTime.now` and `ChatTime` use
+it; call it rather than `Platform.localDateTime` for times drawn many to a frame.
 
 ### Smaller pieces
 

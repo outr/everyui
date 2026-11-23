@@ -4,8 +4,8 @@ package everyui.i18n
   * and whether its clock runs to 12 or 24 hours. Each form is one of CLDR's skeletons (as `intl`'s `DateFormat`
   * names them), read from `DateSymbols` for the language in use; a language without symbols is written as English.
   *
-  * Every argument is a calendar value, not a moment: the caller reads the local date and time where it is (the
-  * backends' `Platform.localDateTime`), so this knows nothing of zones. Months are 1-12, weekdays 1 (Monday) to 7. */
+  * Every argument is a calendar value, not a moment: the caller reads the local date and time where it is
+  * (`everyui.date.LocalClock`), so this knows nothing of zones. Months are 1-12, weekdays 1 (Monday) to 7. */
 object DateText {
   /** "Jan 15, 2013", "15 ene 2013", "2013年1月15日": CLDR's `yMMMd`. */
   def mediumDate(year: Int, month: Int, day: Int, code: String = Strings.language().code): String =
@@ -89,12 +89,22 @@ object DateText {
   /** The symbols for `code`: its own, those of its language without the script or region (`pt_BR` as `pt`), else
     * English's. Traditional Chinese is filed as `zh_Hant`. */
   def symbols(code: String): DateSymbols = {
-    val normal = code.replace('-', '_')
-    DateSymbols.all.find(_.code == normal)
-      .orElse(if (normal == "zh_TW" || normal == "zh_HK" || normal == "zh_MO") DateSymbols.all.find(_.code == "zh_Hant") else None)
-      .orElse(DateSymbols.all.find(_.code == normal.takeWhile(_ != '_')))
-      .getOrElse(DateSymbols.English)
+    val kept = lastSymbols
+    if (kept._1 == code) kept._2
+    else {
+      val normal = code.replace('-', '_')
+      val traditional = normal == "zh_TW" || normal == "zh_HK" || normal == "zh_MO"
+      val found = DateSymbols.all.find(_.code == normal)
+        .orElse(if (traditional) DateSymbols.all.find(_.code == "zh_Hant") else None)
+        .orElse(DateSymbols.all.find(_.code == normal.takeWhile(_ != '_')))
+        .getOrElse(DateSymbols.English)
+      lastSymbols = (code, found)
+      found
+    }
   }
+
+  // the last language's, kept: a transcript writes all its times in the one language
+  @volatile private var lastSymbols: (String, DateSymbols) = (DateSymbols.English.code, DateSymbols.English)
 
   /** `pattern` with its fields filled in, CLDR's way: a run of one letter is one field (`y`, `M`, `MMM`, `MMMM`, `d`,
     * `dd`, `EEE`, `EEEE`, `h`, `H`, `HH`, `mm`, `ss`, `a`; `yy` is the year's last two digits), text between single

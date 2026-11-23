@@ -311,7 +311,7 @@ object ChatDemo {
   // a tool call's aside, as an app keeps it: when it began, to the second, and how long it took or has run so far
   // ("9:42:13 AM · 1.2 s"), with a hint saying so in words
   private def clockAt(time: Long): String = {
-    val local = Platform.localDateTime(time)
+    val local = everyui.date.LocalClock.dateTime(time)
     DateText.timeWithSeconds(local.substring(11, 13).toInt, local.substring(14, 16).toInt,
       local.substring(17, 19).toInt)
   }

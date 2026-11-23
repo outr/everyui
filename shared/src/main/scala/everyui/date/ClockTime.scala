@@ -1,7 +1,6 @@
 package everyui.date
 
 import everyui.i18n.{DateText, Strings}
-import everyui.render.Platform
 
 /** A time of day, `hour` 0 to 23 and `minute` 0 to 59, with no date and no zone: when somebody got somewhere. */
 case class ClockTime(hour: Int, minute: Int) extends Ordered[ClockTime] {
@@ -26,10 +25,8 @@ object ClockTime {
 
   /** The time on the device's clock now. */
   def now(): ClockTime = {
-    val local = Platform.localDateTime(System.currentTimeMillis())
-    if (local.length >= 16) ClockTime(local.substring(11, 13).toIntOption.getOrElse(0),
-      local.substring(14, 16).toIntOption.getOrElse(0))
-    else ClockTime(0, 0)
+    val seconds = LocalClock.secondOfDay(System.currentTimeMillis())
+    ClockTime(seconds / 3600, seconds / 60 % 60)
   }
 
   /** `t` taken to the nearest `step` minutes (on to the next for a half). */

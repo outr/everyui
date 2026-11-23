@@ -2960,7 +2960,12 @@ object Platform {
   private var windowSettings: Map[String, String] = Map.empty
 
   /** The time zone the device is in, as IANA names it ("America/Chicago"). */
-  def timeZone(): String = java.util.TimeZone.getDefault.getID
+  def timeZone(): String = {
+    val now = java.util.TimeZone.getDefault
+    val kept = zoneNow
+    if (kept != null && kept.getID != now.getID) zoneNow = now
+    now.getID
+  }
 
   /** `f` told as the time zone changes (everyui.date.TimeZones). What stops it being told. */
   def onTimeZone(f: () => Unit): () => Unit = everyui.date.TimeZones.onChange(f)
@@ -3533,12 +3538,34 @@ object Platform {
   def quit(): Unit = Host.activity.finish()
 
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
-  def localDateTime(millis: Long): String = {
-    // java.text rather than java.time, which is Android 8's
-    val format = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-    format.setTimeZone(java.util.TimeZone.getDefault)
-    format.format(new java.util.Date(millis))
+  def localDateTime(millis: Long): String = localFormat.get.apply(millis, zone())
+
+  private val localFormat = new ThreadLocal[LocalFormat] {
+    override def initialValue(): LocalFormat = new LocalFormat
   }
+
+  /** How far the device's clock is ahead of UTC at `millis`, in milliseconds (everyui.date.LocalClock keeps it). */
+  def zoneOffset(millis: Long): Long = zone().getOffset(millis).toLong
+
+  /** The first moment after `millis` the zone's offset changes, from its rules (Android 8 on); Long.MaxValue where it
+    * never does, and `millis` where this cannot say (LocalClock checks a span at its ends instead). */
+  def zoneChangeAfter(millis: Long): Long = ZoneWatch.changeAfter(zone().getID, millis)
+
+  // the default zone, kept: TimeZone.getDefault is a synchronized copy each time. Read again by `timeZone` and as
+  // Android says the zone changed (ZoneWatch)
+  @volatile private var zoneNow: java.util.TimeZone = null
+
+  private def zone(): java.util.TimeZone = {
+    val z = zoneNow
+    if (z != null) z
+    else {
+      val now = java.util.TimeZone.getDefault
+      zoneNow = now
+      now
+    }
+  }
+
+  private[render] def zoneChanged(): Unit = zoneNow = null
 
   /** No page to be served from: an app names its server (`--es live`). */
   def webSocketOrigin(): String = ""

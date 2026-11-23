@@ -1159,6 +1159,12 @@ object Platform {
   /** `millis` since the epoch as local `yyyy-MM-dd HH:mm:ss`. */
   def localDateTime(millis: Long): String = uiLocalDateTime(millis.toDouble)
 
+  /** How far the device's clock is ahead of UTC at `millis`, in milliseconds (everyui.date.LocalClock keeps it). */
+  def zoneOffset(millis: Long): Long = uiZoneOffset(millis.toDouble).toLong
+
+  /** `millis`: LocalClock checks a span at its ends here. */
+  def zoneChangeAfter(millis: Long): Long = millis
+
   /** No page to be served from: an app names its server. */
   def webSocketOrigin(): String = ""
   /** Where this app's server is, to resolve its relative URLs against: nothing here comes from a server, so what the app
