@@ -175,5 +175,41 @@ class LazyColumnSpec extends FxSpec {
       fx(column.count) shouldBe 2
       fx(column.madeCount) shouldBe 2
     }
+    "make the rows in view as it is built, before any layout, from their estimates" in {
+      val made = fx {
+        ui.children.clear()
+        Quality.forget()
+        LayoutPass.batch {
+          val s = new ScrollContainer
+          s.size.width @= 600.0
+          s.size.height @= 600.0
+          val column = new LazyColumn(gap = 20.0)
+          column.size.width @= 600.0
+          column.items @= Vector.tabulate(22)(i => LazyItem("row" + i.toString, 200.0, () => row(i, 200.0)))
+          s.content.children += column
+          ui.children += s
+          // (layout held: nothing measured yet)
+          column.madeCount
+        }
+      }
+      made should be >= 3
+    }
+    "make a row for each item where keys repeat, each at its own place" in {
+      val (_, column) = page(0)
+      fx(column.items @= Vector("a", "b", "a", "c", "a").zipWithIndex.map((k, i) => LazyItem(k, 60.0, () => row(i, 60.0))))
+      settled()
+      fx(column.madeCount) shouldBe 5
+      val rows = fx((0 until 5).map(i => column.rowAt(i).get))
+      rows.distinct.size shouldBe 5
+      fx(rows.map(_.position.top())) shouldBe (0 until 5).map(_ * 80.0)
+      fx(rows.map(r => r.asInstanceOf[Container].children().head.semantics().label)) shouldBe
+        (0 until 5).map(i => "card " + i.toString + "/0")
+      fx(column.indexOf("a")) shouldBe 0
+      // the repeated rows keep what they made as an item is added
+      val third = rows(2)
+      fx(column.items @= column.items() :+ LazyItem("d", 60.0, () => row(5, 60.0)))
+      settled()
+      fx(column.rowAt(2).exists(_ eq third)) shouldBe true
+    }
   }
 }

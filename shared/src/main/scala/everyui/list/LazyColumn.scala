@@ -23,6 +23,9 @@ import reactify.*
   * ScrollContainer's children do, until it comes back into sight. Made rows stay made unless `releaseBeyond` says how far away one is taken apart, to be made
   * again from its item as it comes back; never the row the focus is in. `nearEnd` asks for more as the end comes near.
   *
+  * Each row's key should be its own. One given to more than one row is told apart by its place among them (the
+  * second `key#2`), so each is made where it belongs, and told once (`scribe.warn`).
+  *
   * {{{
   *   val home = new LazyColumn(gap = 24.0)
   *   home.size.width := page.size.width()
@@ -45,6 +48,8 @@ class LazyColumn(val gap: Double = 0.0) extends Container {
   val nearEnd: Channel[Int] = Channel[Int]
 
   private var rows: Vector[LazyItem] = Vector.empty
+  // each row's key, made unique (LazyKeys): what its made row is held by
+  private var keys: Vector[String] = Vector.empty
   // (immutable maps: a Roku keeps one keyed by strings as an associative array, and has no mutable one)
   private var indexes: Map[String, Int] = Map.empty
   private var made: Map[String, Component] = Map.empty
@@ -75,7 +80,7 @@ class LazyColumn(val gap: Double = 0.0) extends Container {
   def indexOf(key: String): Int = indexes.getOrElse(key, -1)
   /** The row at `index`, where it is made. */
   def rowAt(index: Int): Option[Component] =
-    if (index < 0 || index >= rows.length) None else made.get(rows(index).key)
+    if (index < 0 || index >= rows.length) None else made.get(keys(index))
   /** The row at `index`, made now where it is not yet (to put the focus in it): None past the rows. */
   def make(index: Int): Option[Component] = if (index < 0 || index >= rows.length) None else Some(build(index))
   /** Where row `index` starts, down the column. */
@@ -92,7 +97,7 @@ class LazyColumn(val gap: Double = 0.0) extends Container {
   /** Row `index` drew itself `height` tall: for a column whose rows are alike (a grid), to take the rest to be so. */
   protected def measured(index: Int, height: Double): Unit = ()
 
-  private def heightOf(index: Int): Double = heights.getOrElse(rows(index).key, guess(index))
+  private def heightOf(index: Int): Double = heights.getOrElse(keys(index), guess(index))
 
   private def retop(): Unit = {
     val next = new Array[Double](rows.length + 1)
@@ -122,10 +127,11 @@ class LazyColumn(val gap: Double = 0.0) extends Container {
   // the items read again: what left is taken apart, what stays keeps what it made and its height
   private def reread(): Unit = {
     rows = items()
+    keys = LazyKeys.unique(rows.map(_.key), kind)
     var next = Map.empty[String, Int]
     var i = 0
     while (i < rows.length) {
-      next = next.updated(rows(i).key, i)
+      next = next.updated(keys(i), i)
       i += 1
     }
     indexes = next
@@ -151,7 +157,7 @@ class LazyColumn(val gap: Double = 0.0) extends Container {
 
   // row `index` made, where it is not, at its place
   private def build(index: Int, alone: Boolean = true): Component = {
-    val key = rows(index).key
+    val key = keys(index)
     made.get(key) match {
       case Some(c) => c
       case None =>
@@ -189,7 +195,7 @@ class LazyColumn(val gap: Double = 0.0) extends Container {
     var changed = false
     var i = first
     while (i <= last) {
-      if (!made.contains(rows(i).key)) {
+      if (!made.contains(keys(i))) {
         build(i, false)
         changed = true
       }

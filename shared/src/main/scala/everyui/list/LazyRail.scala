@@ -18,6 +18,10 @@ import reactify.*
   * never the card the focus is in. It is as tall as its tallest made card, with the content's padding round them,
   * unless given a height. `nearEnd` asks for more as the end comes near.
   *
+  * Each item's key (`keyOf`) should be its own. One given to more than one item (a person billed twice) is told apart by
+  * its place among them (the second `key#2`), so each card is made where it belongs, none leaving a gap, and told once
+  * (`scribe.warn`).
+  *
   * {{{
   *   val rail = new LazyRail(Var(titles), (t: Title) => t.id, cardWidth = 120.0, gap = 12.0)(t => new PosterCard(t))
   *   rail.size.width := page.size.width()
@@ -36,6 +40,8 @@ class LazyRail[T](val items: Var[Vector[T]], val keyOf: T => String, val cardWid
   val nearEnd: Channel[Int] = Channel[Int]
 
   private var shown: Vector[T] = Vector.empty
+  // each item's key, made unique (LazyKeys): what its made card is held by
+  private var keys: Vector[String] = Vector.empty
   private var indexes: Map[String, Int] = Map.empty
   private var made: Map[String, Component] = Map.empty
   private val railLength: Var[Double] = own(Var(0.0))
@@ -61,7 +67,7 @@ class LazyRail[T](val items: Var[Vector[T]], val keyOf: T => String, val cardWid
   def madeCount: Int = made.size
   /** The card at `index`, where it is made. */
   def cardAt(index: Int): Option[Component] =
-    if (index < 0 || index >= shown.length) None else made.get(keyOf(shown(index)))
+    if (index < 0 || index >= shown.length) None else made.get(keys(index))
   /** The card at `index`, made now where it is not yet (to put the focus on it): None past the items. */
   def make(index: Int): Option[Component] = if (index < 0 || index >= shown.length) None else Some(build(index))
   /** Where the item of `key` is, -1 where none is. */
@@ -75,10 +81,11 @@ class LazyRail[T](val items: Var[Vector[T]], val keyOf: T => String, val cardWid
   // the items read again: what left is taken apart, what stays keeps its card
   private def reread(): Unit = {
     shown = items()
+    keys = LazyKeys.unique(shown.map(keyOf), kind)
     var next = Map.empty[String, Int]
     var i = 0
     while (i < shown.length) {
-      next = next.updated(keyOf(shown(i)), i)
+      next = next.updated(keys(i), i)
       i += 1
     }
     indexes = next
@@ -107,7 +114,7 @@ class LazyRail[T](val items: Var[Vector[T]], val keyOf: T => String, val cardWid
 
   // card `index` made, where it is not, at its place
   private def build(index: Int, alone: Boolean = true): Component = {
-    val key = keyOf(shown(index))
+    val key = keys(index)
     made.get(key) match {
       case Some(c) => c
       case None =>
@@ -149,7 +156,7 @@ class LazyRail[T](val items: Var[Vector[T]], val keyOf: T => String, val cardWid
     var changed = false
     var i = first
     while (i <= last) {
-      if (!made.contains(keyOf(shown(i)))) {
+      if (!made.contains(keys(i))) {
         build(i, false)
         changed = true
       }

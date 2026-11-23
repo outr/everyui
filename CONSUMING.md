@@ -5984,6 +5984,15 @@ from 14.24 MB / 1,920 KB / 1,206 KB to 5.32 MB / 1,164 KB / 866 KB, the memory p
 2.13 MB / 491 KB / 380 KB, and thestreams.tv's app from 4.37 MB / 444 KB Brotli to 1.52 MB / 310 KB. The WebAssembly
 build's own main.js adds 48 KB (7 KB brotli) to 65 KB (10 KB).
 
+**Start-up under DevTools.** Lighthouse, PageSpeed Insights and a script driving Chrome over the DevTools protocol
+(one that enables `Runtime`, as most do) make the browser keep a stack trace with source positions for every `Error`
+made. The first made while main.js is still running (in `main`, before `DOMContentLoaded`) has the browser work out
+positions for the whole script: on a phone (4x CPU) about 0.3 s for a 1.8 MB main.js, before anything shows. A person's
+browser without DevTools pays nothing for it. Every Scala `Throwable` is an `Error` on the web, so keep them out of an
+app's start (a `Try` that fails, a parse caught). reactify 4.2.4, which EveryUI carries, makes one as the first value
+is made (its `Val.Unset`): that alone moved thestreams.tv's main.js-to-`DOMContentLoaded` from 0.27 s to 0.55 to 0.86 s
+under its DevTools probe. The reactify after it makes none.
+
 Serve the bundle compressed, Brotli where the browser takes it, from the files `seal` (or `WebBundle.precompress`)
 wrote: that matters more than any of these. An app on `WebTarget.Both` sends most browsers the WebAssembly build, which
 Closure never touches.
@@ -8405,6 +8414,10 @@ grid.nearEnd.attach(_ => nextPage())
 ```
 
 - Give each item a key that stays the same for the same thing: a rail read again with the same titles keeps its cards.
+  And give each its own. A key given to more than one item (a person billed twice in a cast, a title listed twice) is
+  told apart by its place among those of that key (the second is `key#2`, the third `key#3`), so each is made where it
+  belongs and none leaves a gap, and the first time is logged (`scribe.warn`); a grid's rows, keyed by their cells,
+  are told apart the same way.
 - Estimate a row near what it draws (a rail's heading, its cards, the gaps): the closer, the fewer moves as rows are
   measured, and the truer the scrollbar.
 - Give a card its size before its picture comes (an `ImageView` with `sizedByPicture @= false`, its width and height

@@ -112,5 +112,38 @@ class VirtualGridSpec extends FxSpec {
       settled()
       fx(g.cellAt(39).nonEmpty) shouldBe true
     }
+    "make its first rows from the estimate as it is built, before any layout and before it is on the screen" in {
+      val (alone, held) = fx {
+        ui.children.clear()
+        Quality.forget()
+        // built as a page builds it, before the page is on the screen
+        val g = new VirtualGrid(Var(Vector.tabulate(40)(i => i)), (i: Int) => i.toString, GridColumns.adaptive(100.0),
+          16.0)(cell)
+        g.size.width @= 520.0
+        val alone = g.madeCount
+        val held = LayoutPass.batch {
+          val s = new ScrollContainer
+          s.size.width @= 520.0
+          s.size.height @= 600.0
+          s.content.children += g
+          ui.children += s
+          g.madeCount
+        }
+        (alone, held)
+      }
+      // rows of 118 taken to be 177 tall: as many as fill the screen, at once
+      alone should be >= 3
+      held should be >= alone
+    }
+    "make a row for each run of cells where the cells' keys repeat" in {
+      val (_, g) = grid(0)
+      // the same four cells twice over: two rows of the same key, each made
+      fx(g.cells @= Vector(1, 2, 3, 4, 1, 2, 3, 4))
+      settled()
+      fx(g.count) shouldBe 2
+      fx(g.madeCount) shouldBe 2
+      fx(g.rowAt(0).get eq g.rowAt(1).get) shouldBe false
+      fx(g.rowAt(1).get.position.top()) should be > 0.0
+    }
   }
 }

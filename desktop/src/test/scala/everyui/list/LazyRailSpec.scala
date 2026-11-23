@@ -131,5 +131,35 @@ class LazyRailSpec extends FxSpec {
       fx(r.cardAt(0).exists(_ eq first)) shouldBe true
       fx(r.content.size.width()) shouldBe (30 * 120.0 + 29 * 16.0)
     }
+    "make the cards in view as it is built, before any layout" in {
+      val made = fx {
+        ui.children.clear()
+        Quality.forget()
+        LayoutPass.batch {
+          val r = new LazyRail(Var(Vector.tabulate(100)(i => i)), (i: Int) => i.toString, 120.0, 16.0)(card)
+          r.size.width @= 900.0
+          ui.children += r
+          r.madeCount
+        }
+      }
+      made should be >= 7
+    }
+    "make a card for each item where keys repeat, at its own place, leaving no gap" in {
+      val r = rail(0)
+      // a cast with one person billed three times, keyed by the person
+      fx(r.items @= Vector(7, 1, 7, 2, 7))
+      settled()
+      fx(r.madeCount) shouldBe 5
+      val cards = fx((0 until 5).map(i => r.cardAt(i).get))
+      cards.distinct.size shouldBe 5
+      fx(cards.map(_.position.left())) shouldBe (0 until 5).map(_ * 136.0)
+      fx(r.content.children().map(_.semantics().label)) shouldBe Vector("card 7", "card 1", "card 7", "card 2", "card 7")
+      fx(r.indexOf("7")) shouldBe 0
+      val third = cards(2)
+      fx(r.items @= r.items() :+ 3)
+      settled()
+      fx(r.cardAt(2).exists(_ eq third)) shouldBe true
+      fx(r.cardAt(5).map(_.position.left())) shouldBe Some(5 * 136.0)
+    }
   }
 }
