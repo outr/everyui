@@ -142,6 +142,7 @@ class DonutChart extends Chart {
   protected def tipOf(p: Pointed): (String, Vector[(Color, String, String)]) =
     (p.category, Vector((colourOf(p.categoryIndex), format()(p.value), share(p.value))))
   protected def kindWords: String = if (hole() > 0.0) ChartWords.donut else ChartWords.pie
+  protected def pressWords: String = ChartWords.pressSlice
   protected def tableNow: ChartTable = ChartTable(Vector(ChartWords.category, ChartWords.value, ChartWords.share),
     parts().map { case (n, v) => Vector(n, format()(v), share(v)) })
   protected def described: String = {

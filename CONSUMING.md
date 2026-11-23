@@ -1762,6 +1762,22 @@ What every chart (`BarChart`, `LineChart`, `DonutChart`, `Heatmap`) has:
   and `hovered: Var[Option[Pointed]]`. A mark is heard 24 pixels round at least; a line chart finds the nearest
   category and the nearest line there. The chart's own tip shows by it, the value first, every series at that
   category; `tips @= false` for the app's own. `pointAt(x, y, pressed)` and `markAt(x, y)` do the same from the app.
+  The axes' words and the tip let the pointer through to the marks under them.
+- **Choosing.** `chosen: Channel[Pointed]` is the one to act on: a click or a tap let go on the mark it went down on
+  (not a drag, nor a finger scrolling the page across the chart), Enter or Space on the mark the keys are on (Tab
+  reaches the chart; the arrows move along its marks, each said to a screen reader), or a row's button in the table.
+  `pointed` tells a press as it goes down, a finger's that only scrolls too, and stays for the pointer's marks.
+  `actionable: Var[Pointed => Boolean]` (none by default) says which marks lead somewhere: the pointer's hand shows
+  over those only, the figure says they can be pressed ("Press a bar to open it.", in Words' languages), a mark the
+  keys reach is said with "press to open" or the app's `actionWords: Var[Pointed => String]` ("Open the calendar on
+  Thursday"), which is also a line under its tip, and the table's rows that lead somewhere have their names as buttons.
+
+```scala
+chart.actionable @= (p => target(p).nonEmpty)
+chart.actionWords @= (p => "Open the calendar on " + p.category)
+chart.chosen.attach(p => target(p).foreach(open))
+```
+
 - **For a screen reader**, the chart is a figure named by `summary`, or, where the app gives none, by a sentence made
   from its data ("Bar chart: Spend. 7 values, from $4 to $48; highest Wed, $48."). A button at its top end (`tableToggle`)
   shows the data as a table in its place, and back (`table`), which a screen reader reads as a table and a selection

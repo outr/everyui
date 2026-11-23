@@ -53,6 +53,7 @@ class LineChart extends AxisChart {
     if (timeScale().nonEmpty) g.width / math.max(1, timeTicks().size) else g.width / math.max(1, categories().size - 1)
   protected def legendKey: LegendKey = if (area()) LegendKey.Box else LegendKey.Line
   protected def kindWords: String = if (area()) ChartWords.area else ChartWords.line
+  protected def pressWords: String = ChartWords.pressPoint
 
   private def placedTime(t: TimeScale, g: Rect): TimeScale = if (rtl) t.placed(g.right, g.x) else t.placed(g.x, g.right)
 

@@ -36,4 +36,12 @@ object ChartWords {
   def up(delta: String): String = Words("chart.up").replace("{delta}", delta)
   def down(delta: String): String = Words("chart.down").replace("{delta}", delta)
   def noData: String = Words("chart.noData")
+  /** What the figure says where some of its marks lead somewhere: "Press a bar to open it.", and a point, a slice, a
+    * cell. */
+  def pressBar: String = Words("chart.pressBar")
+  def pressPoint: String = Words("chart.pressPoint")
+  def pressSlice: String = Words("chart.pressSlice")
+  def pressCell: String = Words("chart.pressCell")
+  /** What a mark that leads somewhere is said to do, after its value, where the app says nothing of its own. */
+  def opens: String = Words("chart.opens")
 }

@@ -31,6 +31,7 @@ class BarChart extends AxisChart {
   protected def alongStep(g: Rect): Double = bandIn(g).step
   protected def legendKey: LegendKey = LegendKey.Box
   protected def kindWords: String = ChartWords.bar
+  protected def pressWords: String = ChartWords.pressBar
 
   private def bandIn(g: Rect): BandScale = {
     val n = categories().size

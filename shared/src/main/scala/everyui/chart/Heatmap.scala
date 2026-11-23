@@ -102,6 +102,9 @@ class Heatmap extends Chart {
   protected def tipOf(p: Pointed): (String, Vector[(Color, String, String)]) =
     (p.series + " · " + p.category, Vector((Heatmap.colour(tone().colour(0), share(p.value)), format()(p.value), "")))
   protected def kindWords: String = ChartWords.heatmap
+  protected def pressWords: String = ChartWords.pressCell
+  // a row of the table is a row of cells
+  override protected def rowMarks(row: Int): Vector[ChartMark] = marks.filter(_.series == row).sortBy(_.category)
   protected def tableNow: ChartTable = ChartTable("" +: columns(),
     rows().indices.toVector.map(r => rows()(r) +: columns().indices.toVector.map(c => format()(Heatmap.at(values(), r, c)))))
   protected def described: String = {

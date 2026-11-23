@@ -16,17 +16,33 @@ import reactify.*
   * legend over it for two series or more; a button at the top end that shows its data as a table in its place, and
   * back (`table`, `tableToggle`); what it says to a screen reader (`summary`, a short description of what it shows, made
   * from the data unless the app gives its own); and the marks the pointer, a press or the arrow keys land on, told to
-  * the app (`pointed`, `hovered`) with the theme's own tip beside them unless `tips` is off.
+  * the app (`pointed`, `hovered`) with the theme's own tip beside them unless `tips` is off. A mark chosen (`chosen`: a
+  * click or a tap let go on the mark it began on, or Enter or Space on the mark the keys are on) is what an app acts
+  * on; the marks that lead somewhere (`actionable`) show the pointer's hand over them, are said to lead somewhere to a
+  * screen reader, are buttons in the table, and say what they do where the app says (`actionWords`).
   *
   * {{{
-  *   chart.pointed.attach(p => if (p.pressed) openDay(p.categoryIndex))
+  *   chart.actionable @= (p => p.value > 0.0)
+  *   chart.actionWords @= (p => "Open the calendar on " + p.category)
+  *   chart.chosen.attach(p => openDay(p.categoryIndex))
   *   chart.tips @= false                                   // the app's own tip instead, from `hovered`
   * }}} */
 abstract class Chart extends Container {
   /** How a value is written: on the value axis, in the tips and in the table. */
   val format: Var[Double => String] = own(Var(ChartFormat.compact))
-  /** Each mark as the pointer comes onto it, a press lands on it (`Pointed.pressed`), or the arrow keys move to it. */
+  /** Each mark as the pointer comes onto it, a press lands on it (`Pointed.pressed`), or the arrow keys move to it. A
+    * press is told as it goes down, a finger that only scrolls the page across the chart too: act on `chosen`. */
   val pointed: Channel[Pointed] = Channel[Pointed]
+  /** A mark chosen, to act on: a click or a tap let go on the mark it went down on (not a drag, nor a finger scrolling
+    * the page), Enter or Space on the mark the keys are on, or its row's button in the table. Told for every mark;
+    * `actionable` says which lead somewhere. */
+  val chosen: Channel[Pointed] = Channel[Pointed]
+  /** Which marks lead somewhere (none by default): those show the pointer's hand, are said to a screen reader to open
+    * (and the figure says a mark can be pressed), and their rows' names are buttons in the table. */
+  val actionable: Var[Pointed => Boolean] = own(Var(Chart.nothing))
+  /** What choosing a mark that leads somewhere does, in words ("Open the calendar on Thursday"): a line under its tip,
+    * and said after its value to a screen reader. Empty, nothing is added. */
+  val actionWords: Var[Pointed => String] = own(Var(Chart.noWords))
   /** The mark the pointer or the keys are on now, None where none is. */
   val hovered: Var[Option[Pointed]] = own(Var(None))
   /** Whether the chart shows its own tip by the mark `hovered` is on. */
@@ -45,6 +61,10 @@ abstract class Chart extends Container {
   protected def tableNow: ChartTable
   /** What the chart shows, in a sentence, where the app gives no `summary`. */
   protected def described: String
+  /** How a mark is pressed, in a sentence, said with the figure where some lead somewhere ("Press a bar to open it."). */
+  protected def pressWords: String
+  /** The marks of row `row` of the table, in its order. */
+  protected def rowMarks(row: Int): Vector[ChartMark] = marks.filter(_.category == row).sortBy(_.series)
   /** The legend's lines: none for one series, as the title names it. */
   protected def legendEntries: Vector[LegendEntry] = Vector.empty
   /** Where each mark is heard, in the plot's pixels. */
@@ -91,9 +111,25 @@ abstract class Chart extends Container {
   everyui.render.Gestures.passThrough(words.node)
   children ++= List(plot, words)
 
+  /** Whether `p` leads somewhere. */
+  def acts(p: Pointed): Boolean = actionable()(p)
+
+  /** What `p` is, said to a screen reader: its category, series and value, and, where it leads somewhere, what choosing
+    * it does ("Thu, $9, Open the calendar on Thursday"). */
+  def spoken(p: Pointed): String = {
+    val said = (Vector(p.category, p.series).filter(_.nonEmpty) :+ format()(p.value)).mkString(", ")
+    if (!acts(p)) said
+    else {
+      val does = actionWords()(p)
+      said + ", " + (if (does.nonEmpty) does else ChartWords.opens)
+    }
+  }
+
   /** What reads the kind's own data, bound once that is made: called last by each kind's constructor. */
   protected final def ready(): Unit = {
-    semantics := Semantics("figure", label = if (summary().nonEmpty) summary() else described)
+    semantics := Semantics("figure", label = if (summary().nonEmpty) summary() else described,
+      description =
+        if (!(actionable() eq Chart.nothing) && marks.exists(m => acts(pointedOf(m, pressed = false)))) pressWords else "")
     entries = own(Val(legendEntries))
     legendShown = own(Val(entries().size >= 2 && !table()))
     // the legend and the toggle, each made the first time it shows
@@ -125,6 +161,7 @@ abstract class Chart extends Container {
         val data = own(Val(tableNow))
         tableData = Some(data)
         data.attach(_ => showTable())
+        actionable.attach(_ => showTable())
       }
       if (tableMade.isEmpty) showTable()
     })
@@ -135,7 +172,10 @@ abstract class Chart extends Container {
       children -= old
       old.dispose()
     }
-    val t = new ChartTableView(data())
+    // a row whose marks lead somewhere has its name a button, which chooses the first of them that does
+    val rows = data().rows.indices.toVector.map(r =>
+      rowMarks(r).map(m => pointedOf(m, pressed = true)).find(acts).map(p => () => chosen @= p))
+    val t = new ChartTableView(data(), r => rows.lift(r).flatten)
     t.position.top := head()
     t.size.width := plotWidth
     t.size.height := plotHeight
@@ -151,10 +191,27 @@ abstract class Chart extends Container {
     if (tall > 0.0) tall + 10.0 else 0.0
   }
 
-  // the pointer over the plot, and presses on it
+  // the pointer over the plot, and presses on it; a click let go on the mark it went down on, near where it went down
+  // (a drag across the plot is none, and a finger scrolling the page clicks nothing: ScrollPress, Android's own taps)
+  // chooses it. The hand over a mark that leads somewhere, the arrow elsewhere (never the hand a click gives the plot).
+  // The click is heard from the start: heard from the first press, the desktop took that press for one on what holds
+  // the chart (PressOwner), and its click for a drag off it
+  private var downOn: Option[(ChartMark, Double, Double)] = None
+  plot.cursor := (if (hovered().exists(acts)) "pointer" else "default")
   plot.event.pointer.move.attach(e => pointAt(e.x - plot.absoluteLeft, e.y - plot.absoluteTop, pressed = false))
-  plot.event.pointer.down.attach(e => pointAt(e.x - plot.absoluteLeft, e.y - plot.absoluteTop, pressed = true))
+  plot.event.pointer.down.attach { e =>
+    downOn = markAt(e.x - plot.absoluteLeft, e.y - plot.absoluteTop).map(m => (m, e.x, e.y))
+    pointAt(e.x - plot.absoluteLeft, e.y - plot.absoluteTop, pressed = true)
+  }
   plot.event.pointer.leave.attach(_ => if (!focused()) hovered @= None)
+  plot.event.click.attach { e =>
+    val was = downOn
+    downOn = None
+    for {
+      (m, x, y) <- was if !everyui.event.ScrollPress.beyond(x, y, e.x, e.y)
+      at <- markAt(e.x - plot.absoluteLeft, e.y - plot.absoluteTop) if at.category == m.category && at.series == m.series
+    } chosen @= pointedOf(at, pressed = true)
+  }
 
   /** What a pointer at (`x`, `y`) in the plot does (`pressed`: a press there): the mark there becomes `hovered`, and
     * is told to `pointed` as it is newly pointed at or pressed; nowhere, nothing is hovered. */
@@ -168,18 +225,24 @@ abstract class Chart extends Container {
   }
 
   // the arrow keys move along the marks, where a pointer and keys are the way about (not a remote's d-pad, whose
-  // arrows move on from the chart), Escape lets go
+  // arrows move on from the chart), each said to a screen reader; Enter or Space chooses the mark they are on, or, where
+  // none is yet, goes to the first; Escape lets go
   focusable @= !Platform.remoteNavigation()
   borderWidth := (if (focusShown()) 2.0 else 0.0)
   borderColor := Theme.accent()
   radius @= 6.0
   focused.attach(f => if (!f && !plot.event.pointer.over()) hovered @= None)
-  event.key.down.attach(e => moved(e.key).foreach { m =>
-    val p = pointedOf(m, pressed = false)
-    hovered @= Some(p)
-    pointed @= p
-  })
-  override def keepsKey(key: Key): Boolean = !table() && moved(key).nonEmpty
+  event.key.down.attach { e =>
+    val choose = Chart.chooses(e.key)
+    if (choose && hovered().nonEmpty) hovered().foreach(p => chosen @= p.copy(pressed = true))
+    else moved(if (choose) Key.ArrowRight else e.key).foreach { m =>
+      val p = pointedOf(m, pressed = false)
+      hovered @= Some(p)
+      pointed @= p
+      everyui.access.LiveRegions.say(spoken(p))
+    }
+  }
+  override def keepsKey(key: Key): Boolean = !table() && (if (Chart.chooses(key)) marks.nonEmpty else moved(key).nonEmpty)
 
   /** The mark the arrow `key` moves to from the one `hovered` is on: across the categories, or between the series at
     * one; the first where none is. */
@@ -248,7 +311,10 @@ abstract class Chart extends Container {
       v.font.weight @= FontWeight.SemiBold
       Row(8.0, middle = true)((if (name.isEmpty) List(key, v) else List(key, v, Chart.words(TextView(name, 12.0, Theme.muted()))))*)
     }
-    val column = everyui.component.Column(4.0)((heading +: rows)*)
+    // what choosing it does, under its values
+    val does = if (acts(p)) actionWords()(p) else ""
+    val action = if (does.isEmpty) Nil else List(Chart.words(TextView(does, 12.0, Theme.muted())))
+    val column = everyui.component.Column(4.0)(((heading +: rows) ++ action)*)
     column.position.left @= 10.0
     column.position.top @= 7.0
     plate.children.replaceMaking(Vector(column))
@@ -267,6 +333,14 @@ abstract class Chart extends Container {
 }
 
 object Chart {
+  /** No mark leads anywhere: `actionable`'s default. */
+  val nothing: Pointed => Boolean = _ => false
+  /** No words for what choosing a mark does: `actionWords`' default. */
+  val noWords: Pointed => String = _ => ""
+
+  /** Whether `key` chooses the mark the keys are on: Enter or Space. */
+  def chooses(key: Key): Boolean = key == Key.Enter || key == Key.Space
+
   /** `t` with its words running their own way (`TextDirection.Auto`): a value, a name or a date the app wrote reads
     * as it is, "10 h" and "$1,000" left to right in a right-to-left app, an Arabic name right to left in any. */
   def words[T <: everyui.component.TextView](t: T): T = {

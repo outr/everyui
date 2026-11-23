@@ -233,7 +233,8 @@ class ChartSpec extends FxSpec {
           ChartWords.heatmap, ChartWords.gauge, ChartWords.category, ChartWords.other, ChartWords.total,
           ChartWords.value, ChartWords.share, ChartWords.showTable, ChartWords.showChart, ChartWords.range(3, "1", "9"),
           ChartWords.highest("Tue", "9"), ChartWords.of("1", "2"), ChartWords.up("3%"), ChartWords.down("3%"),
-          ChartWords.noData))
+          ChartWords.noData, ChartWords.pressBar, ChartWords.pressPoint, ChartWords.pressSlice, ChartWords.pressCell,
+          ChartWords.opens))
         said.foreach { s =>
           withClue(code + ": ")(s.startsWith("chart.") shouldBe false)
           withClue(code + ": ")(s should not include "{")

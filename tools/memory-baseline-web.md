@@ -26,9 +26,9 @@
 | Transcript, tool call open | message | 86128 | 49293 | 31.0 | 7.0 | 22.0 | 0.01 | 0.0 | 0.0 |
 | Transcript, tool call running | message | 78979 | 39734 | 29.0 | 7.0 | 16.0 | 0.03 | 0.0 | 0.0 |
 | Transcript in 900 px, plain | message | 6452 | 618 | 1.02 | 0.14 | 0.0 | 0.0 | 0.0 | 0.0 |
-| BarChart, 7 days by 3 series | chart | 183411 | 99202 | 64.0 | 8.0 | 25.0 | 0.05 | 0.0 | 0.0 |
-| LineChart, 30 days | chart | 256754 | 105429 | 77.0 | 8.0 | 38.0 | 0.05 | 0.0 | 0.0 |
-| DonutChart, 5 parts | chart | 199744 | 102998 | 77.0 | 8.0 | 48.0 | 0.05 | 0.0 | 0.0 |
-| Heatmap, 7 by 24 | chart | 388485 | 317008 | 246.0 | 8.0 | 38.0 | 0.13 | 0.0 | 0.0 |
+| BarChart, 7 days by 3 series | chart | 183411 | 99202 | 64.0 | 9.0 | 25.0 | 0.05 | 0.0 | 0.0 |
+| LineChart, 30 days | chart | 256754 | 105429 | 77.0 | 9.0 | 38.0 | 0.05 | 0.0 | 0.0 |
+| DonutChart, 5 parts | chart | 199744 | 102998 | 77.0 | 9.0 | 48.0 | 0.05 | 0.0 | 0.0 |
+| Heatmap, 7 by 24 | chart | 388485 | 317008 | 246.0 | 9.0 | 38.0 | 0.13 | 0.0 | 0.0 |
 | StatTile with a trend | tile | 40851 | 25704 | 16.0 | 0.0 | 8.0 | 0.03 | 0.0 | 0.0 |
 | Meter | meter | 25530 | 14060 | 7.0 | 0.0 | 5.0 | 0.03 | 0.0 | 0.0 |

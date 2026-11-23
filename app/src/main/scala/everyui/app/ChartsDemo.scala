@@ -16,8 +16,10 @@ import reactify.*
   * and as ranked bars along, model use by day as lines, the week's time as a donut and mail as a pie, a week by hours
   * heatmap of meetings, a budget and credits as meters, a context gauge, and three stat tiles. New data eases every
   * chart to its next values (`live=1` every two seconds). `theme=light`, `rtl=1`; `hover=1` points at a bar, a day
-  * of the lines and a slice, and shows a table. Logs `charts ok`, and
-  * `charts pointed <category> | <series> | <value>` for each mark pointed at or pressed. */
+  * of the lines and a slice, and shows a table. The last 7 days' spend bars lead somewhere (`actionable`, with words
+  * for what they do): the hand over them, a button for each day in the table. Logs `charts ok`,
+  * `charts pointed <category> | <series> | <value>` for each mark pointed at or pressed, and
+  * `charts chosen <category> | <series>` for each chosen. */
 object ChartsDemo {
   private val weekdays = Vector("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
   private val days7 = Vector("Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed")
@@ -95,6 +97,9 @@ object ChartsDemo {
     val charts: List[Chart] = List(spendLine, spendBars, meetings, mailStacked, mailRanked, usage, week, mailPie, busy)
     charts.foreach(c => c.pointed.attach(p => Platform.log("charts pointed " + p.category + " | " + p.series + " | " +
       p.value.toString + (if (p.pressed) " pressed" else ""))))
+    charts.foreach(c => c.chosen.attach(p => Platform.log("charts chosen " + p.category + " | " + p.series)))
+    spendBars.actionable @= (p => p.value > 0.0)
+    spendBars.actionWords @= (p => "Open the spend on " + p.category)
 
     val wide = Val(ui.size.width())
     val columns = Val(math.max(1, ((wide() - 32.0 + 16.0) / (400.0 + 16.0)).toInt))
