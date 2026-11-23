@@ -19,7 +19,8 @@ import reactify.*
   * characters (a log, a stack trace) goes with the message as a text file named after its first line rather than into
   * the field (`[ui] composer pasted <n> chars as a file <name>`); `paste=upper` pastes a shorter one in capitals, and
   * `paste=ignore` lets none land. `theme=light` shows the light palette, `width=` sets the composer's width (a phone's
-  * is about 400), and `disabled=1` starts it out of use. */
+  * is about 400), and `disabled=1` starts it out of use. `files=1` starts it with a picture and a text file attached,
+  * the picture's chip opening it whole when pressed; `preview=1` opens it a second in (for a screenshot). */
 class ComposerDemo {
   private val replies: Var[Int] = Var(0)
   private val model: Var[Int] = Var(0)
@@ -49,6 +50,13 @@ class ComposerDemo {
   composer.focusField()
   composer.suggestion @= Some("Hello! What can you help me with today?")
   if (Platform.launchArg("disabled") == "1") composer.enabled @= false
+  if (Platform.launchArg("files") == "1" || Platform.launchArg("preview") == "1") {
+    composer.attach(Attachment("poster.jpg", 48213L, "image/jpeg", Task.pure(Array.emptyByteArray),
+      Some("images/poster.jpg")))
+    composer.attach(Attachment.pasted("Build notes for the release\nEverything passed."))
+  }
+  if (Platform.launchArg("preview") == "1")
+    Platform.after(1.0, () => composer.attachments().headOption.foreach(a => composer.preview(a)))
 
   private def sent(draft: Draft): Unit = {
     val files = draft.attachments.map(a => a.name + " (" + a.mime + ", " + a.size.toString + " B)").mkString(", ")

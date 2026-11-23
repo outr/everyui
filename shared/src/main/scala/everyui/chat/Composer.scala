@@ -106,6 +106,9 @@ class Composer(onSend: Draft => Unit,
     * draft, such as where it goes, pressed to change and taken off by their ×. They are the draft's, not files: never
     * sent, and kept or cleared by the app as messages go. A chip set again under the same key is changed in place. */
   val extraChips: Var[List[ComposerChip]] = own(Var(Nil))
+  /** What a press on a file's chip does: the app's, where it sets one, for every file; else a picture is shown whole
+    * over the screen (`preview`) and any other file's chip is not pressed at all. */
+  val onAttachmentOpen: Var[Option[Attachment => Unit]] = own(Var(None))
   /** Whether a reply is coming: Send is Stop, and Enter sends nothing. */
   val busy: Var[Boolean] = own(Var(false))
   /** Whether it is in use at all. */
@@ -468,11 +471,10 @@ class Composer(onSend: Draft => Unit,
     // what left the draft (taken off, sent, or cleared by the app) lets its picture go, unless it waits in the queue
     if (!shuffling) letGo(held)
     held = list
-    val was = fileChips
-    fileChips = list.map(a => new AttachmentChip(a, words.remove, () => remove(a)))
-    chips.children @= (fileChips ++ appChips).toVector
-    was.foreach(_.dispose())
+    fileChipsMade()
   }
+  // made again as what a press does changes
+  onAttachmentOpen.attach(_ => fileChipsMade())
   // the app's chips by key, each changed in place, those gone taken apart and those new made
   extraChips.attach { list =>
     val before = appChips
@@ -742,6 +744,28 @@ class Composer(onSend: Draft => Unit,
     else if (!taken) Toast.show(a.name + " " + words.notAccepted, top = true)
     if (fits && taken) attachments @= attachments() :+ a
     fits && taken
+  }
+
+  /** A picture going with the message shown whole over the screen, in the viewer an author's picture in the transcript
+    * opens (`ImageViewer`: zoomed and moved about, Escape, Back or a click outside it closing it, the focus back where
+    * it was), without its download button. Nothing for a file that is not a picture, or has nothing to show. */
+  def preview(a: Attachment): Unit =
+    a.preview.filter(_ => a.image).foreach(source => new everyui.kit.ImageViewer(List(source), 0, saves = false).open())
+
+  // what a press on `a`'s chip does, if anything (`onAttachmentOpen`)
+  private def opener(a: Attachment): Option[() => Unit] = onAttachmentOpen() match {
+    case Some(open) => Some(() => open(a))
+    case None if a.image && a.preview.nonEmpty => Some(() => preview(a))
+    case None => None
+  }
+
+  // a chip for each file, made again, then the app's
+  private def fileChipsMade(): Unit = {
+    val was = fileChips
+    fileChips = attachments().map(a =>
+      new AttachmentChip(a, words.remove, () => remove(a), previewLabel = words.preview, open = opener(a)))
+    chips.children @= (fileChips ++ appChips).toVector
+    was.foreach(_.dispose())
   }
 
   /** One attachment taken off the message. */

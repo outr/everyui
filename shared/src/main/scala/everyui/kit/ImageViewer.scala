@@ -4,8 +4,10 @@ import everyui.component.*
 import everyui.Color
 import everyui.component.types.FontWeight
 import everyui.easing.Easing
-import everyui.event.Key
+import everyui.event.{Key, PointerEvent}
 import everyui.image.Image
+import everyui.list.Pointers
+import everyui.render.{Gestures, Platform}
 import everyui.task.*
 import everyui.ui
 import reactify.*
@@ -15,10 +17,29 @@ import scala.concurrent.duration.*
 /** Pictures one at a time over the whole screen: whole, on black, Left and Right to the one before and after, sliding
   * across as a page does in a fifth of a second, and which of how many at the foot. The ones either side are fetched
   * while one is looked at, so the next is there to slide in. `sources` are the pictures' addresses, at the size to show
-  * them; `closed` hears it go (Back, Escape, or a click outside the picture). */
+  * them; `closed` hears it go (Back, Escape, or a click outside the picture).
+  *
+  * A picture zooms (two fingers pinching, a trackpad's pinch, the wheel with Ctrl or Command, a double click or tap, +
+  * and -) up to `ImageViewer.deepest` times its fitted size, about where it is zoomed; zoomed, a drag (a finger, or the
+  * primary button) and the wheel move it about, never further than its edges. Another picture comes in whole. `saves`
+  * puts a button up to download the one showing (`download`, else saved by its address). */
 class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => (),
-                  download: Option[Int => Unit] = None) {
+                  download: Option[Int => Unit] = None, saves: Boolean = true) {
   private val index: Var[Int] = Var(start)
+  private val zoomed: Var[Double] = Var(1.0)
+  // the picture's size fitted to the screen, and how far it is moved from the middle, zoomed
+  private var fitW = 0.0
+  private var fitH = 0.0
+  private var panX = 0.0
+  private var panY = 0.0
+  // a press: where it went down, the pointer last, whether it moved too far to be a click, and a pinch under way
+  private var pressX = 0.0
+  private var pressY = 0.0
+  private var last: Option[(Double, Double)] = None
+  private var moved = false
+  private var pinching = false
+  private var pointerAt: Option[(Double, Double)] = None
+  private var clickedAt = -1.0e9
 
   def open(): Unit = {
     val wide = ui.size.width() - 16.0
@@ -28,21 +49,45 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
     val leaving = new ImageView
     view.sizedByPicture @= false
     leaving.sizedByPicture @= false
-    def fit(image: Image, into: ImageView, offset: Double): Double = {
+    def place(): Unit = {
+      val w = fitW * zoomed()
+      val h = fitH * zoomed()
+      val reachX = math.max(0.0, (w - wide) / 2.0)
+      val reachY = math.max(0.0, (h - tall) / 2.0)
+      panX = math.max(-reachX, math.min(reachX, panX))
+      panY = math.max(-reachY, math.min(reachY, panY))
+      view.size.width @= w
+      view.size.height @= h
+      view.position.left @= (wide - w) / 2.0 + panX
+      view.position.top @= (tall - h) / 2.0 + panY
+    }
+    def fit(image: Image, offset: Double): Double = {
       val scale = math.min(1.0, math.min(wide / math.max(1.0, image.width), tall / math.max(1.0, image.height)))
-      into.image @= image
-      into.size.width @= image.width * scale
-      into.size.height @= image.height * scale
-      into.position.top @= (tall - image.height * scale) / 2.0
-      val home = (wide - image.width * scale) / 2.0
-      into.position.left @= home + offset
+      fitW = image.width * scale
+      fitH = image.height * scale
+      zoomed @= 1.0
+      panX = 0.0
+      panY = 0.0
+      view.image @= image
+      place()
+      val home = view.position.left()
+      view.position.left @= home + offset
       home
+    }
+    // zoomed to `to` times its fitted size, the point at `x`, `y` (the panel's) staying where it is
+    def zoomAt(to: Double, x: Double, y: Double): Unit = if (fitW > 0.0) {
+      val z = math.max(1.0, math.min(ImageViewer.deepest, to))
+      val r = z / zoomed()
+      panX = x - (x - (wide / 2.0 + panX)) * r - wide / 2.0
+      panY = y - (y - (tall / 2.0 + panY)) * r - tall / 2.0
+      zoomed @= z
+      place()
     }
     def slide(c: Component, to: Double): Unit = c.position.left.to(to).in(200.millis).easing(Easing.cubicOut).start()
     // `from` is the side it comes in from: 1 from the right, -1 from the left, 0 where it is simply shown
     val show: (Int, Int) => Unit = (i, from) => Image(sources(i)).map { image =>
       if (index() == i) {
-        val home = fit(image, view, from * wide)
+        val home = fit(image, from * wide)
         if (from != 0) slide(view, home)
       }
     }.startUnit()
@@ -87,13 +132,17 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
       size.height @= tall
       backgroundColor @= Color.Black
       focusable @= true
+      touchDrags @= true
       override def keepsKey(key: Key): Boolean = key == Key.ArrowLeft || key == Key.ArrowRight
-      children ++= List(leaving, view, pill, save)
+      children ++= List(leaving, view, pill) ++ (if (saves) List(save) else Nil)
     }
+    def local(e: PointerEvent): (Double, Double) = (e.x - panel.absoluteLeft, e.y - panel.absoluteTop)
     panel.event.key.down.attach { k =>
       val step = if (k.key == Key.ArrowRight) 1 else if (k.key == Key.ArrowLeft) -1 else 0
       val next = index() + step
-      if (step != 0 && next >= 0 && next < sources.size) {
+      if (k.name == "+" || k.name == "=") zoomAt(zoomed() * 1.5, wide / 2.0, tall / 2.0)
+      else if (k.name == "-") zoomAt(zoomed() / 1.5, wide / 2.0, tall / 2.0)
+      else if (step != 0 && next >= 0 && next < sources.size) {
         // what is showing goes out the other side, and the new one comes in behind it as soon as it is loaded
         leaving.image @= view.image()
         leaving.size.width @= view.size.width()
@@ -107,11 +156,59 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
         near(next)
       }
     }
-    // a click on the black about the picture closes it, as one outside it does
+    // a drag moves a zoomed picture about (taken up again from where the finger is after a pinch), and is no click
+    def drag(e: PointerEvent): Unit = if (!pinching) {
+      if (math.abs(e.x - pressX) + math.abs(e.y - pressY) > 6.0) moved = true
+      last.foreach { case (lx, ly) =>
+        panX += e.x - lx
+        panY += e.y - ly
+        place()
+      }
+      last = Some((e.x, e.y))
+    }
+    panel.event.pointer.down.attach { e =>
+      if (e.button == PointerEvent.PrimaryButton) {
+        pressX = e.x
+        pressY = e.y
+        moved = false
+        if (zoomed() > 1.0) {
+          last = Some((e.x, e.y))
+          Pointers.track(m => drag(m), _ => last = None)
+        }
+      }
+    }
+    panel.event.pointer.move.attach(e => pointerAt = Some(local(e)))
+    Gestures.take(panel.node, (f, x, y) => {
+      pinching = true
+      moved = true
+      zoomAt(zoomed() * f, x - panel.absoluteLeft, y - panel.absoluteTop)
+    }, () => {
+      pinching = false
+      last = None
+    })
+    panel.event.pointer.wheel.attach { e =>
+      val (x, y) = pointerAt.getOrElse((wide / 2.0, tall / 2.0))
+      if (e.primary || e.ctrl) zoomAt(zoomed() * math.pow(2.0, -math.max(-1000.0, math.min(1000.0, e.y)) / 250.0), x, y)
+      else {
+        panX -= e.x
+        panY -= e.y
+        place()
+      }
+    }
+    // a click on the black about the picture closes it, as one outside it does; two on the picture zoom it, or back
     panel.event.click.attach { e =>
-      val x = e.x - panel.absoluteLeft - view.position.left()
-      val y = e.y - panel.absoluteTop - view.position.top()
-      if (x < 0.0 || y < 0.0 || x > view.size.width() || y > view.size.height()) Modal.remove(panel)
+      val (px, py) = local(e)
+      val x = px - view.position.left()
+      val y = py - view.position.top()
+      val outside = x < 0.0 || y < 0.0 || x > view.size.width() || y > view.size.height()
+      if (moved) ()
+      else if (outside) Modal.remove(panel)
+      else if (Platform.ticks() - clickedAt < ImageViewer.doubleClick) {
+        clickedAt = -1.0e9
+        if (zoomed() > 1.0) zoomAt(1.0, px, py) else zoomAt(ImageViewer.doubled, px, py)
+      }
+      else clickedAt = Platform.ticks()
+      moved = false
     }
     show(start, 0)
     near(start)
@@ -120,4 +217,16 @@ class ImageViewer(sources: List[String], start: Int, closed: () => Unit = () => 
 
   /** Which picture is showing. */
   def showing: Val[Int] = index
+
+  /** How many times its fitted size the picture showing is drawn: 1 whole. */
+  def zoom: Val[Double] = zoomed
+}
+
+object ImageViewer {
+  /** How far a picture zooms: this many times its fitted size. */
+  val deepest: Double = 5.0
+  /** What a double click or tap zooms to. */
+  val doubled: Double = 2.5
+  /** How close two clicks come to be a double one, in milliseconds. */
+  val doubleClick: Double = 350.0
 }

@@ -11,4 +11,5 @@ case class ComposerWords(send: String = Words("composer.send"), stop: String = W
                          tooLarge: String = Words("composer.tooLarge"),
                          notAccepted: String = Words("composer.notAccepted"),
                          unavailable: String = Words("composer.unavailable"), add: String = Words("composer.add"),
-                         upload: String = Words("composer.upload"), mention: String = Words("composer.mention"))
+                         upload: String = Words("composer.upload"), mention: String = Words("composer.mention"),
+                         preview: String = Words("composer.preview"))

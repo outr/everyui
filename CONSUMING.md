@@ -986,7 +986,7 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
 - `Turns`: work split over frames.
 - `TextView.line`: one line that closes up when it is empty.
 - `TextScroll`: text scrolled with the arrows.
-- `ImageViewer`: pictures shown full screen, one at a time.
+- `ImageViewer`: pictures shown full screen, one at a time, zoomed and moved about.
 - `Mirror`: parts placed by hand, mirrored for right-to-left languages.
 - `TextOutline.overPicture` and `TextOutline.overPictureLight`: edges for text over pictures.
 
@@ -3044,6 +3044,13 @@ composer.commands(Keymap.global)            // Primary+Enter sends, Primary+. st
 - Files come from the attach button (`Files.pick`) and from a drop on the composer; each is a chip with a remove
   button. `accept`, `allow` and `maxSize` decide which are taken; the rest are refused with a toast. A picture's preview
   is let go (`Files.release`) once it leaves the draft, removed or sent: to show a sent picture, read its `bytes`.
+- A file's chip pressed (a click, a tap, Enter or Space, a remote's OK) opens it: `onAttachmentOpen`
+  (`Var[Option[Attachment => Unit]]`, None by default) is handed it where the app sets one, for every file; else a
+  picture with a preview is shown whole over the screen (`preview`, the `ImageViewer` an author's picture opens:
+  pinched, Ctrl or Command and the wheel, a double click or tap, + and - zoom it, a drag moves it about zoomed, and
+  Escape, Back or a click outside it close it, the focus and the draft as they were), and any other file's chip is no
+  button at all. A screen reader hears one that opens as a button named "Preview" and the file's name
+  (`composer.preview`), and its × as "Remove" and the name; Right and Left go between them.
 - `pasted` decides what a paste becomes: words in the field, or a file's chip, as a long log or stack trace should be
   (`ComposerPaste.longAsFile`; see Pasting below).
 - A picture pasted (a screenshot tool's or an image viewer's copy, a keyboard's sticker) or a file copied in a file
