@@ -151,12 +151,15 @@ class MapViewSpec extends FxSpec {
           m.setView(LatLng(0.0, 0.0), 3.0)
           m.tiles @= Some(source)
         }
-        // (the queue is worked through once the turn is over; JavaFX fetches four at a time of the six)
-        eventually(requests.length == 4) shouldBe true
-        fx(m.tilesInFlight) shouldBe 6
+        // (the queue is worked through once the turn is over.) JavaFX fetches four pictures at a time of the six, but
+        // those four are the whole JVM's (Image's MAX_RUNNING_TASKS): a picture another suite asked for and still
+        // waits on holds one, so how many of the six reach the server is not the map's to say. Which it starts, and
+        // in what order, is: six in flight, and any that have reached the server from the middle four
+        eventually(m.tilesInFlight == 6 && requests.nonEmpty) shouldBe true
         // 512 by 384 at zoom 3 and 128 pixels round it: four columns of four
         fx(m.tilesWaiting) shouldBe 10
-        requests.toSet shouldBe Set("3/3/3.png", "3/4/3.png", "3/3/4.png", "3/4/4.png")
+        val middle = Set("3/3/3.png", "3/4/3.png", "3/3/4.png", "3/4/4.png")
+        requests.toSet.subsetOf(middle) shouldBe true
         sharpAsked shouldBe false
         // a move elsewhere, and closer, before the rest were asked for: they never are
         fx(m.setView(LatLng(60.0, 100.0), 4.0))
