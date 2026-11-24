@@ -11,7 +11,8 @@ import everyui.{FxSpec, ui}
 /** A `DataTable`'s edits pending and its rows' menus on the desktop's nodes: a changed cell, a new row and a deleted
   * one drawn in their tints and told to a screen reader; Revert in a cell's and a row's menu calling the app back; a
   * row's menu opened by the secondary button, a finger held, the menu key, Shift+F10 and the ⋮, its entries acting on
-  * the row it was opened on or the rows chosen with it, the choice, the keys and the scroll working as before. */
+  * the row it was opened on or the rows chosen with it, the choice, the keys and the scroll working as before; and a
+  * row shown as a record. */
 class DataTableEditSpec extends FxSpec {
   private val columns = Vector(DataColumn("Name"), DataColumn("Age"), DataColumn("City"))
   private val people = Vector(Vector("Grace", "85", "Arlington"), Vector("Alan", "41", "Wilmslow"),
@@ -345,6 +346,34 @@ class DataTableEditSpec extends FxSpec {
         fx(t.children().exists(c => c.semantics().label == TableWords.rowActions)) shouldBe false
         rightClick(t, row(t, "Grace").cells(0)) shouldBe false
         fx(grid(t).keepsEvent(KeyEvent(Key.ContextMenu, "ContextMenu"))) shouldBe false
+      }
+    }
+  }
+
+  "A data table's record of a row" should {
+    "show each column's name and the row's value there, read-only, with the row's edits" in {
+      val t = table()
+      fx {
+        t.cells @= t.cells().updated(2, Vector(DataCell("Ada"), DataCell.Null, DataCell("London")))
+        t.cellStates @= Map((2, 2) -> EditState.Changed, (1, 0) -> EditState.Changed)
+        t.rowStates @= Map(2 -> EditState.New)
+        t.editable @= true
+      }
+      val r = fx(t.record(2))
+      onScreen(r) {
+        eventually(drawn(r).size == 3 && row(r, "City").size.height() > 0.0) shouldBe true
+        fx(r.headerTexts) shouldBe Vector("Column", "Value")
+        fx((0 until 3).map(r.rowTexts)) shouldBe Vector(Vector("Name", "Ada"), Vector("Age", ""),
+          Vector("City", "London"))
+        fx(row(r, "Age").cells(1).runs().map(_.text)) shouldBe List("NULL")
+        fx(r.cellStates()) shouldBe Map((2, 1) -> EditState.Changed)
+        fx(r.rowStates()) shouldBe Map(0 -> EditState.New, 1 -> EditState.New, 2 -> EditState.New)
+        fx(row(r, "City").cells(1).semantics().description) shouldBe "changed"
+        fx(row(r, "Name").semantics().description) shouldBe "new"
+        fx(r.editable()) shouldBe false
+        fx(r.edits(0, 1)) shouldBe false
+        fx(everyui.i18n.Words.languages.values.forall(w =>
+          w.contains("table.column") && w.contains("table.value"))) shouldBe true
       }
     }
   }

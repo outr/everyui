@@ -64,6 +64,7 @@ import reactify.*
   *   - A row's menu: where the app gives one (`rowMenu`: Delete row, say), the secondary button or a finger held on a
   *     row, the menu key or Shift+F10, or the ⋮ at the end of the row under a hovering pointer opens it, its entries
   *     acting on the rows chosen where the row is one of them, else on it alone (`RowRef`); none chooses anything.
+  *     `record(row)` shows a row as a table of its columns' names and values.
   *   - Keys: the table takes the focus as one stop (Tab goes on past it). The arrows move between its cells (Up from the
   *     first row reaches the header), Home and End to the first and last column (with Ctrl, row), Page Up and Down a
   *     page of rows; Space or Enter chooses the row (Enter on a header sorts, and opens a row where rows open),
@@ -1405,6 +1406,22 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
       else gridLeft() + scroll.size.width() - gutter() - side - 3.0
     }
     children += button
+  }
+
+  /** Row `row` as a record: a table of two columns, each of this table's columns a row of its name and the row's value
+    * there, read-only, the edits pending on the row drawn as they are here (a changed cell's on its line, the row's
+    * own on every line). As the row is now: made again for a row changed. Of a server's rows, one that has come. */
+  def record(row: Int): DataTable = {
+    val line = lineOf(row).map(padded).getOrElse(Vector.empty)
+    val heads = columns()
+    val wide = size.width()
+    val view = new DataTable(Vector(DataColumn(TableWords.column), DataColumn(TableWords.value)),
+      heads.indices.toVector.map(c => Vector(DataCell(heads(c).title, heads(c).runs),
+        line.lift(c).getOrElse(DataCell("")))), style, wide)
+    view.cellStates @= cellStates().collect { case ((r, c), s) if r == row => ((c, 1), s) }
+    view.rowStates @= rowStates().get(row).map(s => heads.indices.map(_ -> s).toMap).getOrElse(Map.empty)
+    view.name @= name()
+    view
   }
 
   // ---- the columns' widths ----

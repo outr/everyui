@@ -21,7 +21,8 @@ import reactify.*
   * `open=1` makes its rows open (`DataTable.onOpen`), as a console's open into a detail pane: a click or Enter opens
   * one, written under the tables until Close.
   * `pending=1` marks edits not yet applied (a changed cell, a new row, a deleted one) and gives the rows a menu (Delete
-  * row, Revert); `menu=<row>` opens that row's menu a moment after the page, as its menu key does.
+  * row, Show as a record, Revert), the record of a row shown under the tables; `menu=<row>` opens that row's menu a
+  * moment after the page, as its menu key does.
   * It logs how long the table took to make and to filter:
   *
   *   [ui] datatable 500 rows made in 92.4 ms
@@ -172,11 +173,12 @@ object DataTableDemo {
       detail.position.top := small.position.top() + small.size.height() + 16.0
       page.content.children += detail
     }
-    if (Platform.launchArg("pending") == "1") pending(table)
+    if (Platform.launchArg("pending") == "1") pending(table, page, width, left, small)
   }
 
-  /** `table` with edits pending and a menu for its rows. */
-  private def pending(table: DataTable): Unit = {
+  /** `table` with edits pending and a menu for its rows: a record of a row shown under `after`. */
+  private def pending(table: DataTable, page: ScrollContainer, width: Val[Double], left: Val[Double],
+                      after: DataTable): Unit = {
     table.cellStates @= Map((0, 2) -> EditState.Changed, (3, 1) -> EditState.Changed, (3, 6) -> EditState.Changed)
     table.rowStates @= Map(1 -> EditState.New, 2 -> EditState.Deleted, 3 -> EditState.Changed)
     table.onRevert @= Some((r: Revert) => {
@@ -188,10 +190,25 @@ object DataTableDemo {
           table.rowStates @= table.rowStates() - r.row
       }
     })
+    var shown: Option[DataTable] = None
+    def record(row: Int): Unit = {
+      shown.foreach { r =>
+        page.content.children -= r
+        r.dispose()
+      }
+      val r = table.record(row)
+      r.size.width := math.min(480.0, width())
+      r.position.left := left()
+      r.position.top := after.position.top() + after.size.height() + 24.0
+      page.content.children += r
+      shown = Some(r)
+    }
     table.rowMenu @= Some((ref: RowRef) => List(
       MenuItem(if (ref.rows.size == 1) "Delete row" else "Delete " + ref.rows.size.toString + " rows", () =>
         table.rowStates @= table.rowStates() ++ ref.rows.map(_ -> EditState.Deleted), everyui.font.MaterialIcon.Delete,
-        danger = true)))
+        danger = true),
+      MenuItem("Show as a record", () => record(ref.row), everyui.font.MaterialIcon.ViewList)))
+    record(3)
     Option(Platform.launchArg("menu")).filter(_.nonEmpty).foreach(m =>
       Platform.after(1.5, () => table.openMenu(m.toInt, Some(2))))
   }

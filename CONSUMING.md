@@ -9241,6 +9241,8 @@ DataTable.of(personas)(DataColumn("Persona") -> (_.name), DataColumn("Conversati
   touch whole, that scroll hands a tap on a row and a held finger to the table (a tap on a row chose nothing there
   before): a tap chooses, a drag scrolls and chooses nothing, a hold opens the menu and is no tap. `menuFor(ref)` and
   `openMenu(row, column)` are the app's too.
+- **Record**: `record(row)` is the row as a two-column table (the column's name, the row's value there), read-only,
+  with the row's edits drawn on it: a form's view of one record, made for the row as it is.
 - A Roku and an Apple TV have no `DataTable`: their Markdown tables are drawn plain, and the channel carries none of it.
 
 ### VirtualTable (`everyui.table`)

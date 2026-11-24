@@ -59,4 +59,7 @@ object TableWords {
     if (n == 1) word("table.revertRow") else said("table.revertRows", Map("n" -> n.toString))
   /** The button that opens a row's menu, to a screen reader and as its tip. */
   def rowActions: String = word("table.rowActions")
+  /** The headings of a row shown as a record (`DataTable.record`): the column's name, and its value. */
+  def column: String = word("table.column")
+  def value: String = word("table.value")
 }
