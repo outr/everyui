@@ -4,8 +4,9 @@ import everyui.text.TextRun
 
 /** A cell of a `DataTable`: its `text`, which is what is sorted, filtered, copied and exported, and the styled `runs`
   * it is drawn in where given (a Markdown table's code, emphasis and links), else the text as it is. A cell of
-  * `nothing` holds no value at all (a database's NULL, `DataCell.Null`): it is drawn as NULL in the muted colour, read
-  * to a screen reader as "null" (`TableWords.nothing`), and sorted, filtered, copied and exported as a blank cell. */
+  * `nothing` holds no value at all (a database's NULL, `DataCell.Null`): it is drawn as NULL in grey italics (the
+  * muted colour), read to a screen reader as "null" (`TableWords.nothing`), and sorted, filtered, copied and exported
+  * as a blank cell. */
 case class DataCell(text: String, runs: List[TextRun] = Nil, nothing: Boolean = false)
 
 object DataCell {

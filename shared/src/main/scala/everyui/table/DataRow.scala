@@ -167,10 +167,10 @@ private[table] object DataRow {
     * ring besides), and a little more under the pointer: plainly not a stripe, which is the text's grey. */
   def openFill(over: Boolean): everyui.Color = Theme.accent().withAlpha(if (over) 0.22 else 0.16)
 
-  /** What `cell` draws: NULL where it holds no value, else its runs, or its words as they are (of `weight` in a
+  /** What `cell` draws: NULL in italics where it holds no value, else its runs, or its words as they are (of `weight` in a
     * header). */
   def runs(cell: DataCell, header: Boolean, weight: Int): List[TextRun] =
-    if (cell.nothing) List(TextRun(DataCell.nullText))
+    if (cell.nothing) List(TextRun(DataCell.nullText, italic = true))
     else if (cell.runs.nonEmpty) cell.runs
     else if (cell.text.isEmpty) Nil
     else List(TextRun(cell.text, weight = if (header) weight else 0))

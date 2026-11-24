@@ -9216,6 +9216,9 @@ DataTable.of(personas)(DataColumn("Persona") -> (_.name), DataColumn("Conversati
   and only the widest cells of each column (by their characters and their longest words) are measured for the
   columns' widths; a cell wider than those wraps. In headless Chromium a 500-row table took 80 to 110 ms to make, and
   narrowing its filter a key at a time no long task (all 500 back at once, about 65 ms).
+- **NULL**: a cell holding no value (`DataCell.Null`, `DataCell.of(None)`: a database's NULL) is drawn as NULL in grey
+  italics, read to a screen reader as "null", and blank in every copy and export (TSV, CSV, Markdown, a cell copied);
+  a cell of words, even "null" or a dash, is as it is.
 - A Roku and an Apple TV have no `DataTable`: their Markdown tables are drawn plain, and the channel carries none of it.
 
 ### VirtualTable (`everyui.table`)

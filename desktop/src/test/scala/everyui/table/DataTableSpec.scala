@@ -169,7 +169,7 @@ class DataTableSpec extends FxSpec {
           "|---|---:|---|---:|")
       }
     }
-    "draw a cell holding no value as a muted NULL, read it as null, and copy and export it blank" in {
+    "draw a cell holding no value as a muted, italic NULL, read it as null, and copy and export it blank" in {
       val held = Vector(
         Vector(DataCell("Grace"), DataCell.Null, DataCell("Mar 3, 2026"), DataCell("$1,299.00")),
         Vector(DataCell("ada"), DataCell("87"), DataCell.of(None), DataCell.of(Some("—"))))
@@ -178,11 +178,13 @@ class DataTableSpec extends FxSpec {
         eventually(names(t).size == 2 && row(t, "Grace").size.height() > 0.0) shouldBe true
         val nothing = fx(row(t, "Grace").cells(1))
         fx(nothing.runs().map(_.text)) shouldBe List("NULL")
+        fx(nothing.runs().map(_.italic)) shouldBe List(true)
         fx(nothing.color()) shouldBe fx(everyui.theme.Theme.muted())
         fx(nothing.semantics()) shouldBe everyui.component.types.Semantics("cell", label = "null")
         // a cell with words, even a dash, is as it was
         val dash = fx(row(t, "ada").cells(3))
         fx(dash.runs().map(_.text)) shouldBe List("—")
+        fx(dash.runs().map(_.italic)) shouldBe List(false)
         fx(dash.color()) shouldBe fx(everyui.theme.Theme.text())
         fx(dash.semantics()) shouldBe everyui.component.types.Semantics("cell")
         fx(row(t, "ada").cells(2).runs().map(_.text)) shouldBe List("NULL")
