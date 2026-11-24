@@ -137,14 +137,17 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
   // ---- filtering ----
 
   /** Which nodes show, where it is set: each node it is true of, and every node above one on its way to the root,
-    * opened as the filter is set so that the nodes it is true of show; the rest are hidden, and a node with nothing
-    * showing under it does not open. Only the nodes loaded are looked at. Set back to None, the tree is as it was
-    * before it was filtered, the nodes that were open then open again and no others. */
+    * opened as the filter is set so that the nodes it is true of show; the rest are hidden, and a node loaded with
+    * nothing showing under it does not open. Only the nodes loaded are looked at: none is loaded only to be
+    * filtered, and children loaded while it is set (a node that shows opened, the app's own load) are filtered as they
+    * come, the way down to one it is true of opened. Set back to None, the tree is as it was before it was filtered,
+    * the nodes that were open then open again and no others. */
   val filter: Var[Option[T => Boolean]] = own(Var(None))
   // what was open before the filter was set, given back when it is cleared
   private var unfiltered: Option[Set[String]] = None
-  // the keys the filter lets show: the nodes it is true of and those above them
+  // the keys the filter lets show: the nodes it is true of and those above them; and those above them it opened
   private var passing: Set[String] = Set.empty
+  private var opening: Set[String] = Set.empty
 
   /** The nodes `test` lets show (those it is true of and those above them), and those of them with one under them. */
   private def passes(test: T => Boolean): (Set[String], Set[String]) = {
@@ -178,7 +181,8 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
         if (pending.exists(p => p._1 == parent && p._2 == i)) newLine(parent, depth)
         val key = keys(i)
         if (keep.forall(_.contains(key))) model.entry(key).foreach { e =>
-          val can = isExpandable(e.value) && keep.forall(k => model.childKeys(Some(key)).exists(k.contains))
+          val can = isExpandable(e.value) &&
+            keep.forall(k => !model.loaded(Some(key)) || model.childKeys(Some(key)).exists(k.contains))
           val opened = can && open.contains(key)
           val tick = if (isCheckable(e.value)) Some(checkState(key)) else None
           val line = kept.get(key) match {
@@ -416,7 +420,15 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
 
   model.changed.attach { _ =>
     settle()
-    filter().foreach(test => passing = passes(test)._1)
+    // children loaded while it is set (a node opened, or the app's load) filtered as they come, and the way down to one
+    // it is newly true of opened (not one the person closed since it was opened for them)
+    filter().foreach { test =>
+      val (keep, above) = passes(test)
+      passing = keep
+      val fresh = above -- opening
+      opening = above
+      if (fresh.nonEmpty) expanded @= expanded() ++ fresh
+    }
     val open = expanded().filter(model.contains)
     if (open.size != expanded().size) expanded @= open
     val busy = loading().filter(model.contains)
@@ -430,10 +442,12 @@ class Tree[T](val model: TreeModel[T], val labelOf: T => String, rowHeight: Doub
       unfiltered = Some(was)
       val (keep, above) = passes(test)
       passing = keep
+      opening = above
       if (expanded() == was ++ above) flatten() else expanded @= was ++ above
     case None => unfiltered.foreach { was =>
       unfiltered = None
       passing = Set.empty
+      opening = Set.empty
       val back = was.filter(model.contains)
       if (expanded() == back) flatten() else expanded @= back
     }

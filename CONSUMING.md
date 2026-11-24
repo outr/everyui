@@ -8688,6 +8688,12 @@ Keys: Up and Down move the cursor, Right opens a node or goes to its first child
 opens or closes a folder. A click on the chevron opens or
 closes it. Multi-select is the list's (Shift and Primary with clicks and arrows, Primary+A).
 
+`tree.filter @= Some(t => matches(t))` shows only the nodes it is true of and the way down to them, opening that way,
+and `None` gives back the tree as it was (what was open then, and nothing else). Only what is loaded is filtered: no
+node is loaded to be filtered, children loaded while it is set (a node that shows opened, the app's own
+`setChildren`) are filtered as they come and the way down to a match among them opened, and a node not yet loaded that
+shows can still be opened, its children then filtered. A node the person closed stays closed as more is loaded.
+
 ### Selection (lists and trees)
 
 `list.selection` (and `tree.selection`) is a `Selection`: `keys` is a `Var[Set[String]]` the app reads and sets,

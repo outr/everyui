@@ -125,6 +125,43 @@ class TreeSpec extends FxSpec {
         fx(tree.lineOf("/b").map(_.expandable)) shouldBe Some(true)
       }
     }
+    "filter children loaded later as they come, and load nothing only to filter" in {
+      val model = fx(new TreeModel[Node](_.path))
+      var asked: List[String] = Nil
+      var answer: Seq[Node] => Unit = null
+      val tree = fx(new Tree[Node](model, _.name))
+      fx {
+        tree.expandable @= (n => n.directory)
+        tree.loader @= Some(n => Task.async { done =>
+          asked = asked :+ n.path
+          answer = done
+        })
+        model.setChildren(None, List(Node("/one", true), Node("/two", true), Node("/users", true)))
+        model.setChildren(Some("/two"), List(Node("/two/users"), Node("/two/orders")))
+      }
+      onScreen(tree) {
+        fx(tree.filter @= Some((n: Node) => n.name.contains("users")))
+        // what is loaded is filtered; a node not loaded is not loaded to be, and shows only where it matches
+        shown(tree) shouldBe List("/two", "/two/users", "/users")
+        asked shouldBe Nil
+        // children the app loads while it is set are filtered as they come, the way down to a match opened
+        fx(model.setChildren(Some("/one"), List(Node("/one/logs"), Node("/one/users_old"))))
+        shown(tree) shouldBe List("/one", "/one/users_old", "/two", "/two/users", "/users")
+        // a match not loaded still opens: its children loaded and filtered
+        fx(tree.lineOf("/users").map(_.expandable)) shouldBe Some(true)
+        fx(tree.expand("/users"))
+        asked shouldBe List("/users")
+        fx(answer(List(Node("/users/admins"), Node("/users/users_archive"))))
+        shown(tree) shouldBe List("/one", "/one/users_old", "/two", "/two/users", "/users", "/users/users_archive")
+        // a node the person closed stays closed as more is loaded elsewhere
+        fx(tree.collapse("/one"))
+        fx(model.setChildren(Some("/two"), List(Node("/two/users"), Node("/two/orders"), Node("/two/users2"))))
+        shown(tree) shouldBe List("/one", "/two", "/two/users", "/two/users2", "/users", "/users/users_archive")
+        // cleared, what was open before is open again, and nothing else
+        fx(tree.filter @= None)
+        shown(tree) shouldBe List("/one", "/two", "/users")
+      }
+    }
     "open, close and move with the arrows, and activate with Enter" in {
       val model = fx(files())
       val tree = fx(new Tree[Node](model, _.name))
