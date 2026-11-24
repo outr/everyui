@@ -9219,6 +9219,28 @@ DataTable.of(personas)(DataColumn("Persona") -> (_.name), DataColumn("Conversati
 - **NULL**: a cell holding no value (`DataCell.Null`, `DataCell.of(None)`: a database's NULL) is drawn as NULL in grey
   italics, read to a screen reader as "null", and blank in every copy and export (TSV, CSV, Markdown, a cell copied);
   a cell of words, even "null" or a dash, is as it is.
+- **Edits pending**: an app that edits rows before applying them marks what is pending, by row (its index in `cells`,
+  of a server's rows its place) and column: `cellStates: Var[Map[(Int, Int), EditState]]` and `rowStates:
+  Var[Map[Int, EditState]]`. A `Changed` cell is washed in the theme's warning colour; a `New` row in its success
+  colour; a `Deleted` row in its danger colour, dimmed and its words struck through; a row with a state of its own has
+  a bar of its colour at its start, which shows on a chosen row too. A screen reader hears "changed", "new" or
+  "deleted" (Words' "table.changed", "table.new", "table.deleted"). The app keeps both maps, as it keeps `selection`.
+- **Revert**: `onRevert: Var[Option[Revert => Unit]]`, set, offers Revert cell in the menu of a cell with a state and
+  Revert row in the menu of a row with one (its own or a cell's), handing the app `Revert(row, column)` (no column: the
+  whole row), which puts the row back and clears its states. On rows chosen together it is Revert N rows, one
+  `Revert` for each with an edit.
+- **A row's menu**: `rowMenu: Var[Option[RowRef => List[MenuItem]]]` gives a row's entries (Delete row, say); Revert
+  follows them, after a rule. It opens with the secondary button or a finger held on a row (at the pointer), the menu
+  key or Shift+F10 on the cell the keys are on (under it), and the ⋮ at the end of the row the pointer is over (beside
+  the table where there is room, else over the end of its last column). The ⋮ is only where a pointer hovers: on a
+  touch screen a finger held on the row is its way, so nothing is drawn over the rows. `RowRef(row, rows, column)` is
+  the row it was opened on, the cell's column (None from the ⋮) and the rows to act on: the rows chosen, in the order
+  they show, where the row is one of them, else the row alone. Opening it chooses nothing and lets nothing go (the
+  keys move to the cell), and a row with no entries opens nothing, leaving the page's own menu (the browser's Copy).
+  A table with neither `rowMenu` nor `onRevert` listens for none of this. On Android, where the rows' own scroll holds a
+  touch whole, that scroll hands a tap on a row and a held finger to the table (a tap on a row chose nothing there
+  before): a tap chooses, a drag scrolls and chooses nothing, a hold opens the menu and is no tap. `menuFor(ref)` and
+  `openMenu(row, column)` are the app's too.
 - A Roku and an Apple TV have no `DataTable`: their Markdown tables are drawn plain, and the channel carries none of it.
 
 ### VirtualTable (`everyui.table`)

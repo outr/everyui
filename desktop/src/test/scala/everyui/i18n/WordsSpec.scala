@@ -18,7 +18,7 @@ class WordsSpec extends FxSpec {
     "moveRight", "moveLeft", "moveDown", "moveUp", "unsplit", "nextGroup", "previousGroup", "maximize", "unmaximize",
     "none").map("tabs." + _)
   /** The families of words that were English alone until they were given to Words, and how many each has. */
-  private val families = List("chat." -> 59, "composer." -> 15, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 25,
+  private val families = List("chat." -> 59, "composer." -> 15, "date." -> 28, "emoji." -> 15, "log." -> 22, "table." -> 32,
     "list." -> 2, "color." -> 6, "map." -> 2, "graph." -> 1, "markdown." -> 3, "picker." -> 4, "call." -> 26,
     "push." -> 2)
 
@@ -51,6 +51,9 @@ class WordsSpec extends FxSpec {
     TableWords.actions, TableWords.copy, TableWords.copyMarkdown, TableWords.copyRows(1), TableWords.copyRows(3),
     TableWords.exportCsv, TableWords.exportMarkdown, TableWords.filter, TableWords.shownOf(12, 60), TableWords.rows(1),
     TableWords.rows(60), TableWords.copied(1), TableWords.copied(12), TableWords.copiedCell,
+    TableWords.state(everyui.table.EditState.Changed), TableWords.state(everyui.table.EditState.New),
+    TableWords.state(everyui.table.EditState.Deleted), TableWords.revertCell, TableWords.revertRows(1),
+    TableWords.revertRows(3), TableWords.rowActions,
     RichList.moreLabel, RichList.unreadLabel, ColorPicker.hueLabel, ColorPicker.saturationLabel,
     ColorPicker.valueLabel, ColorPicker.alphaLabel, ColorPicker.hexLabel, ColorPicker.recentLabel,
     Words("map.zoomIn"), Words("map.zoomOut"), Words("graph.graph"), Words("markdown.copy"), Words("markdown.done"),

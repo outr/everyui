@@ -46,4 +46,17 @@ object TableWords {
   def nothing: String = word("table.null")
   /** What a screen reader is told of a row that opens something (`DataTable.onOpen`), after its words. */
   def opens: String = word("table.opens")
+  /** What a screen reader is told of a cell or a row with an edit pending (`DataTable.cellStates`, `rowStates`):
+    * "changed", "new" or "deleted". */
+  def state(s: EditState): String = s match {
+    case EditState.Changed => word("table.changed")
+    case EditState.New => word("table.new")
+    case EditState.Deleted => word("table.deleted")
+  }
+  /** The row menu's Revert of the cell it was opened on, and of its rows: "Revert row", "Revert 3 rows". */
+  def revertCell: String = word("table.revertCell")
+  def revertRows(n: Int): String =
+    if (n == 1) word("table.revertRow") else said("table.revertRows", Map("n" -> n.toString))
+  /** The button that opens a row's menu, to a screen reader and as its tip. */
+  def rowActions: String = word("table.rowActions")
 }

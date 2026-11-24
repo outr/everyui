@@ -37,22 +37,28 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
 
   copyAs @= "tr"
   if (header) semantics @= Semantics("row")
-  // a row that opens is still a row of cells, named by its words, the one open current, and told that it opens
-  else semantics := (if (table.opening()) Semantics("row", label = said, selected = Some(table.selection()
-    .contains(index)), current = table.opened().contains(index), description = TableWords.opens)
-    else Semantics("row", selected = Some(table.selection().contains(index))))
+  // a row that opens is still a row of cells, named by its words, the one open current, and told that it opens; a row
+  // with an edit pending told which (new, deleted, changed)
+  else semantics := {
+    val state = table.rowStates().get(index).map(TableWords.state).getOrElse("")
+    val chosen = Some(table.selection().contains(index))
+    if (table.opening()) Semantics("row", label = said, selected = chosen, current = table.opened().contains(index),
+      description = List(state, TableWords.opens).filter(_.nonEmpty).mkString(", "))
+    else Semantics("row", selected = chosen, description = state)
+  }
   if (!header) cursor := (if (table.opening()) "pointer" else "")
   size.width := (if (shown()) table.across() else 0.0)
   size.height := (if (shown()) tall() else 0.0)
   visible := shown()
   if (header) backgroundColor := look.header()
   // a chosen row washed in the selection's colour; where rows open, the one open faintly in the accent and the one
-  // under the pointer in the lit control colour, which a stripe is not; else striped by where it shows
+  // under the pointer in the lit control colour, which a stripe is not; a new or deleted row in its edit's tint; else
+  // striped by where it shows
   else backgroundColor := (if (table.selection().contains(index)) ListRow.fill(selected = true, current = false,
     active = table.active(), into = false)
     else if (table.opening() && table.opened().contains(index)) DataRow.openFill(event.pointer.over())
     else if (table.opening() && event.pointer.over()) Theme.controlLit()
-    else look.rowFill(table.stripeOf(index)))
+    else table.rowStates().get(index).flatMap(DataRow.rowTint).getOrElse(look.rowFill(table.stripeOf(index))))
   cells.indices.foreach { c =>
     val cell = cells(c)
     cell.position.left := table.cellLeft(c, cell.size.width(), header)
@@ -76,6 +82,52 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
   }
   // what is measured is let go with the row
   onDispose(() => table.letGo(lines.flatten ++ words.flatten))
+  // the edits pending on it drawn: nothing made where there are none
+  private var styled: (Option[EditState], Map[Int, EditState]) = (None, Map.empty)
+  private var marks: Vector[Container] = Vector.empty
+  restyle()
+
+  /** The row drawn as the edits pending on it are now (`DataTable.rowStates`, `cellStates`), where they changed: each
+    * changed cell washed in its tint, a deleted row's words struck through and the row dimmed, and a bar at the start
+    * of a row with an edit of its own in its colour (seen on a chosen row too, whose wash covers the row's tint). A
+    * changed cell is told as such to a screen reader. */
+  private[table] def restyle(): Unit = if (!header) {
+    val row = table.rowStates().get(index)
+    val states = table.cellStates()
+    val changed = content.indices.flatMap(c => states.get((index, c)).map(c -> _)).toMap
+    if ((row, changed) != styled) {
+      val struck = row.contains(EditState.Deleted)
+      if (struck != styled._1.contains(EditState.Deleted)) {
+        cells.indices.foreach(c => cells(c).runs @= DataRow.runs(content(c), header, look.headerWeight, struck))
+        opacity @= (if (struck) DataRow.deletedOpacity else 1.0)
+      }
+      cells.indices.foreach(c => if (changed.get(c) != styled._2.get(c))
+        cells(c).semantics @= DataRow.cellSemantics(content(c), changed.get(c)))
+      val gone = marks
+      marks = changed.toVector.sortBy(_._1).map { case (c, s) => tint(c, s) } ++ row.map(bar).toVector
+      children @= marks ++ children().filterNot(m => gone.exists(_ eq m))
+      gone.foreach(_.dispose())
+      styled = (row, changed)
+    }
+  }
+
+  // a changed cell's wash, over its column as tall as the row, under its words
+  private def tint(c: Int, state: EditState): Container = new Container {
+    backgroundColor := DataRow.cellTint(state)
+    position.left := table.columnLeft(c)
+    size.width := table.columnWidth(c)
+    size.height := tall()
+    everyui.render.Gestures.passThrough(node)
+  }
+
+  // the bar at the row's start (its right, where the columns run from the right) in its edit's colour
+  private def bar(state: EditState): Container = new Container {
+    backgroundColor := DataRow.colour(state)
+    size.width @= DataRow.barWidth
+    size.height := tall()
+    position.left := table.rowStart(DataRow.barWidth)
+    everyui.render.Gestures.passThrough(node)
+  }
 
   /** How wide column `c`'s cell is on one line, or a word to a line (`words`), where it is measured: as its measuring
     * cell reads, or as it read once it has been let go. */
@@ -143,7 +195,7 @@ private[table] class DataRow(table: DataTable, val index: Int, val content: Vect
     follow = href => table.onLink(href)
     if (header) semantics := Semantics("columnheader", sort = table.sort().filter(_.column == c)
       .map(s => if (s.ascending) "ascending" else "descending").getOrElse(""))
-    else semantics := (if (content(c).nothing) Semantics("cell", label = TableWords.nothing) else Semantics("cell"))
+    else semantics @= DataRow.cellSemantics(content(c), None)
     copyAs @= (if (header) "th" else "td")
     direction @= table.style.direction
     size.width := table.cellWidth(c, header)
@@ -167,11 +219,36 @@ private[table] object DataRow {
     * ring besides), and a little more under the pointer: plainly not a stripe, which is the text's grey. */
   def openFill(over: Boolean): everyui.Color = Theme.accent().withAlpha(if (over) 0.22 else 0.16)
 
-  /** What `cell` draws: NULL in italics where it holds no value, else its runs, or its words as they are (of `weight` in a
-    * header). */
-  def runs(cell: DataCell, header: Boolean, weight: Int): List[TextRun] =
-    if (cell.nothing) List(TextRun(DataCell.nullText, italic = true))
-    else if (cell.runs.nonEmpty) cell.runs
-    else if (cell.text.isEmpty) Nil
-    else List(TextRun(cell.text, weight = if (header) weight else 0))
+  /** What `cell` draws: NULL in italics where it holds no value, else its runs, or its words as they are (of `weight`
+    * in a header); every run struck through where its row is to be deleted (`struck`). */
+  def runs(cell: DataCell, header: Boolean, weight: Int, struck: Boolean = false): List[TextRun] = {
+    val drawn = if (cell.nothing) List(TextRun(DataCell.nullText, italic = true))
+      else if (cell.runs.nonEmpty) cell.runs
+      else if (cell.text.isEmpty) Nil
+      else List(TextRun(cell.text, weight = if (header) weight else 0))
+    if (struck) drawn.map(_.copy(strike = true)) else drawn
+  }
+
+  /** What a screen reader is told of a body's cell: "null" for one holding no value, and the edit pending on it. */
+  def cellSemantics(cell: DataCell, state: Option[EditState]): Semantics =
+    Semantics("cell", label = if (cell.nothing) TableWords.nothing else "",
+      description = state.map(TableWords.state).getOrElse(""))
+
+  /** An edit's colour: the theme's warning for a change, its success for a new row, its danger for a deleted one. */
+  def colour(state: EditState): everyui.Color = state match {
+    case EditState.Changed => Theme.warning()
+    case EditState.New => Theme.success()
+    case EditState.Deleted => Theme.danger()
+  }
+
+  /** A changed cell's wash: its edit's colour, faint enough for the words over it in light and dark alike. */
+  def cellTint(state: EditState): everyui.Color = colour(state).withAlpha(0.2)
+
+  /** A row's wash for its own edit: a new or a deleted row's, fainter than a cell's (a changed row has its cells'). */
+  def rowTint(state: EditState): Option[everyui.Color] =
+    if (state == EditState.Changed) None else Some(colour(state).withAlpha(0.12))
+
+  /** How opaque a row to be deleted is drawn, and how wide the bar at the start of a row with an edit is. */
+  val deletedOpacity: Double = 0.6
+  val barWidth: Double = 3.0
 }

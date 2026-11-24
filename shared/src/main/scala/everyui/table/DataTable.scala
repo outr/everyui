@@ -56,6 +56,14 @@ import reactify.*
   *   - Edit: where it is `editable`, a double-click or a double tap on a cell (of a column that is `editable`), or F2
   *     on the one the keys are on, types over it in place: Enter or leaving the field keeps it where the app's
   *     `commit` takes it (`edited` hears it), Escape keeps what it was.
+  *   - Edits pending: what the app has yet to apply, marked by it on cells (`cellStates`) and rows (`rowStates`): a
+  *     changed cell washed in the theme's warning colour, a new row in its success colour, a deleted one in its danger
+  *     colour, dimmed and struck through, a bar of the colour at the start of a row with an edit, and each told to a
+  *     screen reader ("changed", "new", "deleted"). Where the app can put them back (`onRevert`), a cell's and a row's
+  *     menu offer Revert.
+  *   - A row's menu: where the app gives one (`rowMenu`: Delete row, say), the secondary button or a finger held on a
+  *     row, the menu key or Shift+F10, or the ⋮ at the end of the row under a hovering pointer opens it, its entries
+  *     acting on the rows chosen where the row is one of them, else on it alone (`RowRef`); none chooses anything.
   *   - Keys: the table takes the focus as one stop (Tab goes on past it). The arrows move between its cells (Up from the
   *     first row reaches the header), Home and End to the first and last column (with Ctrl, row), Page Up and Down a
   *     page of rows; Space or Enter chooses the row (Enter on a header sorts, and opens a row where rows open),
@@ -139,6 +147,27 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     * in it is as wide as the table shares its width (`TableWidths`); wider together than the table, the columns scroll
     * sideways. */
   val widths: Var[Map[String, Double]] = own(Var(Map.empty))
+  /** The edits pending on cells that are not yet applied, by (row, column): the row its index in `cells` (of a
+    * server's rows, its place), as `selection` has it. A `Changed` cell is washed in the theme's warning colour and is
+    * "changed" to a screen reader. The app keeps it: set as a cell is typed over (`edited`), cleared as the edits are
+    * applied or reverted. */
+  val cellStates: Var[Map[(Int, Int), EditState]] = own(Var(Map.empty))
+  /** The edits pending on whole rows, by row: a `New` row is washed in the theme's success colour, a `Deleted` one in
+    * its danger colour, dimmed and its words struck through, and a `Changed` one has its cells' washes; each has a bar
+    * of its colour at its start, seen on a chosen row too, and is "new", "deleted" or "changed" to a screen reader. */
+  val rowStates: Var[Map[Int, EditState]] = own(Var(Map.empty))
+  /** What puts an edit back, where the app can: set, the menu of a cell with an edit (`cellStates`) offers Revert cell,
+    * and of a row with any (`rowStates`, or a cell's), Revert row, each handing this what to put back; the app then
+    * changes `cells` and the states. A row menu opened on rows chosen together offers Revert N rows, which hands each
+    * row with an edit over in turn. */
+  val onRevert: Var[Option[Revert => Unit]] = own(Var(None))
+  /** The entries of a row's own menu, where it has one: handed the row it was opened on (`RowRef`), and the rows its
+    * entries act on, which are the rows chosen where that row is one of them, else that row alone. Opened by the
+    * secondary button or a finger held on a row, the menu key or Shift+F10 on the row the keys are on, or the ⋮ at the
+    * row's end the pointer is over (where a pointer hovers: a finger holds the row instead). Revert (`onRevert`) comes
+    * after the app's entries where it applies. None of these choose a row or let a choice go: the keys go to the cell
+    * it was opened on. A row with no entries opens nothing, and the page's own menu shows (Copy, on the web). */
+  val rowMenu: Var[Option[RowRef => List[MenuItem]]] = own(Var(None))
   // a drag on a handle just ended, whose release is not a click on the heading under it
   private var resizing = false
   // the cell being typed over, and what lets it go; and the last click, for a second on the same cell
@@ -288,6 +317,7 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   private val fromRight: Val[Boolean] = own(Val(mirrored && Direction.rtl()))
   /** Whether it is made for a pointer that hovers (its tools shown on hover) or for a finger (always shown). */
   private val touch: Boolean = Platform.touchSupport() && !Platform.pointerSupport()
+  private val onAndroid: Boolean = Platform.kind == everyui.PlatformKind.Android
   private val copies: Boolean = Clipboard.copies
   private val saves: Boolean = Files.savable
   // whether the tools are wanted at all, the filter is offered, and the pointer is over it or the focus in it
@@ -422,8 +452,20 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
   if (touch) placeTools() else near.attach(on => if (on) placeTools())
 
   grid.event.click.attach(e => clicked(e))
+  // Android gives a touch whole to the innermost view that takes one, and the rows' own scroll takes theirs: there the
+  // rows' scroll hears a tap on a row and hands it on, which the grid round it never hears (elsewhere a press climbs)
+  if (onAndroid) rows.event.click.attach { e =>
+    e.consume()
+    clicked(e)
+  }
   grid.event.key.down.attach(k => pressed(k))
   grid.focused.attach(on => if (!on) ringShown @= false)
+  // the edits pending drawn on the rows drawn; a row made later draws its own as it is made
+  cellStates.attach(_ => drawnRows.foreach(_.restyle()))
+  rowStates.attach(_ => drawnRows.foreach(_.restyle()))
+  // a row's menu listened for once there is one to give (a table without one hears the pointer as it did)
+  rowMenu.attach(_ => offerMenus())
+  onRevert.attach(_ => offerMenus())
 
   /** Rows sorted by column `c`: up, or down where they already are up, or as they came where they are down. A server's
     * rows only by a column it can sort by (`sorts`). */
@@ -1207,6 +1249,10 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     // F2 edits the cell the keys are on, where it can be
     if (k.key == Key.Other && k.name == "F2" && !k.ctrl && !k.meta && !k.alt && row >= 0 && edits(row, c))
       Some(() => edit(row, c))
+    // the menu key or Shift+F10 opens the row's menu on the cell the keys are on, where it has one
+    else if (menus && row >= 0 && !k.ctrl && !k.meta && !k.alt && (k.key == Key.ContextMenu ||
+      (k.key == Key.Other && k.name == "F10" && k.shift)) && menuFor(rowRef(row, Some(c))).nonEmpty)
+      Some(() => openMenu(row, Some(c)))
     else if (primary && !k.alt && letter == "c" && copies) {
       // words selected with the pointer are the browser's to copy
       if (Platform.selectsText() && Platform.selectedText().nonEmpty) None
@@ -1245,6 +1291,120 @@ class DataTable(initialColumns: Vector[DataColumn] = Vector.empty, initialCells:
     })
     else if (k.key == Key.Escape && selection().nonEmpty) Some(() => selection @= Set.empty)
     else None
+  }
+
+  // ---- edits pending, and a row's menu ----
+
+  // the rows drawn, wherever they are made
+  private def drawnRows: Iterable[DataRow] =
+    slots.flatten ++ window.values.collect { case (_, _, r: DataRow) => r }
+
+  /** Where something `width` wide goes at the rows' start: their left, or their right where the columns run from it. */
+  private[table] def rowStart(width: Double): Double = if (mirrored) across() - width else 0.0
+
+  /** Whether row `row` has an edit pending, of its own or of a cell's. */
+  def pending(row: Int): Boolean = rowStates().contains(row) || cellStates().keysIterator.exists(_._1 == row)
+
+  /** The row menu opened on row `row` (on its cell of `column`, where it was): the rows chosen where it is one of
+    * them, in the order they show, else it alone. */
+  def rowRef(row: Int, column: Option[Int] = None): RowRef =
+    RowRef(row, if (selection().contains(row)) chosen else Vector(row), column)
+
+  /** What the menu opened as `ref` says offers: the app's entries (`rowMenu`), then, where the app reverts
+    * (`onRevert`), Revert cell for a cell it was opened on with an edit, and Revert row (or N rows) for those of its
+    * rows with any. */
+  def menuFor(ref: RowRef): List[MenuItem] = {
+    val own = rowMenu().map(_(ref)).getOrElse(Nil)
+    val reverts = onRevert().toList.flatMap { revert =>
+      val cell = ref.column.filter(c => cellStates().contains((ref.row, c))).map(c =>
+        MenuItem(TableWords.revertCell, () => revert(Revert(ref.row, Some(c))), MaterialIcon.Undo))
+      val edited = ref.rows.filter(pending)
+      val rows = if (edited.isEmpty) None else Some(MenuItem(TableWords.revertRows(edited.size),
+        () => edited.foreach(r => revert(Revert(r))), MaterialIcon.Undo))
+      cell.toList ++ rows.toList
+    }
+    own ++ (if (own.nonEmpty && reverts.nonEmpty) List(MenuItem.separator) else Nil) ++ reverts
+  }
+
+  /** Row `row`'s menu opened, on its cell of `column` where given (the one the keys are on, else the first), as the
+    * menu key does: under that cell, the keys moved to it. Whether it had anything to offer. */
+  def openMenu(row: Int, column: Option[Int] = None): Boolean = {
+    val c = column.getOrElse(if (cursor()._1 == row) cursor()._2 else 0)
+    cursor @= ((row, c))
+    reveal()
+    val left = grid.absoluteLeft + columnLeft(c)
+    val top = rowOf(row).map(r => r.absoluteTop + r.size.height()).getOrElse(grid.absoluteTop + headHeight())
+    showMenu(rowRef(row, Some(c)), items => Menu.at(left, top, items))
+  }
+
+  // the menu `ref` says put up by `put`, where it offers anything
+  private def showMenu(ref: RowRef, put: List[MenuItem] => Unit): Boolean = {
+    val items = menuFor(ref)
+    if (items.nonEmpty) put(items)
+    items.nonEmpty
+  }
+
+  // the pointer's asking for a row's menu heard, and the ⋮ made, once the table has a menu for its rows
+  private var menus = false
+  private def offerMenus(): Unit = if (!menus && (rowMenu().nonEmpty || onRevert().nonEmpty)) {
+    menus = true
+    // the secondary button or a finger held on a row: its menu at the pointer, the keys moved to the cell (the choice
+    // left as it is); one with nothing to offer leaves the page's own menu
+    val asked = (e: PointerEvent) => at(e).filter(_._1 >= 0).foreach { case (row, c) =>
+      if (showMenu(rowRef(row, Some(c)), items => Menu.at(e.x, e.y, items))) {
+        e.consume()
+        ringShown @= false
+        cursor @= ((row, c))
+      }
+    }
+    grid.event.pointer.menu.attach(asked)
+    // (on Android the rows' scroll holds the touch, and so hears the finger held: see the tap's)
+    if (onAndroid) rows.event.pointer.menu.attach(asked)
+    if (!touch) rowButton()
+  }
+
+  /** The ⋮ at the end of the row the pointer is over, which drops its menu: beside the table where there is room,
+    * else over the end of its last column. Only where a pointer hovers; a finger holds the row for its menu. */
+  private def rowButton(): Unit = {
+    val over: Var[Option[Int]] = own(Var(None))
+    grid.event.pointer.move.attach(e => if (!e.finger) {
+      val now = at(e).map(_._1).filter(_ >= 0)
+      if (now != over()) over @= now
+    })
+    val side = DataTable.rowButtonSize
+    val button: Container = new Container {
+      private val glyph = new MaterialIconView(MaterialIcon.MoreVert, 16.0)
+      size.width @= side
+      size.height @= side
+      radius @= 5.0
+      tapSlop @= true
+      tooltip @= TableWords.rowActions
+      semantics @= Semantics.button(TableWords.rowActions)
+      backgroundColor := (if (event.pointer.over()) Theme.controlLit() else Theme.raised())
+      glyph.color := (if (event.pointer.over()) Theme.text() else Theme.muted())
+      glyph.position.left := (side - glyph.size.width()) / 2.0
+      glyph.position.top := (side - glyph.size.height()) / 2.0
+      children += glyph
+      event.click.attach { e =>
+        e.consume()
+        over().foreach(row => showMenu(rowRef(row), items => Menu.below(this, items)))
+      }
+    }
+    // the row's middle, where it is drawn and shows within the rows' scroll
+    val top: Val[Option[Double]] = own(Val(over().flatMap(rowOf).map { r =>
+      barHeight() + headHeight() + r.position.top() - rows.offset() + (r.size.height() - side) / 2.0
+    }.filter { t =>
+      val from = barHeight() + headHeight()
+      t >= from - 1.0 && t + side <= from + rows.size.height() + 1.0
+    }))
+    button.visible := top().nonEmpty && near() && (rowMenu().nonEmpty || over().exists(pending))
+    button.position.top := top().getOrElse(0.0)
+    button.position.left := {
+      if (beside()) (if (mirrored) gridLeft() - side - 6.0 else across() + 6.0)
+      else if (mirrored) gridLeft() + 3.0 + (if (Direction.rtl()) gutter() else 0.0)
+      else gridLeft() + scroll.size.width() - gutter() - side - 3.0
+    }
+    children += button
   }
 
   // ---- the columns' widths ----
@@ -1426,6 +1586,8 @@ object DataTable {
   val gutter: Double = 12.0
   /** How big the tools' button is. */
   val toolSize: Double = 26.0
+  /** How big a row's ⋮ is, at the end of the row the pointer is over (`rowMenu`). */
+  val rowButtonSize: Double = 22.0
 
   /** A table of `rows` of words under `columns`. */
   def apply(columns: Vector[DataColumn], rows: Vector[Vector[String]]): DataTable =

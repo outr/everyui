@@ -6,7 +6,8 @@ import everyui.i18n.Direction
 import everyui.render.Platform
 import everyui.async.Task
 import everyui.paging.{Page, PagedSource}
-import everyui.table.{ColumnKind, DataCell, DataColumn, DataTable}
+import everyui.menu.MenuItem
+import everyui.table.{ColumnKind, DataCell, DataColumn, DataTable, EditState, Revert, RowRef}
 import everyui.theme.{Palette, Theme}
 import everyui.ui
 import reactify.*
@@ -19,6 +20,8 @@ import reactify.*
   * `edit=1` lets its cells be typed over, on a double-click or F2.
   * `open=1` makes its rows open (`DataTable.onOpen`), as a console's open into a detail pane: a click or Enter opens
   * one, written under the tables until Close.
+  * `pending=1` marks edits not yet applied (a changed cell, a new row, a deleted one) and gives the rows a menu (Delete
+  * row, Revert); `menu=<row>` opens that row's menu a moment after the page, as its menu key does.
   * It logs how long the table took to make and to filter:
   *
   *   [ui] datatable 500 rows made in 92.4 ms
@@ -169,5 +172,27 @@ object DataTableDemo {
       detail.position.top := small.position.top() + small.size.height() + 16.0
       page.content.children += detail
     }
+    if (Platform.launchArg("pending") == "1") pending(table)
+  }
+
+  /** `table` with edits pending and a menu for its rows. */
+  private def pending(table: DataTable): Unit = {
+    table.cellStates @= Map((0, 2) -> EditState.Changed, (3, 1) -> EditState.Changed, (3, 6) -> EditState.Changed)
+    table.rowStates @= Map(1 -> EditState.New, 2 -> EditState.Deleted, 3 -> EditState.Changed)
+    table.onRevert @= Some((r: Revert) => {
+      Platform.log("datatable revert row " + r.row.toString + r.column.map(c => " column " + c.toString).getOrElse(""))
+      r.column match {
+        case Some(c) => table.cellStates @= table.cellStates() - ((r.row, c))
+        case None =>
+          table.cellStates @= table.cellStates().filterNot(_._1._1 == r.row)
+          table.rowStates @= table.rowStates() - r.row
+      }
+    })
+    table.rowMenu @= Some((ref: RowRef) => List(
+      MenuItem(if (ref.rows.size == 1) "Delete row" else "Delete " + ref.rows.size.toString + " rows", () =>
+        table.rowStates @= table.rowStates() ++ ref.rows.map(_ -> EditState.Deleted), everyui.font.MaterialIcon.Delete,
+        danger = true)))
+    Option(Platform.launchArg("menu")).filter(_.nonEmpty).foreach(m =>
+      Platform.after(1.5, () => table.openMenu(m.toInt, Some(2))))
   }
 }
