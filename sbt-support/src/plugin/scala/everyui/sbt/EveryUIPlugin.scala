@@ -70,6 +70,10 @@ object EveryUIPlugin extends AutoPlugin {
     // what runs with the app closed on Android (AndroidBackground): nothing unless everyuiBackground names one
     val everyuiBackground = settingKey[Option[String]]("What runs with the app closed on Android: the BackgroundApp object (\"com.example.Background\"), whose handlers hear scheduled work, an ongoing notice's actions and the device starting again, or None, the default, for none")
     @transient val everyuiAndroidLibraries = taskKey[Seq[AndroidArchive]]("Every Android archive among the project's dependencies, each once (one a module, at the version resolved), opened: its classes, which the plugin puts on the compile classpath, its shrinker rules, and its resources where its classes read their own R class, for AndroidApk.build's libraries, which dexes, applies and links them")
+    // the location's permissions (LocationUse): none written unless everyuiLocation says
+    type LocationUse = everyui.sbt.LocationUse
+    def LocationUse: everyui.sbt.LocationUse.type = everyui.sbt.LocationUse
+    val everyuiLocation = settingKey[Option[LocationUse]]("The app's use of the location: Some(LocationUse(background, purpose)) writes the Android manifest's location permissions (ACCESS_BACKGROUND_LOCATION with background, which needs everyuiBackground) and the iOS Info.plist's reasons; declaring a permission asks the person nothing. None, the default, writes none")
     @transient val everyuiBackgroundRules = taskKey[Seq[File]]("The shrinker's rules for what runs with the app closed: the BackgroundApp object, EveryUI's receiver and job service, or none without everyuiBackground (everyuiAndroidRules has them too)")
 
     // the APK's baseline profile (BaselineProfile): EveryUI's rules and the archives' come by themselves, the app's own
@@ -160,7 +164,10 @@ object EveryUIPlugin extends AutoPlugin {
       (dir * "*.swift").get()
     },
     everyuiAppleInfoPlist := Def.uncached {
-      unpack(jar(classpath.value, "everyui-tvos"), "everyui/swift", target.value / "everyui-plist") / "Info.plist"
+      val plist = unpack(jar(classpath.value, "everyui-tvos"), "everyui/swift", target.value / "everyui-plist") / "Info.plist"
+      // with the location's reasons where the app says why it asks
+      everyuiLocation.value.foreach(use => IO.write(plist, LocationUse.infoPlist(IO.read(plist), use)))
+      plist
     },
     everyuiCommit := Def.uncached {
       val commits = classpath.value.filter(f => f.getName.startsWith("everyui-") && f.getName.endsWith(".jar")).flatMap { f =>
@@ -200,7 +207,11 @@ object EveryUIPlugin extends AutoPlugin {
       val log = streams.value.log
       val widgets = everyuiWidgets.value
       val background = everyuiBackground.value
-      if (widgets.isEmpty && background.isEmpty) source
+      val location = everyuiLocation.value
+      if (location.exists(_.background) && background.isEmpty)
+        sys.error("sbt-everyui: everyuiLocation's background location needs everyuiBackground: the BackgroundApp " +
+          "its positions and visits are heard in")
+      if (widgets.isEmpty && background.isEmpty && location.isEmpty) source
       else {
         def written(step: Either[String, String]): String = step match {
           case Right(text) => text
@@ -232,8 +243,10 @@ object EveryUIPlugin extends AutoPlugin {
           }
           written(AndroidBackground.manifest(withWidgets, app))
         }
+        // and the location's permissions before the application
+        val withLocation = location.fold(text)(use => written(LocationUse.manifest(text, use)))
         val out = target.value / "everyui-manifest" / "AndroidManifest.xml"
-        IO.write(out, text)
+        IO.write(out, withLocation)
         out
       }
     },
@@ -269,6 +282,7 @@ object EveryUIPlugin extends AutoPlugin {
       }
     },
     everyuiBackground := None,
+    everyuiLocation := None,
     everyuiAndroidLibraries := Def.uncached(Aars.archives(streams.value.log.info(_), update.value, Aars.room)),
     // every archive's classes on the classpath, so the app compiles against them and its program holds them: an app
     // opens none itself (uncached: the task is transient, so a cached list would never hear of an archive added since)
