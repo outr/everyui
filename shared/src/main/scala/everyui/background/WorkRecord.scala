@@ -27,60 +27,64 @@ case class WorkRecord(key: String,
 object WorkRecord {
   /** `s` with the characters that separate the fields escaped. */
   def escape(s: String): String = {
-    val out = new StringBuilder
-    s.foreach {
-      case '\\' => out.append("\\\\")
-      case '|' => out.append("\\p")
-      case ';' => out.append("\\s")
-      case '=' => out.append("\\e")
-      case c => out.append(c)
+    var out = ""
+    var i = 0
+    while (i < s.length) {
+      out = out + (s.charAt(i) match {
+        case '\\' => "\\\\"
+        case '|' => "\\p"
+        case ';' => "\\s"
+        case '=' => "\\e"
+        case c => c.toString
+      })
+      i += 1
     }
-    out.toString
+    out
   }
 
   def unescape(s: String): String = {
-    val out = new StringBuilder
+    var out = ""
     var i = 0
     while (i < s.length) {
       val c = s.charAt(i)
       if (c == '\\' && i + 1 < s.length) {
         s.charAt(i + 1) match {
-          case 'p' => out.append('|')
-          case 's' => out.append(';')
-          case 'e' => out.append('=')
-          case other => out.append(other)
+          case 'p' => out = out + "|"
+          case 's' => out = out + ";"
+          case 'e' => out = out + "="
+          case other => out = out + other.toString
         }
         i += 2
       }
       else {
-        out.append(c)
+        out = out + c.toString
         i += 1
       }
     }
-    out.toString
+    out
   }
 
   // the parts between unescaped `sep`s, still escaped
   private def split(s: String, sep: Char): Vector[String] = {
     var parts = Vector.empty[String]
-    val part = new StringBuilder
+    var part = ""
     var i = 0
     while (i < s.length) {
       val c = s.charAt(i)
       if (c == '\\' && i + 1 < s.length) {
-        part.append(c).append(s.charAt(i + 1))
+        part = part + c.toString + s.charAt(i + 1).toString
         i += 2
       }
       else {
         if (c == sep) {
-          parts :+= part.toString
-          part.clear()
+          parts :+= part
+          part = ""
         }
-        else part.append(c)
+        else part = part + c.toString
         i += 1
       }
     }
-    parts :+ part.toString
+    parts :+ part
   }
 
   /** A record as `encode` wrote it, or None where it is not one. */
