@@ -700,6 +700,8 @@ lazy val android = (project in file("android"))
     // what the example runs with the app closed (everyui.app.ExampleBackground, demo=background), as an app declares
     // its own: sbt-everyui adds its meta-data, EveryUI's receiver and job service, and their shrinker rules
     everyuiBackground := Some("everyui.app.ExampleBackground"),
+    // the location with the app closed declared (asked for only as the demo's Places are turned on)
+    everyuiLocation := Some(LocationUse(background = true)),
     packageApk := {
       val conv = fileConverter.value
       val buildRoot = (ThisBuild / baseDirectory).value

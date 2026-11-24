@@ -1,14 +1,16 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.location.{LocationAnswer, Position}
+import everyui.location.{LocationAnswer, Position, VisitOptions}
 import org.scalajs.dom
 
 import scala.scalajs.js
 
 /** Where the device is (`everyui.location.Location`) through `navigator.geolocation`, which asks the person the first
   * time (the site's "location" permission) and answers only on a page served over HTTPS or from `localhost`. A watch
-  * is `watchPosition`, which has no distance of its own: `LocationWatch` keeps back what has not moved far enough. */
+  * is `watchPosition`, which has no distance of its own: `LocationWatch` keeps back what has not moved far enough.
+  * A page runs nothing with no window open, so the location with the app closed is the location itself, and there are
+  * no visits. */
 object LocationAccess {
   private def geolocation: js.Dynamic = dom.window.navigator.asInstanceOf[js.Dynamic].geolocation
 
@@ -53,6 +55,30 @@ object LocationAccess {
         js.Dynamic.literal(enableHighAccuracy = precise, maximumAge = 0))
       () => geolocation.clearWatch(id)
     }
+
+  /** A page has no location of its own with it closed: what it has open. */
+  def backgroundPermission(done: Permission => Unit): Unit = permission(done)
+
+  def permitBackground(done: Boolean => Unit): Unit = permit(done)
+
+  /** The browser's last position, of any age, with no new fix (a timeout of 0 answers at once where there is none),
+    * once the site may know it: asking would show the browser's prompt. */
+  def lastKnown(done: Option[Position] => Unit): Unit = permission {
+    case Permission.Granted =>
+      geolocation.getCurrentPosition((p: js.Dynamic) => done(located(p) match {
+        case LocationAnswer.Located(at) => Some(at)
+        case _ => None
+      }), (_: js.Dynamic) => done(None), js.Dynamic.literal(maximumAge = Double.PositiveInfinity, timeout = 0))
+    case _ => done(None)
+  }
+
+  def visitsSupported(): Boolean = false
+
+  def visitsStart(options: VisitOptions): Boolean = false
+
+  def visitsStop(): Unit = ()
+
+  def visitsCheck(delay: Double): Unit = ()
 
   private def located(p: js.Dynamic): LocationAnswer = {
     val c = p.coords

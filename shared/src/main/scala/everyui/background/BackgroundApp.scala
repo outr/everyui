@@ -1,13 +1,15 @@
 package everyui.background
 
 import everyui.async.Task
+import everyui.location.VisitEvent
 import everyui.push.{PushAction, ReplyOutcome}
 
 /** The app's code that runs with no screen: an object the platform loads by name where the app is not running (on
   * Android, the manifest's meta-data "everyui.background", which sbt-everyui writes from `everyuiBackground`), whose
   * handlers hear what the platform delivers in the background: scheduled work, an ongoing notice's actions, a push's
-  * buttons and replies, a data push, the device started again or the app updated. The app also registers it as it starts (`Background.register`), which on the
-  * other platforms runs its scheduled work while the app is open.
+  * buttons and replies, a data push, the device started again or the app updated, a visit to a place. The app also
+  * registers it as it starts (`Background.register`), which on the other platforms runs its scheduled work while the
+  * app is open.
   *
   * A handler runs where there may be no window: it reads the settings, the secrets, the store and the network, and
   * never touches a component. It is started on the thread that draws, as the app's own tasks are, so heavy work goes
@@ -64,4 +66,9 @@ trait BackgroundApp {
     * here. Scheduled work is kept through both and needs nothing. It may be heard with no restart (Android 15 tells
     * an app that leaves its stopped state that the device started), so what it does is safe to do twice. */
   def onRestart(reason: RestartReason): Task[Unit] = Task.unit
+
+  /** A visit to a place begun or ended (`everyui.location.Visits`), app open or closed: on Android as the position that
+    * makes it is heard (in the visits' work, or a fix another app asked for), held as that is; on an iPhone as the
+    * system wakes the app for it. Nothing by default. */
+  def onVisit(event: VisitEvent): Task[Unit] = Task.unit
 }

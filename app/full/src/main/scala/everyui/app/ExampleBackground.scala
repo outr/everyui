@@ -5,6 +5,7 @@ import everyui.async.Task
 import everyui.background.{BackgroundApp, RestartReason, Work, WorkResult}
 import everyui.Color
 import everyui.font.MaterialIcon
+import everyui.location.{Location, LocationAnswer, Position, VisitEvent}
 import everyui.push.{NoticeAction, NoticeChannel, NoticeTap, Ongoing, OngoingNotice, Push, PushAction, ReplyOutcome}
 import everyui.render.Platform
 
@@ -15,7 +16,8 @@ import everyui.render.Platform
   * reason; a push notification's button that runs in the background noted with its push; a reply typed into a mail
   * push noted with its words, the push then shown with the reply, taken away or shown as sent as its data's "after"
   * says; a data push noted with its keys, synced at once, past its ten seconds ("slow"), or handed to expedited work ("long", "example.sync"), and one
-  * delivered by work ("example.datapush") in a process started for it. What it notes is in the settings
+  * delivered by work ("example.datapush") in a process started for it; the visits to places, and where the device
+  * is read from work ("example.where"), with the app closed ("example.bg.places"). What it notes is in the settings
   * ("example.bg.*"), which the demo reads, and in the log ("[ui] example background: ..."). */
 object ExampleBackground extends BackgroundApp {
   val channel: NoticeChannel = NoticeChannel("example.status", "Status", "What the example does in the background")
@@ -37,8 +39,39 @@ object ExampleBackground extends BackgroundApp {
         Platform.saveSetting("example.bg.data", "long sync done at " + now())
         WorkResult.Done
       }
+    // where the device is, read with the app closed: the last position kept and a fresh one
+    case "example.where" =>
+      Location.lastKnown().flatMap { last =>
+        Location.current(precise = true, timeout = 30.0).map { fresh =>
+          place("from work with the app " + open() + ": last known " + last.map(at).getOrElse("none") + ", now " +
+            (fresh match {
+              case LocationAnswer.Located(p) => at(p)
+              case other => other.toString
+            }))
+          WorkResult.Done
+        }
+      }
     case _ => ran(key, data)
   }
+
+  override def onVisit(event: VisitEvent): Task[Unit] = Task {
+    val v = event.visit
+    place((event match {
+      case VisitEvent.Arrived(_) => "arrived"
+      case VisitEvent.Departed(_) => "departed"
+    }) + " " + v.latitude.toString + "," + v.longitude.toString + " (arrived " + Platform.localDateTime(v.arrived) +
+      v.departed.map(d => ", last there " + Platform.localDateTime(d)).getOrElse("") + ") with the app " + open())
+  }
+
+  /** A line about places noted, the last five kept for the demo. */
+  def place(words: String): Unit = {
+    note("places: " + words)
+    val kept = Platform.setting("example.bg.places").split('\n').toList.filter(_.nonEmpty)
+    Platform.saveSetting("example.bg.places", (kept :+ (now() + " " + words)).takeRight(5).mkString("\n"))
+  }
+
+  private def at(p: Position): String = p.latitude.toString + "," + p.longitude.toString + " \u00b1" +
+    p.accuracy.toInt.toString + " m at " + Platform.localDateTime(p.time)
 
   private def ran(key: String, data: Map[String, String]): Task[WorkResult] = Task {
     val runs = Platform.setting("example.bg.runs." + key).toIntOption.getOrElse(0) + 1

@@ -527,3 +527,38 @@ class SGNode
 @native object uiSetTextShadow {
   def apply(node: SGNode, x: Double, y: Double, blur: Double, hex: String): Unit = native.value
 }
+/** Core Location's leave for the app: 0 not asked, 1 refused (or restricted), 2 while the app is in use, 3 always;
+  * -1 where the device has no location for an app (an Apple TV). */
+@native object uiLocationStatus {
+  def apply(): Int = native.value
+}
+/** The location asked for, while in use or `always`, and `done` with the status after (`uiLocationStatus`). */
+@native object uiLocationAsk {
+  def apply(always: Boolean, done: Int => Unit): Unit = native.value
+}
+/** One fresh fix, as precise as asked, and `done` with it ("L,lat,lon,accuracy,altitude,heading,speed,time", an unknown
+  * one empty), or "D" refused, "U" none in `timeout` seconds, "F,<message>". */
+@native object uiLocationCurrent {
+  def apply(precise: Boolean, timeout: Double, done: String => Unit): Unit = native.value
+}
+/** The last fix Core Location kept, as `uiLocationCurrent` gives one, or "" where there is none. */
+@native object uiLocationLast {
+  def apply(): String = native.value
+}
+/** Each fix `distance` metres from the last given to `heard` as `uiLocationCurrent` gives one, until
+  * `uiLocationUnwatch` with the id answered. */
+@native object uiLocationWatch {
+  def apply(precise: Boolean, distance: Double, heard: String => Unit): Int = native.value
+}
+@native object uiLocationUnwatch {
+  def apply(id: Int): Unit = native.value
+}
+/** The system's visits (CLVisit) to `heard`, as "A" (arrived) or "D" (departed) and
+  * ",lat,lon,accuracy,arrivedMillis,departedMillis" (-1 where it has not departed), including those that woke the app;
+  * whether they are monitored. */
+@native object uiVisitsStart {
+  def apply(heard: String => Unit): Boolean = native.value
+}
+@native object uiVisitsStop {
+  def apply(): Unit = native.value
+}

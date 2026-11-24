@@ -8,6 +8,7 @@ import everyui.activity.ServiceRuntime
 import everyui.app.screen.ScreenManager
 import everyui.async.Task
 import everyui.background.{Background, BackgroundApp, RestartReason, WorkRequest}
+import everyui.location.Visits
 import everyui.push.{OngoingNotice, ReplyOutcome}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters.*
@@ -108,7 +109,8 @@ object BackgroundAccess {
       })
   }
 
-  /** What `BackgroundReceiver` heard: the device started, the app updated, a notice's action or its dismissal.
+  /** What `BackgroundReceiver` heard: the device started, the app updated, a notice's action or its dismissal, a
+    * position the passive provider passed on for the visits.
     * `finish` once the handler has answered or its deadline has passed. */
   def received(context: Context, intent: Intent, finish: () => Unit): Unit = {
     start(context)
@@ -117,9 +119,12 @@ object BackgroundAccess {
     val reply = Option.when(action == PushAccess.actionIntent)(PushAccess.actionOf(intent)).filter(_.text.nonEmpty)
     val handled: Option[(String, () => Task[Unit])] = action match {
       case _ if reply.nonEmpty => None
-      case Intent.ACTION_BOOT_COMPLETED => Some("restart (booted)" -> (() => Background.restart(RestartReason.Booted)))
+      case Intent.ACTION_BOOT_COMPLETED =>
+        Some("restart (booted)" -> (() => restarted(RestartReason.Booted)))
       case Intent.ACTION_MY_PACKAGE_REPLACED =>
-        Some("restart (updated)" -> (() => Background.restart(RestartReason.Updated)))
+        Some("restart (updated)" -> (() => restarted(RestartReason.Updated)))
+      case LocationAccess.passiveIntent =>
+        Some("location (passive)" -> (() => Visits.heard(LocationAccess.passiveFixes(intent))))
       case `noticeIntent` =>
         val name = Option(intent.getStringExtra(actionExtra)).getOrElse("")
         val args = Option(intent.getBundleExtra(argsExtra)).map(b =>
@@ -156,6 +161,14 @@ object BackgroundAccess {
         run(what, handler(), receiverDeadline, ())(_ => finish())
       case (None, None) => finish()
     }
+  }
+
+  /** The device started or the app updated: the visits put back (what Android forgot of them), then the app's
+    * `onRestart`. */
+  private def restarted(reason: RestartReason): Task[Unit] = {
+    try Visits.resume()
+    catch { case t: Throwable => Platform.logError("background: visits not started again", t) }
+    Background.restart(reason)
   }
 
   /** `args` as an intent's bundle of strings. */

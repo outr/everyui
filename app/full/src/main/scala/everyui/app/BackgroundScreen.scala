@@ -7,6 +7,7 @@ import everyui.background.{Work, WorkConstraints, WorkNetwork}
 import everyui.clipboard.Clipboard
 import everyui.component.{Button, ButtonStyle, Column, Component, Container, ScrollContainer, TextView}
 import everyui.layout.FlowLayout
+import everyui.location.{Location, VisitOptions, Visits}
 import everyui.net.*
 import everyui.push.{NoticeImportance, Ongoing, Push, PushButton, PushChannel}
 import everyui.render.Platform
@@ -27,7 +28,8 @@ import reactify.*
   * each (channelImportance), and the loud one's settings opened (Push.openChannelSettings); a one-time code pushed in
   * three seconds, whose Copy puts it on the clipboard with the app closed, and the clipboard read; data pushes
   * (Push.deliver), heard by Push.data in front and by ExampleBackground.onPush otherwise, one slow, one handing a
-  * long sync to expedited work, and one delivered from work with the app killed. Under each, what
+  * long sync to expedited work, and one delivered from work with the app killed; places, off until turned on (the
+  * location with the app closed asked for, then `Visits` started), and where the device is read from work. Under each, what
   * ExampleBackground has noted, read again every two seconds and as the app comes back. */
 class BackgroundScreen extends UIScreen {
   override def manager: ScreenManager = BackgroundDemo
@@ -42,6 +44,7 @@ class BackgroundScreen extends UIScreen {
   private val pushed: Var[String] = Var("")
   private val channeled: Var[String] = Var("")
   private val synced: Var[String] = Var("")
+  private val placed: Var[String] = Var("")
   private val coded: Var[String] = Var("Copy puts the code on the clipboard with the app closed")
   private var heard = ""
   private var answered = ""
@@ -123,6 +126,22 @@ class BackgroundScreen extends UIScreen {
         new Button("Loud's settings", () => Push.openChannelSettings("example.loud").map { opened =>
           channeled @= "Loud's settings " + (if (opened) "opened, and back" else "not opened")
         }.start())),
+      section("Places, with the app closed (off until turned on)", placed)(
+        new Button("Turn on", () => Location.permitBackground().map { allowed =>
+          val on = allowed && Visits.start(VisitOptions(minMinutes = 5, radius = 100.0))
+          ExampleBackground.place("turned on: " +
+            (if (on) "visits started" else "not allowed (" + allowed.toString + ")"))
+          read()
+        }.start()),
+        new Button("Turn off", () => {
+          Visits.stop()
+          ExampleBackground.place("turned off")
+          read()
+        }),
+        new Button("Where, from work in 10 s", () => {
+          Work.once("example.where", delay = 10.0)
+          placed @= "Asked from work in 10 s: close the app meanwhile"
+        })),
       section("Restarts", restarted)())
     val scroll = new ScrollContainer {
       size.width := ui.size.width()
@@ -169,6 +188,10 @@ class BackgroundScreen extends UIScreen {
     SystemSettings.unusedAppRestrictions.map { on =>
       settled @= "Unused app restrictions " + (if (on) "on" else "off") +
         (if (answered.isEmpty) "" else "; " + answered)
+    }.start()
+    Location.backgroundPermission.map { p =>
+      placed @= "Visits " + (if (Visits.running) "on" else "off") + ", the location with the app closed " +
+        p.toString + "\n" + Platform.setting("example.bg.places")
     }.start()
     val restart = Platform.setting("example.bg.restart")
     restarted @= (if (restart.isEmpty) "None heard yet" else "Last: " + restart)

@@ -1,6 +1,7 @@
 package everyui.background
 
 import everyui.async.Task
+import everyui.location.{VisitEvent, Visits}
 import everyui.render.BackgroundAccess
 
 /** What runs with the app closed: the app's `BackgroundApp`, which the platform loads by name and makes ready once a
@@ -24,6 +25,7 @@ object Background {
   def register(app: BackgroundApp): Unit = {
     start(app)
     Work.resume()
+    Visits.resume()
   }
 
   /** `app` made ready, once a process: the platform's, where the app's `main` may not run. */
@@ -39,13 +41,16 @@ object Background {
     started = None
   }
 
-  /** Work `key` run by the app, or Failed where no `BackgroundApp` was made ready. */
-  private[everyui] def work(key: String, data: Map[String, String]): Task[WorkResult] = started match {
-    case Some(a) => a.onWork(key, data)
-    case None =>
-      everyui.render.Platform.log("background: no BackgroundApp for the work " + key)
-      Task.pure(WorkResult.Failed)
-  }
+  /** Work `key` run by the app, or Failed where no `BackgroundApp` was made ready; the visits' own work by them
+    * (`Visits`). */
+  private[everyui] def work(key: String, data: Map[String, String]): Task[WorkResult] =
+    if (key == Visits.workKey || key == Visits.checkKey) Visits.fix()
+    else started match {
+      case Some(a) => a.onWork(key, data)
+      case None =>
+        everyui.render.Platform.log("background: no BackgroundApp for the work " + key)
+        Task.pure(WorkResult.Failed)
+    }
 
   private[everyui] def noticeAction(notice: String, action: String, args: Map[String, String]): Task[Unit] =
     started.map(_.onNoticeAction(notice, action, args)).getOrElse(Task.unit)
@@ -61,4 +66,6 @@ object Background {
 
   private[everyui] def restart(reason: RestartReason): Task[Unit] =
     started.map(_.onRestart(reason)).getOrElse(Task.unit)
+
+  private[everyui] def visit(event: VisitEvent): Task[Unit] = started.map(_.onVisit(event)).getOrElse(Task.unit)
 }

@@ -1,10 +1,10 @@
 package everyui.render
 
 import everyui.Permission
-import everyui.location.LocationAnswer
+import everyui.location.{LocationAnswer, Position, VisitOptions}
 
-/** Where the device is (`everyui.location.Location`). A Roku gives a channel no location, so there is none here: `supported` is false, the permission is refused, and
-  * a fix or a watch answers at once as unsupported. */
+/** Where the device is (`everyui.location.Location`). A Roku gives a channel no location, so there is none here: `supported` is false, the permission is refused (with the
+  * app closed too), a fix or a watch answers at once as unsupported, none is known, and there are no visits. */
 object LocationAccess {
   def supported(): Boolean = false
 
@@ -19,4 +19,18 @@ object LocationAccess {
     answer(LocationAnswer.LocationUnsupported)
     () => ()
   }
+
+  def backgroundPermission(done: Permission => Unit): Unit = done(Permission.Refused)
+
+  def permitBackground(done: Boolean => Unit): Unit = done(false)
+
+  def lastKnown(done: Option[Position] => Unit): Unit = done(None)
+
+  def visitsSupported(): Boolean = false
+
+  def visitsStart(options: VisitOptions): Boolean = false
+
+  def visitsStop(): Unit = ()
+
+  def visitsCheck(delay: Double): Unit = ()
 }

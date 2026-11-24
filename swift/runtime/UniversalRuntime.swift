@@ -14,6 +14,7 @@ import CoreImage
 import MediaAccessibility
 import GameController
 import Security
+import CoreLocation
 #if os(iOS)
 import WebKit   // WebView: there is no WebKit on tvOS, so a tvOS build neither references nor links it
 #endif
@@ -2741,3 +2742,210 @@ func uiDriveOn() -> V { .vBool(false) }
 func uiDriveStart() {}
 
 #endif
+
+// MARK: - the location (everyui.location): Core Location on an iPhone or an iPad; an Apple TV gives an app none
+
+/// A location manager and what its delegate tells: a fix, a failure, the leave changed, a visit. One for each request
+/// (a fix, a watch, the leave asked for) and one for the visits, kept in `Loc` while it is wanted.
+final class LocationBox: NSObject, CLLocationManagerDelegate {
+    let manager = CLLocationManager()
+    var fixed: ((CLLocation) -> Void)? = nil
+    var failed: ((Error) -> Void)? = nil
+    var authorized: (() -> Void)? = nil
+    var visited: ((CLVisit) -> Void)? = nil
+    var answered = false
+    var held = 0
+    var observers: [NSObjectProtocol] = []
+
+    override init() {
+        super.init()
+        manager.delegate = self
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let l = locations.last { fixed?(l) }
+    }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { failed?(error) }
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { authorized?() }
+    #if os(iOS)
+    func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) { visited?(visit) }
+    #endif
+}
+
+enum Loc {
+    static var boxes: [Int: LocationBox] = [:]
+    static var next = 0
+    static var visits: LocationBox? = nil
+
+    static func keep(_ box: LocationBox) -> Int {
+        next += 1
+        boxes[next] = box
+        return next
+    }
+
+    /// 0 not asked, 1 refused or restricted, 2 while in use, 3 always.
+    static func status(_ m: CLLocationManager) -> Int {
+        switch m.authorizationStatus {
+        case .notDetermined: return 0
+        case .authorizedWhenInUse: return 2
+        case .authorizedAlways: return 3
+        default: return 1
+        }
+    }
+
+    /// "L,lat,lon,accuracy,altitude,heading,speed,time", an unknown one empty, the time in milliseconds since 1970.
+    static func said(_ l: CLLocation) -> String {
+        let known = { (ok: Bool, v: Double) -> String in ok ? String(v) : "" }
+        return "L," + [String(l.coordinate.latitude), String(l.coordinate.longitude), String(max(0.0, l.horizontalAccuracy)),
+                       known(l.verticalAccuracy >= 0, l.altitude), known(l.course >= 0, l.course),
+                       known(l.speed >= 0, l.speed), String(Int64(l.timestamp.timeIntervalSince1970 * 1000.0))]
+            .joined(separator: ",")
+    }
+
+    /// An error as uiLocationCurrent says one: refused, no fix, or its words.
+    static func said(_ e: Error) -> String {
+        if let c = e as? CLError {
+            if c.code == .denied { return "D" }
+            if c.code == .locationUnknown { return "U" }
+        }
+        return "F," + e.localizedDescription
+    }
+}
+
+func uiLocationStatus() -> V {
+    #if os(iOS)
+    return .vInt(Loc.status(CLLocationManager()))
+    #else
+    return .vInt(-1)
+    #endif
+}
+
+/// The leave asked for (while in use, or `always`), and `done(status)` once the person has answered: as the leave
+/// changes, or as the app comes back to the front. iOS shows each prompt once; where it shows none the app never leaves
+/// the front, and the status as it is answers a second later.
+func uiLocationAsk(_ always: V, _ done: V) -> V {
+    #if os(iOS)
+    let box = LocationBox()
+    let id = Loc.keep(box)
+    let held = RtHeld.hold(done)
+    let before = Loc.status(box.manager)
+    var shown = false
+    let answer = {
+        if box.answered { return }
+        box.answered = true
+        box.authorized = nil
+        box.observers.forEach { NotificationCenter.default.removeObserver($0) }
+        Loc.boxes.removeValue(forKey: id)
+        RtHeld.release(held)
+        RtGuard("the location asked for", done, [.vInt(Loc.status(box.manager))])
+    }
+    box.authorized = { if Loc.status(box.manager) != before { answer() } }
+    box.observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
+        object: nil, queue: .main) { _ in shown = true })
+    box.observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
+        object: nil, queue: .main) { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { answer() } })
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { if !shown { answer() } }
+    if always.rtTrue { box.manager.requestAlwaysAuthorization() } else { box.manager.requestWhenInUseAuthorization() }
+    #else
+    RtGuard("the location asked for", done, [.vInt(-1)])
+    #endif
+    return .vNull
+}
+
+/// One fix (`requestLocation`, which works with the app woken in the background where the leave is always), given to
+/// `done` as `Loc.said` says it, or "U" after `timeout` seconds.
+func uiLocationCurrent(_ precise: V, _ timeout: V, _ done: V) -> V {
+    #if os(iOS)
+    let box = LocationBox()
+    let id = Loc.keep(box)
+    let held = RtHeld.hold(done)
+    let finish = { (said: String) in
+        if box.answered { return }
+        box.answered = true
+        box.fixed = nil
+        box.failed = nil
+        Loc.boxes.removeValue(forKey: id)
+        RtHeld.release(held)
+        RtGuard("a position", done, [.vStr(said)])
+    }
+    box.manager.desiredAccuracy = precise.rtTrue ? kCLLocationAccuracyBest : kCLLocationAccuracyHundredMeters
+    box.fixed = { l in finish(Loc.said(l)) }
+    box.failed = { e in finish(Loc.said(e)) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(1.0, dbl(timeout))) { finish("U") }
+    box.manager.requestLocation()
+    #else
+    RtGuard("a position", done, [.vStr("U")])
+    #endif
+    return .vNull
+}
+
+/// The last fix Core Location kept, or "".
+func uiLocationLast() -> V {
+    #if os(iOS)
+    if let l = CLLocationManager().location { return .vStr(Loc.said(l)) }
+    #endif
+    return .vStr("")
+}
+
+/// Each fix `distance` metres from the last (0: every one) to `heard`, until uiLocationUnwatch with the id answered.
+func uiLocationWatch(_ precise: V, _ distance: V, _ heard: V) -> V {
+    #if os(iOS)
+    let box = LocationBox()
+    let id = Loc.keep(box)
+    box.held = RtHeld.hold(heard)
+    box.manager.desiredAccuracy = precise.rtTrue ? kCLLocationAccuracyBest : kCLLocationAccuracyHundredMeters
+    box.manager.distanceFilter = dbl(distance) > 0 ? dbl(distance) : kCLDistanceFilterNone
+    box.fixed = { l in RtGuard("a position watched", heard, [.vStr(Loc.said(l))]) }
+    box.failed = { e in RtGuard("a position watched", heard, [.vStr(Loc.said(e))]) }
+    box.manager.startUpdatingLocation()
+    return .vInt(id)
+    #else
+    return .vInt(-1)
+    #endif
+}
+func uiLocationUnwatch(_ id: V) -> V {
+    #if os(iOS)
+    if let box = Loc.boxes.removeValue(forKey: Int(dbl(id))) {
+        box.manager.stopUpdatingLocation()
+        box.fixed = nil
+        box.failed = nil
+        RtHeld.release(box.held)
+    }
+    #endif
+    return .vNull
+}
+
+/// The system's visits (CLVisit) to `heard`, in place of any heard before: "A" while it is there, "D" once it has gone,
+/// then ",lat,lon,accuracy,arrived,departed" in milliseconds since 1970 (-1 where it has not departed). Called again
+/// as the app starts, so a visit that woke it is heard. Whether they are monitored: an iPhone's or an iPad's.
+func uiVisitsStart(_ heard: V) -> V {
+    #if os(iOS)
+    _ = uiVisitsStop()
+    let box = LocationBox()
+    box.held = RtHeld.hold(heard)
+    box.visited = { v in
+        let here = v.departureDate == Date.distantFuture
+        let millis = { (d: Date) -> String in String(Int64(d.timeIntervalSince1970 * 1000.0)) }
+        let arrived = v.arrivalDate == Date.distantPast ? (here ? millis(Date()) : millis(v.departureDate)) : millis(v.arrivalDate)
+        let said = (here ? "A" : "D") + "," + String(v.coordinate.latitude) + "," + String(v.coordinate.longitude) + "," +
+            String(max(0.0, v.horizontalAccuracy)) + "," + arrived + "," + (here ? "-1" : millis(v.departureDate))
+        RtGuard("a visit", heard, [.vStr(said)])
+    }
+    box.manager.startMonitoringVisits()
+    Loc.visits = box
+    return .vBool(true)
+    #else
+    return .vBool(false)
+    #endif
+}
+func uiVisitsStop() -> V {
+    #if os(iOS)
+    if let box = Loc.visits {
+        box.manager.stopMonitoringVisits()
+        box.visited = nil
+        RtHeld.release(box.held)
+        Loc.visits = nil
+    }
+    #endif
+    return .vNull
+}

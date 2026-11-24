@@ -4984,6 +4984,8 @@ answers), nine and a half minutes for work, which is then tried again.
   (`Platform.askNotificationPermission`); the small icon is the drawable `everyui_notice` where the app has one.
 - **Restarts** (`onRestart(RestartReason.Booted | Updated)`): what the platform forgot, an ongoing notice above all,
   is put back here. Scheduled work needs nothing.
+- **Visits** (`onVisit(VisitEvent.Arrived | Departed)`): the places the device stays at, once the app has started
+  `everyui.location.Visits` with the person's leave ([With the app closed](#with-the-app-closed-locationpermitbackground-visits)).
 - **Settings pages** (`everyui.SystemSettings.open(SettingsPage.App | AppNotifications | AppLocation |
   UnusedAppRestrictions | DeviceLocation)`), answered as the person comes back, and
   `SystemSettings.unusedAppRestrictions`: whether Android may take the app's permissions away and stop its work after
@@ -5037,19 +5039,106 @@ Both ask for the permission where it has not been given; `Location.permission` (
 
 - **Web**: `navigator.geolocation`, over HTTPS or on `localhost`. The browser asks the person at the first request.
   A watch is `watchPosition`, whose positions `LocationWatch` filters by distance.
-- **Android**: the LocationManager: the fused provider where the device has one, else satellites for a precise fix
-  and the network for a rough one. The manifest declares both permissions, which are asked for together, so the
-  person chooses precise or approximate:
+- **Android**: the framework's LocationManager (not Google Play services, which EveryUI does not bring): the fused
+  provider where the device has one (Android 12 on), else satellites for a precise fix and the network for a rough one.
+  The manifest declares both permissions, which are asked for together, so the person chooses precise or approximate.
+  sbt-everyui writes them, with the location hardware not required (so Google Play still offers the app to a device
+  without GPS), from `everyuiLocation`; an app may also write them by hand:
 
-  ```xml
-  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  ```scala
+  everyuiLocation := Some(LocationUse())   // ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION
   ```
 
   A watch gives the platform its distance too. Location turned off in the settings answers `LocationUnavailable`.
+- **iPhone, iPad**: Core Location. `everyuiLocation := Some(LocationUse(purpose = "To show places near you"))` writes
+  the Info.plist's `NSLocationWhenInUseUsageDescription` (and, with `background`,
+  `NSLocationAlwaysAndWhenInUseUsageDescription`) in the words iOS shows in its prompt; without them iOS refuses
+  without asking. (Written for iOS, not yet built on a Mac.)
 - **Desktop, Roku, Apple TV**: none; `supported` is false and every request answers `LocationUnsupported`.
 
 `demo=platform` finds where the device is and follows it 25 m at a time.
+
+### With the app closed (`Location.permitBackground`, `Visits`)
+
+An app may also learn where the device is while it is closed: in its `BackgroundApp`'s work (`onWork`), and as visits
+to places (`Visits`, told to `onVisit`). It is always the person's choice, and never needed for anything else:
+
+- **Nothing asks by itself.** Declaring the permission asks the person nothing, at install or at launch. It is asked
+  only when the app calls `Location.permitBackground()`, after the person has turned the feature on.
+- **`Location.backgroundPermission`** says where it stands; **`Location.permitBackground()`** asks, the location itself
+  first where it has not been given. Android 10 asks in its prompt ("Allow all the time"); Android 11 and later open
+  the app's location page in the settings, where the person chooses "Allow all the time", and answer as they come
+  back, the grant read again (where Android no longer opens that page, after two refusals, the app's details open
+  instead). An iPhone asks for "Always". The web answers as for the location itself; the desktop, a Roku and an Apple
+  TV refuse.
+- **With no window**, `Location.lastKnown()` (the last fix the device kept, no new one) and `Location.current()` (a fresh
+  one, `timeout` seconds at most) answer once it is given, from the application's context, nothing needing the
+  activity; where it is not, `lastKnown` answers None and `current` LocationDenied, and nothing is asked. The location
+  while the app is open goes on working whatever the person chose.
+- **Visits** are off until the app starts them (`Visits.start(VisitOptions(minMinutes, radius))`, false where the
+  location with the app closed is not given), go on through the app closing, a restart and an update, and end with
+  `Visits.stop()`, which stops everything: the platform's listening, the work, and anything a restart or an update
+  would start again. Where the person takes the permission back, they stop by themselves, quietly, at their next
+  work or as the app or the device starts again.
+
+```scala
+import everyui.location.*
+
+// the person turns "Record the places I visit" on in the app's settings
+def turnOn(): Unit = Disclosure.show(               // the app's own screen first (Google Play requires it): what it
+  "Places records where you stay, even when the app is closed, so ...",   // collects, that it does so with the app
+  onAgree = () => Location.permitBackground().map { allowed =>            // closed, and what for
+    if (allowed && Visits.start(VisitOptions(minMinutes = 5, radius = 75.0))) placesOn @= true
+    else Toast.show("Places needs the location all the time")
+  }.start())
+
+// ... and off again
+def turnOff(): Unit = {
+  Visits.stop()
+  placesOn @= false
+}
+
+// in the app's BackgroundApp
+override def onVisit(event: VisitEvent): Task[Unit] = event match {
+  case VisitEvent.Arrived(v) => Places.arrived(v.latitude, v.longitude, v.arrived)
+  case VisitEvent.Departed(v) => Places.departed(v.latitude, v.longitude, v.arrived, v.departed)
+}
+// or a position of its own from its work, every 15 minutes or more
+override def onWork(key: String, data: Map[String, String]): Task[WorkResult] =
+  Location.current(precise = false).map {
+    case LocationAnswer.Located(p) => Places.record(p)
+    case _ => ()
+  }.map(_ => WorkResult.Done)
+```
+
+```scala
+// sbt-everyui: ACCESS_BACKGROUND_LOCATION beside the others (declared, not asked for), which needs a BackgroundApp
+everyuiBackground := Some("com.example.AppBackground")
+everyuiLocation := Some(LocationUse(background = true, purpose = "To record the places you visit"))
+```
+
+- **Android's visits** are judged inside EveryUI, since Android has none of its own without Google Play services: the
+  positions the device fixes for any app (the passive provider, which costs no power of its own, heard at EveryUI's
+  receiver) and one fixed every 15 minutes in work (`Work.every`, which Doze may stretch) go through a dwell detector
+  (`Dwell`): an arrival once fixes have stayed within `radius` metres for `minMinutes` (looked at again once a stay
+  begun would be long enough), a departure at the first fix beyond it, as last seen there. So a stay is told some
+  minutes late and its ends to within a quarter of an hour, where Play services' geofences and activity recognition
+  would wake the app sooner; a fix rougher than twice the radius (an approximate location) cannot start a stay. The
+  passive request is put back as the device starts again or the app is updated (EveryUI's BOOT_COMPLETED and
+  MY_PACKAGE_REPLACED receiver, which `everyuiBackground` declares), and as the app registers its `BackgroundApp`.
+- **An iPhone's visits** are the system's own (CLVisit), which wake the app as they happen; `VisitOptions` are not
+  used there. (Written for iOS, not yet built on a Mac.)
+- **Testing on an emulator**: `adb shell pm grant <package> android.permission.ACCESS_BACKGROUND_LOCATION` gives it
+  (with the fine location granted first), `adb emu geo fix <longitude> <latitude>` moves the device, and
+  `adb shell cmd jobscheduler run -f <package> <id>` runs the visits' work (key `everyui.visits`) now.
+
+**Google Play's policy.** An app that declares ACCESS_BACKGROUND_LOCATION is reviewed for it: the Play Console's
+location permissions declaration (what the feature is, why it needs the location with the app closed, and a short
+video of it), a feature the person sees and benefits from, and a prominent disclosure in the app itself, shown before
+the permission is asked for, separate from the privacy policy, that says what is collected, that it is collected with
+the app closed (or not in use), and what for, ending in the person's consent; the system's own prompt does not count.
+Apps that cannot justify it are rejected, so declare it only in the build that ships the feature. Apple asks for the
+same in App Review: a purpose string that says why, and the location used only for the feature it names.
 
 ## Calls (`everyui.call`)
 
