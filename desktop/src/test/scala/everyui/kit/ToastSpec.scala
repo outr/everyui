@@ -18,6 +18,7 @@ class ToastSpec extends FxSpec {
     }
     try test finally fx {
       Toast.hide()
+      Toast.presenter @= None
       Toast.placement @= ToastPlacement.Bottom
       Toast.topInset @= 0.0
       ui.children.clear()
@@ -226,6 +227,60 @@ class ToastSpec extends FxSpec {
       fx(Toast.show("Archived", seconds = 60.0, action = Some("Undo" -> (() => ()))))
       fx(Toast.show("Saved", seconds = 60.0))
       fx(Focus.focused()) shouldBe Some(field)
+    }
+    }
+
+  "A toast with the app's presenter" should {
+    "go to it, drawn by Toast not at all, still heard and read out, and drawn again once it is let go of" in clean {
+      var asked = List.empty[ToastRequest]
+      var undone = 0
+      val heard = fx {
+        var words = List.empty[String]
+        var said = List.empty[String]
+        val a = Toast.shown.attach(w => words = words :+ w)
+        val b = everyui.access.LiveRegions.announced.attach(s => said = said :+ s.words)
+        Toast.presenter @= Some(r => asked = asked :+ r)
+        val before = ui.children().length
+        Toast.show("Archived", seconds = 3.0, top = true, action = Some("Undo" -> (() => undone += 1)))
+        Toast.show("Copied")
+        Toast.show("Copied", tone = ToastTone.Error)
+        Toast.shown.reactions -= a
+        everyui.access.LiveRegions.announced.reactions -= b
+        (words, said, ui.children().length - before)
+      }
+      val (words, said, added) = heard
+      added shouldBe 0
+      words shouldBe List("Archived", "Copied", "Copied")
+      said shouldBe List("Archived. Undo", "Copied", "Copied")
+      asked.map(_.words) shouldBe List("Archived", "Copied", "Copied")
+      asked.map(_.seconds) shouldBe List(3.0, 4.0, 4.0)
+      asked.map(_.top) shouldBe List(true, false, false)
+      asked.map(_.tone) shouldBe List(ToastTone.Info, ToastTone.Info, ToastTone.Error)
+      // an error two seconds longer than the same words not one
+      asked(2).lasts should be > asked(1).lasts
+      // four seconds more while an action is offered, and never less than asked
+      asked.head.lasts should be >= 7.0
+      asked(1).lasts should be >= 4.0
+      asked(1).action shouldBe None
+      asked.head.action.map(_._1) shouldBe Some("Undo")
+      asked.head.action.foreach(_._2())
+      undone shouldBe 1
+      // let go of, Toast draws them again
+      fx {
+        Toast.presenter @= None
+        Toast.show("Saved", tone = ToastTone.Success)
+      }
+      val drawn = plate
+      fx(drawn.children().exists {
+        case t: TextView => t.content() == "Saved"
+        case _ => false
+      }) shouldBe true
+      // with a bar of the success colour at its start
+      fx(drawn.children().exists(c => c.size.width() == 4.0 && c.backgroundColor() == everyui.theme.Theme.success())) shouldBe true
+      // and Info (the default) none
+      fx(Toast.show("Plain"))
+      val plain = plate
+      fx(plain.children().exists(_.size.width() == 4.0)) shouldBe false
     }
   }
 }

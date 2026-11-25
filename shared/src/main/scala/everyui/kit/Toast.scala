@@ -26,6 +26,9 @@ import reactify.*
   * away, and the message stays four seconds longer while it is offered; a screen reader hears the action after the
   * words. A tap is the button's alone then, a swipe still closes it, and (where a pointer or a finger is used) a close
   * button after the action closes it too. A toast never takes the focus.
+  *
+  * An app that shows its messages its own way (a notice under its bell) sets `presenter`: every `show` then goes to it
+  * and Toast draws nothing.
   * {{{
   *   Toast.placement @= ToastPlacement.Top
   *   Toast.topInset := header.size.height()
@@ -38,6 +41,12 @@ object Toast {
   /** The words of every message shown, as it shows: for an app to keep them (its log, its server's), since a message
     * goes after a few seconds whether anybody read it or not. */
   val shown: Channel[String] = Channel[String]
+
+  /** Where the app shows every message itself, in place of Toast's own (a notice under its bell): set, every `show`,
+    * EveryUI's own included ("Copied", "Saved"), goes to it as a `ToastRequest` and Toast draws nothing; None (the
+    * default), Toast shows them as it always has. Either way `shown` hears the words and a screen reader reads them
+    * out, so the app's presenter need not say them again. */
+  val presenter: Var[Option[ToastRequest => Unit]] = Var(None)
 
   /** Where every toast shows, unless its call says (`show`'s `top` and `margin`): set once by the app. */
   val placement: Var[ToastPlacement] = Var(ToastPlacement.Bottom)
@@ -82,7 +91,24 @@ object Toast {
   }
 
   def show(words: String, seconds: Double = 4.0, top: Boolean = placement().top, margin: Double = placement().margin,
-           action: Option[(String, () => Unit)] = None): Unit = {
+           action: Option[(String, () => Unit)] = None, tone: ToastTone = ToastTone.Info): Unit = presenter() match {
+    case Some(present) =>
+      hide()
+      made += 1
+      shown @= words
+      everyui.access.LiveRegions.say(words + action.map(a => ". " + a._1).getOrElse(""))
+      present(ToastRequest(words, seconds, lasts(words, seconds, action.nonEmpty, tone), top, action, tone))
+    case None => draw(words, seconds, top, margin, action, tone)
+  }
+
+  // how long a message stays: as long as people are to be given to read it (`TimeLimits`), longer for more words, and
+  // four seconds more while an action is offered, to be read and reached, and two more for an error
+  private def lasts(words: String, seconds: Double, acting: Boolean, tone: ToastTone): Double =
+    everyui.time.TimeLimits.scaled(math.max(seconds, words.length / 20.0) + (if (acting) 4.0 else 0.0) +
+      (if (tone == ToastTone.Error) 2.0 else 0.0))
+
+  private def draw(words: String, seconds: Double, top: Boolean, margin: Double,
+                   action: Option[(String, () => Unit)], tone: ToastTone): Unit = {
     hide()
     made += 1
     val mark = made
@@ -132,6 +158,19 @@ object Toast {
     plate.radius @= 8.0
     plate.shadow @= Some(Shadow(0.0, 4.0, 16.0, Color.Black.withAlpha(0.5)))
     plate.children ++= text :: tail
+    // a bar of the tone's colour at its start, but for Info
+    // (following the theme as it changes)
+    if (tone != ToastTone.Info) {
+      val bar = new Container
+      bar.size.width @= 4.0
+      bar.size.height := plate.size.height()
+      bar.backgroundColor := (tone match {
+        case ToastTone.Success => Theme.success()
+        case ToastTone.Warning => Theme.warning()
+        case _ => Theme.danger()
+      })
+      plate.children += bar
+    }
     plate.position.left := (ui.size.width() - plate.size.width()) / 2.0
     plate.position.top := place(plate.size.height(), top, margin) + pulled()
     // a screen reader's way to close one with no action: it is a button that does
@@ -164,11 +203,8 @@ object Toast {
     showing = Some(plate)
     shown @= words
     everyui.access.LiveRegions.say(words + action.map(a => ". " + a._1).getOrElse(""))
-    // as long as people are to be given to read it (`TimeLimits`), longer for more words, and kept while a pointer
-    // rests on it
-    // (and four seconds more while an action is offered, to be read and reached)
-    val stays = everyui.time.TimeLimits.scaled(
-      math.max(seconds, words.length / 20.0) + (if (action.isEmpty) 0.0 else 4.0))
+    // (and kept while a pointer rests on it)
+    val stays = lasts(words, seconds, action.nonEmpty, tone)
     def expire(): Unit = if (mark == made) {
       if (plate.event.pointer.hover()) Platform.after(1.0, () => expire()) else hide()
     }

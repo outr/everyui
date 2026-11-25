@@ -966,6 +966,16 @@ Beyond the core components (`Button`, `Dialog`, `Table`, `ScrollContainer`, and 
   action keeps a tap for its button, still closes on a swipe, and has a close button after the action (where a
   pointer or a finger is used, not on a television). A toast never takes the focus, and on a television nothing
   changes unless the app sets a placement.
+  An app that shows messages its own way (a notice dropping from its bell) sets `Toast.presenter`
+  (`Var[Option[ToastRequest => Unit]]`, None by default): while it is set every `Toast.show`, EveryUI's own included
+  ("Copied", "Saved", an export's count), goes to it and Toast draws nothing. A `ToastRequest` carries the `words`, the
+  `seconds` the call asked for, `lasts` (how long it is to stay: longer for long words, `TimeLimits`, and four seconds
+  more with an action, two more for an error, as Toast's own), `top`, the `action` (its words and what it does) and
+  the `tone`. `Toast.show(words, tone = ToastTone.Error)` says what a message is: `Info` (the default), `Success`,
+  `Warning` or `Error`; Toast's own draws all but Info with a bar of the theme's success, warning or danger colour at
+  its start. `Toast.shown` still hears
+  each message and a screen reader still reads it out, so the presenter need not. Set back to None, Toast shows them
+  again.
 
   ```scala
   Toast.placement @= ToastPlacement.Top          // every toast at the head, under the header
