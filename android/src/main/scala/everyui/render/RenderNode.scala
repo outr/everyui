@@ -1274,7 +1274,8 @@ class RenderNode(val view: View) {
         // held literal: no suggestions or corrections, and no capitals (no CAP flag), told as plain text rather than as
         // a password, the keyboards' usual trick, which would mislead autofill (a path, a command, code)
         case _ if literal => T.TYPE_CLASS_TEXT | T.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        case _ => T.TYPE_CLASS_TEXT
+        // words to be read (a message, a note, a title): capitals to start sentences, corrections offered
+        case _ => RenderNode.prose
       }
       e.setFieldType(kind | lines)
     case _ => ()
@@ -1747,6 +1748,11 @@ object RenderNode {
     case "rtl" => View.TEXT_DIRECTION_RTL
     case _ => View.TEXT_DIRECTION_INHERIT
   }
+
+  /** An ordinary field's input type, words to be read: a capital to start each sentence and corrections offered, as a
+    * stock EditText for prose has. Without CAP_SENTENCES Gboard and the other keyboards open in lowercase. */
+  val prose: Int = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES |
+    android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
 
   /** The Autofill Framework's hint for an `autocomplete` token: View's own constants where it has one, else androidx's
     * `HintConstants` (the same strings, which every service knows); "" where neither names it. */
@@ -2786,7 +2792,8 @@ object Nodes {
     e.setPadding(0, 0, 0, 0)
     e.setIncludeFontPadding(false)
     e.setSingleLine(true)
-    e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | (if (secure) android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD else 0))
+    e.setInputType(if (secure) android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+      else RenderNode.prose)
     e.setTextSize(TypedValue.COMPLEX_UNIT_PX, 16.0f)
     // from where the root reads, not the edit style's left: an empty field's caret starts at the right in Arabic
     e.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START)
@@ -2805,7 +2812,7 @@ object Nodes {
     node.view match {
       case e: EditText =>
         e.setSingleLine(false)
-        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE)
+        e.setInputType(RenderNode.prose | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE)
         e.setGravity(android.view.Gravity.TOP | android.view.Gravity.START)
       case _ => ()
     }
