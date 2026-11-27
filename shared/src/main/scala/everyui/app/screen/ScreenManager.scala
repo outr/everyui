@@ -27,8 +27,10 @@ import scala.concurrent.duration.*
   * `defaultFocus`; where a pointer is used, both only while the keys are moving the focus, and otherwise nothing is
   * focused unless the screen starts at a field: `Focus.starts`); at the first screen Back is the platform's, which
   * leaves the app. On the web the browser's own history is that history: showing a screen pushes its path, Back is the
-  * browser's back, and the browser's back or forward shows the screen that claims the new path. `run`
-  * starts on the screen claiming the page's path, or the first. */
+  * browser's back, and the browser's back or forward shows the screen that claims the new path. Elsewhere (Android,
+  * the desktop) the platform keeps a history of its own for an app that listens to its path (everyui.app.PathHistory),
+  * which the screen manager neither listens to nor steps: Back goes through its own, and at the first screen leaves
+  * the app. `run` starts on the screen claiming the page's path, or the first. */
 trait ScreenManager extends TaskSupport {
   val active: Var[Option[Screen]] = Var(None)
   /** What the shown screen says about itself (`Screen.seo`), followed as it changes: the screen changing, or what the
@@ -153,7 +155,7 @@ trait ScreenManager extends TaskSupport {
     ui.children.clear()
     ui.children ++= List(backdrop, washes)
     ui.children ++= before
-    Platform.onPath(path => arrived(path))
+    if (browserHistory) Platform.onPath(path => arrived(path))
     Focus.onBack(key => key == Key.Back && back())
     // where the focus goes when it has nowhere else: the showing screen's own default
     Focus.home @= (() => active() match {
@@ -178,6 +180,9 @@ trait ScreenManager extends TaskSupport {
         }
         .startUnit())
   }
+
+  /** Whether the history is the browser's (the web backend), which Back goes through and the screen manager hears. */
+  private def browserHistory: Boolean = everyui.PlatformKinds.browser(Platform.kind)
 
   /** The page's address changed to `path` by the browser (its Back or Forward). */
   private[screen] def arrived(path: String): Unit = backStack match {
@@ -229,7 +234,7 @@ trait ScreenManager extends TaskSupport {
   /** Back to the screen before this one: whether there was one (at the first, Back is left to the platform). */
   def back(): Boolean = backStack match {
     case (previous, focus, _) :: rest =>
-      if (!Platform.historyBack()) {
+      if (!browserHistory || !Platform.historyBack()) {
         backStack = rest
         swap(previous, push = false, focus).startUnit()
       }

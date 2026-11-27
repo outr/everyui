@@ -34,6 +34,8 @@ abstract class EveryUIActivity extends Activity {
     if (everyui.render.Hop.audit) everyui.render.Secrets.audit = true
     Host.freeze = extra("freeze").flatMap(_.toDoubleOption).getOrElse(-1.0)
     Host.path = extra("path").getOrElse("")
+    // or where the app's path history is, an activity before this one having gone (Host.resumePaths)
+    Host.resumePaths(savedInstanceState)
     extra("viewport").map(_.split('x')).foreach {
       case Array(w, h) =>
         Host.viewportWidth = w.toDouble
@@ -129,6 +131,8 @@ abstract class EveryUIActivity extends Activity {
   private var backTaken = false
   /** Whether a Back nothing took is held to ask before the app is left (LeaveBack). */
   private var leaveHeld = false
+  /** Whether a Back nothing took is held to go back a path as it is released (`everyui.app.PathHistory.takesBack`). */
+  private var pathHeld = false
 
   /** A touch read over the scale the app is drawn at as it began (Host.touchScale), whatever it changes as it is heard. */
   override def dispatchTouchEvent(e: MotionEvent): Boolean = {
@@ -141,8 +145,9 @@ abstract class EveryUIActivity extends Activity {
     super.dispatchGenericMotionEvent(e)
   }
 
-  /** Every key to the shared layer's hook, by the web's name. Back goes there first, and is Android's (leaving the app)
-    * only when the app has nowhere to go back to (asked first while it is guarded: LeaveBack); a Back the app took
+  /** Every key to the shared layer's hook, by the web's name. Back goes there first, then back a path where the app
+    * listens to its path (`everyui.app.PathHistory.takesBack`), and is Android's (leaving the app) only when the app
+    * has nowhere to go back to (asked first while it is guarded: LeaveBack); a Back the app took
     * keeps its release, or Android would act on that. A mouse's back button (its BUTTON_BACK, which Android sends as KEYCODE_BACK from the mouse) is BrowserBack: Back
     * all the same, but told from a remote's by its source, so a keymap's chord can take it alone; its forward button
     * (KEYCODE_FORWARD) is BrowserForward. */
@@ -162,15 +167,18 @@ abstract class EveryUIActivity extends Activity {
       if (e.getAction == KeyEvent.ACTION_DOWN) {
         if (e.getRepeatCount == 0) {
           backTaken = hook(back, true)
-          leaveHeld = !backTaken && LeaveBack.holds()
+          pathHeld = !backTaken && Host.paths.takesBack
+          leaveHeld = !backTaken && !pathHeld && LeaveBack.holds()
         }
-        backTaken || leaveHeld || super.dispatchKeyEvent(e)
+        backTaken || pathHeld || leaveHeld || super.dispatchKeyEvent(e)
       }
       else {
         hook(back, false)
-        val taken = backTaken || leaveHeld
+        val taken = backTaken || pathHeld || leaveHeld
+        if (pathHeld) everyui.render.Platform.historyBack()
         if (leaveHeld) LeaveBack.ask(this)
         backTaken = false
+        pathHeld = false
         leaveHeld = false
         taken || super.dispatchKeyEvent(e)
       }
@@ -271,6 +279,12 @@ abstract class EveryUIActivity extends Activity {
   override def onActivityResult(code: Int, result: Int, data: android.content.Intent): Unit = {
     super.onActivityResult(code, result, data)
     everyui.render.FileAccess.answered(code, result, data)
+  }
+
+  /** The app's path history, kept for the activity Android makes in this one's place (Host.savePaths). */
+  override def onSaveInstanceState(state: Bundle): Unit = {
+    super.onSaveInstanceState(state)
+    Host.savePaths(state)
   }
 
   /** Somebody is in front of it again: the app was away and is back, which is a sign of use like any key. Not the

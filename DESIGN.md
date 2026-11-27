@@ -1248,7 +1248,8 @@ What the DataWrangler dashboard's port asked of the shared layer, each on every 
   its first showing, and activated after the last is deactivated. Showing a screen pushes its path; the browser's
   back and forward show the screen claiming the new path (`PathActivation.matches`, so `/run/<id>` is one screen);
   `run(first, others*)` starts on the screen claiming the page's path. The seam: `Platform.path`, `pushPath`,
-  `onPath` (the DOM's history; nothing elsewhere).
+  `onPath` (the DOM's history on the web; off it, the screen manager keeps its own and leaves the platform's path
+  history, everyui.app.PathHistory, to an app that listens to its path).
 - **Scrolling.** `ScrollContainer`: a viewport over `content`. The web scrolls the node itself (`overflow: auto`,
   so the browser's scrollbar, wheel, touch and keys); every other backend clips the node (`RenderNode.setClip`)
   and the shared container shifts the content on the wheel (`event.pointer.wheel`), a drag, or the arrows and page

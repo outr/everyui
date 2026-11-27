@@ -1225,6 +1225,12 @@ object Host {
 
   /** The path the app is at: `--path=` to start somewhere, then wherever it last pushed. */
   var path: String = ""
+  /** The paths it has been at (`Platform.pushPath`), from the one it started at: made when it is first asked for. */
+  private[everyui] var history: everyui.app.PathHistory = null
+  private[everyui] def paths: everyui.app.PathHistory = {
+    if (history == null) history = new everyui.app.PathHistory(path)
+    history
+  }
   var scene: Scene = null
   var root: Pane = null
   var assets: File = new File("assets")
@@ -1874,10 +1880,15 @@ object Platform {
     Clipboard.getSystemClipboard.setContent(content)
   }
 
-  /** No address bar, but a path all the same: `--path=` to start at a screen, and whatever the app pushes after. */
+  /** No address bar, but a path all the same: `--path=` to start at a screen, and whatever the app pushes after, kept
+    * as a browser keeps its history (`everyui.app.PathHistory`). */
   def path(): String = Host.path
-  def pushPath(path: String): Unit = Host.path = path
-  def onPath(f: String => Unit): Unit = ()
+  def pushPath(path: String): Unit = {
+    Host.paths.push(path)
+    Host.path = path
+  }
+  /** The path after a step back or forward through the history (`historyBack`, or a Back nothing in the app took). */
+  def onPath(f: String => Unit): Unit = Host.paths.listen(f)
 
   /** An ARB file's messages (everyui.i18n.Arb). */
   def parseMessages(arb: String): Map[String, String] = everyui.i18n.Arb.parse(arb)
@@ -1918,14 +1929,34 @@ object Platform {
   }
 
   /** Run `f` on the JavaFX thread, soon: how a reply from another thread reaches the components. */
-  /** No browser history here: the screen manager keeps its own. */
-  def historyBack(): Boolean = false
+  /** Back a path, which the app hears (`onPath`): whether there was one. The screen manager keeps its own history
+    * here, and never asks. */
+  def historyBack(): Boolean = arrive(Host.paths.back())
 
   /** No address bar: the path is the app's alone, set in place of the one it had. */
-  def replacePath(path: String): Unit = Host.path = path
+  def replacePath(path: String): Unit = {
+    Host.paths.replace(path)
+    Host.path = path
+  }
 
-  /** No browser history here: the screen manager keeps its own. */
-  def historyForward(): Boolean = false
+  /** Forward a path, as `historyBack`. */
+  def historyForward(): Boolean = arrive(Host.paths.forward())
+
+  private def arrive(step: Option[String]): Boolean = step match {
+    case Some(path) =>
+      Host.path = path
+      Host.paths.tell(path)
+      true
+    case None => false
+  }
+
+  /** A BrowserBack or BrowserForward nothing in the app took, a path back or forward where the app listens to its path
+    * (`PathHistory.takesBack`): whether it went. */
+  private[everyui] def untaken(key: String): Boolean = key match {
+    case "BrowserBack" => Host.paths.takesBack && historyBack()
+    case "BrowserForward" => Host.paths.takesForward && historyForward()
+    case _ => false
+  }
 
   /** A value kept for this window alone: the app has one, so for this run of it. "" when there is none. */
   def windowSetting(name: String): String = windowSettings.getOrElse(name, "")
@@ -2296,7 +2327,8 @@ object Platform {
       repeating = if (pressed) !down.add(e.getCode) else { down.remove(e.getCode); false }
       // a press timed to the frame that answers it, where it is measured
       if (pressed && everyui.perf.Perf.on) everyui.perf.Perf.keyed()
-      try if (f(Host.keyName(e), pressed)) e.consume()
+      val name = Host.keyName(e)
+      try if (f(name, pressed) || (pressed && untaken(name))) e.consume()
       // the embed is the one this key was meant for, and no other: a key sent later from anywhere else (a key given
       // back, one a test sends) is nobody's embed's, nor a repeat
       finally {
@@ -2324,7 +2356,8 @@ object Platform {
         if (e.getEventType != MouseEvent.MOUSE_CLICKED) {
           held = everyui.event.Modifiers(e.isControlDown, e.isMetaDown, e.isAltDown, e.isShiftDown)
           embedded = ""
-          f(name, e.getEventType == MouseEvent.MOUSE_PRESSED)
+          val pressed = e.getEventType == MouseEvent.MOUSE_PRESSED
+          if (!f(name, pressed) && pressed) untaken(name)
         }
       }
     }

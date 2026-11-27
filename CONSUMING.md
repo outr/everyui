@@ -7437,7 +7437,22 @@ These cover what a web app would otherwise reach the browser for directly, so th
   forgets the value.
 - **The address.** `Platform.replacePath(path)` shows `path` in place of the current history entry, without adding
   one, so a used `/join/<token>` can become `/join` with the token gone from the history. `Platform.historyForward()`
-  goes forward, as `historyBack` goes back. It is the browser's own on the web and false elsewhere.
+  goes forward, as `historyBack` goes back. On the web it is the browser's own history. Android and the desktop keep
+  one of their own, like a browser's (`everyui.app.PathHistory`):
+  - It starts with the launch path as its one entry. `pushPath` adds an entry after the current one and drops any
+    forward entries. `replacePath` replaces the current entry, the first one included, so a landing path written with
+    it is where Back returns to.
+  - `historyBack()` and `historyForward()` step to the entry before or after, set `Platform.path`, and tell the
+    `onPath` listeners. They return false where there is none.
+  - It keeps the last 100 entries. On Android it survives the activity being made again (its saved state).
+  - A Back that nothing in the app took (no dialog, menu, focused component or keymap) goes back one entry before it
+    leaves the app, but only for an app that listens to its path (`Platform.onPath`) and has an entry to go back to.
+    Otherwise Back leaves the app as before, asking first while it is guarded. On Android this applies to the Back
+    key and to predictive back alike. On the desktop it applies to an untaken BrowserBack or BrowserForward (a
+    mouse's side buttons, Alt+Left).
+  - `ScreenManager` uses the platform's history only where it is the browser's (`PlatformKinds.browser`). Elsewhere
+    it neither listens to the path nor steps it: Back goes through its own screens, and at the first it leaves the app.
+  - Roku and Apple TV keep no history: `historyBack` and `historyForward` are false there.
 - **A second window.** `Platform.openWindow(path)` opens the app at an in-app path (`/w/3`) in a new window, the size of
   this one and offset below and to the right. It returns false where nothing opened: the browser refused (open it from
   a click or a key), the path is not the app's, or the platform has one window (desktop, Android, Roku, Apple TV).

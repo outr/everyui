@@ -2656,6 +2656,37 @@ object Host {
   }
   /** The path the app is at: `--es path /somewhere` to start there, then wherever it last pushed. */
   var path: String = ""
+  /** The paths it has been at (`Platform.pushPath`), from the one it started at: made when it is first asked for. */
+  private[everyui] var history: everyui.app.PathHistory = null
+  private[everyui] def paths: everyui.app.PathHistory = {
+    if (history == null) history = new everyui.app.PathHistory(path)
+    history
+  }
+
+  /** The history in an activity's saved state, where the app listens to its path: an app that does not (a screen
+    * manager's, which keeps its own) starts again where it was launched, as it did. */
+  def savePaths(state: android.os.Bundle): Unit = if (history != null && history.listened) {
+    import scala.jdk.CollectionConverters.*
+    state.putStringArrayList(pathsKey, new java.util.ArrayList[String](history.entries.asJava))
+    state.putInt(pathAtKey, history.index)
+  }
+
+  /** An activity made again, at the path its history is at: the process's own history where the process outlived the
+    * last activity and the app listens to its path, or else the one the last activity saved. */
+  def resumePaths(saved: android.os.Bundle): Unit = {
+    import scala.jdk.CollectionConverters.*
+    val kept =
+      if (history != null) Option(history).filter(_.listened)
+      else Option(saved).flatMap(s => Option(s.getStringArrayList(pathsKey))).map(entries =>
+        everyui.app.PathHistory.restored(entries.asScala.toList, saved.getInt(pathAtKey)))
+    kept.foreach { h =>
+      history = h
+      path = h.current
+    }
+  }
+
+  private val pathsKey = "everyui.paths"
+  private val pathAtKey = "everyui.pathAt"
 }
 
 /** Backend node factories. */
@@ -3073,20 +3104,37 @@ object Platform {
     manager.setPrimaryClip(android.content.ClipData.newHtmlText("everyui", text, html))
   }
 
-  /** No address bar: no path to show, push or follow. */
+  /** No address bar, but a path all the same: `--es path` to start at a screen, and whatever the app pushes after, kept
+    * as a browser keeps its history (`everyui.app.PathHistory`), across the activity being made again. */
   def path(): String = Host.path
-  def pushPath(path: String): Unit = Host.path = path
-  def onPath(f: String => Unit): Unit = ()
+  def pushPath(path: String): Unit = {
+    Host.paths.push(path)
+    Host.path = path
+  }
+  /** The path after a step back or forward through the history (`historyBack`, or a Back nothing in the app took). */
+  def onPath(f: String => Unit): Unit = Host.paths.listen(f)
 
   /** Run `f` on the main thread, soon: how a reply from another thread reaches the components. */
-  /** No browser history here: the screen manager keeps its own. */
-  def historyBack(): Boolean = false
+  /** Back a path, which the app hears (`onPath`): whether there was one. The screen manager keeps its own history
+    * here, and never asks. */
+  def historyBack(): Boolean = arrive(Host.paths.back())
 
   /** No address bar: the path is the app's alone, set in place of the one it had. */
-  def replacePath(path: String): Unit = Host.path = path
+  def replacePath(path: String): Unit = {
+    Host.paths.replace(path)
+    Host.path = path
+  }
 
-  /** No browser history here: the screen manager keeps its own. */
-  def historyForward(): Boolean = false
+  /** Forward a path, as `historyBack`. */
+  def historyForward(): Boolean = arrive(Host.paths.forward())
+
+  private def arrive(step: Option[String]): Boolean = step match {
+    case Some(path) =>
+      Host.path = path
+      Host.paths.tell(path)
+      true
+    case None => false
+  }
 
   /** A value kept for this window alone: the app has one, so for this run of it. "" when there is none. */
   def windowSetting(name: String): String = windowSettings.getOrElse(name, "")
